@@ -1,3 +1,4 @@
+import { chatTemplate } from "./project-kind-helpers.ts";
 import assert from "node:assert/strict";
 import test from "node:test";
 
@@ -215,7 +216,7 @@ test("projects resolved snapshots into literal messages with durable receipts", 
   });
 
   assert.equal(base.externalImports.length, 0);
-  assert.equal(imported.project.schemaVersion, 11);
+  assert.equal(imported.project.schemaVersion, 15);
   assert.equal(imported.project.externalImports.length, 1);
   assert.equal(
     imported.project.externalImports[0]?.sourceDigest,
@@ -471,7 +472,7 @@ test("projects authored expressions into deterministic native variables", async 
     candidate,
     { importedAt },
   );
-  const template = imported.project.promptTemplates.at(-1)!;
+  const template = chatTemplate(imported.project.promptTemplates.at(-1)!);
   const revision = template.revisions[0]!;
   assert.equal(revision.externalImportId, imported.externalImportId);
   assert.equal(template.recommendedTarget, undefined);
@@ -531,7 +532,7 @@ test("projects authored expressions into deterministic native variables", async 
     createdAt: "2026-07-28T18:10:00.000Z",
   });
   assert.equal(
-    revised.promptTemplates.at(-1)?.revisions.at(-1)?.externalImportId,
+    chatTemplate(revised.promptTemplates.at(-1)).revisions.at(-1)?.externalImportId,
     undefined,
   );
   const removedImportedRevision = removePromptTemplateRevision(

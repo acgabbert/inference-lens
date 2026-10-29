@@ -1,0 +1,99 @@
+{
+  "provenance": {
+    "kind": "captured",
+    "implementation": "OpenRouter /api/v1/systemone",
+    "server": "https://openrouter.ai",
+    "captured": "2026-10-24",
+    "note": "The llama.cpp all-types request with model ~typesafe/jev-latest. The response names a dated snapshot, adds id, provider, and usage.cost, reports output_tokens, and rounds probabilities to two places."
+  },
+  "request": {
+    "model": "~typesafe/jev-latest",
+    "state": {
+      "ticket": "I was charged twice for October and the app crashes when I open invoices.",
+      "plan": "pro"
+    },
+    "questions": {
+      "intent": {
+        "type": "choice",
+        "instructions": "What is the customer mainly asking about?",
+        "criteria": {
+          "billing": "Charges, refunds, invoices, or plan changes.",
+          "bug": "Something in the product is broken.",
+          "other": null
+        }
+      },
+      "severity": {
+        "type": "score",
+        "instructions": [
+          "How urgent is this ticket?",
+          {
+            "consider": "customer impact"
+          }
+        ],
+        "criteria": [
+          "minor",
+          "major",
+          {
+            "label": "critical",
+            "note": "data loss or money lost"
+          }
+        ]
+      },
+      "is_spam": {
+        "type": "noul",
+        "instructions": "Is this ticket spam?",
+        "criteria": {
+          "true": "Unsolicited advertising.",
+          "false": "A real customer request."
+        }
+      }
+    }
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "model": "typesafe/jev-1.14-20261014",
+      "answers": {
+        "intent": {
+          "type": "choice",
+          "choice": "billing",
+          "probabilities": {
+            "billing": 0.92,
+            "bug": 0.06,
+            "other": 0.02
+          },
+          "confidence": 0.88
+        },
+        "severity": {
+          "type": "score",
+          "score": 1.8,
+          "legend": {
+            "0": "minor",
+            "1": "major",
+            "2": {
+              "label": "critical",
+              "note": "data loss or money lost"
+            }
+          },
+          "probabilities": {
+            "0": 0,
+            "1": 0.2,
+            "2": 0.8
+          },
+          "confidence": 0.7
+        },
+        "is_spam": {
+          "type": "noul",
+          "noul": 0.03
+        }
+      },
+      "usage": {
+        "input_tokens": 466,
+        "output_tokens": 70,
+        "cost": 1.9572e-05
+      },
+      "id": "gen-dec-1792812352-hdNMa6iBGxZIqVquzqBv",
+      "provider": "TypeSafe"
+    }
+  }
+}

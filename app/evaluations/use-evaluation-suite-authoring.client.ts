@@ -2,12 +2,14 @@
 
 import { useMemo, useState } from "react";
 import type { CheckDefinition } from "../../packages/core/src/checks";
+import { createDecisionTemplateEvaluation, retargetDecisionTemplateEvaluation } from "../../packages/core/src/decision-template-evaluation";
 import {
   addEvaluationCase,
   addEvaluationCheck,
   addEvaluationInput,
   addEvaluationVariant,
   createEvaluationSuite,
+  createDecisionEvaluationSuite,
   createRevisionFromSavedPrompt,
   evaluationBindingCandidates,
   evaluationSuitePreflight,
@@ -38,11 +40,14 @@ import {
   ProjectValidationError,
   retargetPromptTemplateUseRevision,
 } from "../../packages/core/src/project";
-import type { EvaluationSuite, ProjectFile } from "../../packages/core/src/project";
-import type { EvaluationVariant } from "../../packages/core/src/evaluation-suites";
+import type { ProjectFile } from "../../packages/core/src/project";
+import type { ChatEvaluationSuite, EvaluationVariant } from "../../packages/core/src/evaluation-suites";
+import { isChatEvaluationSuite } from "../../packages/core/src/evaluation-suites";
 import type {
   CheckId,
+  ConnectionRequirementId,
   ConversationRevisionId,
+  DecisionRequestRevisionId,
   EvaluationCaseId,
   EvaluationInputBindingId,
   EvaluationSuiteId,
@@ -129,12 +134,23 @@ export interface EvaluationSuiteAuthoringHandle {
   setToolExposed(id: ToolId, exposed: boolean): void;
   /** Provider turns one repetition may spend; clamped to the supported range. */
   setTurnCeiling(value: number): void;
-  updateExecution(execution: EvaluationSuite["execution"]): boolean;
+  updateExecution(execution: ChatEvaluationSuite["execution"]): boolean;
   addVariant(): void;
   updateVariant(id: EvaluationVariantId, patch: Pick<EvaluationVariant, "name" | "overrides">): boolean;
   moveVariant(id: EvaluationVariantId, destinationIndex: number): void;
   deleteVariant(id: EvaluationVariantId): void;
   createSuite(): void;
+  /**
+   * Creates a decision suite pinned to a revision (D51) and selects it.
+   * `project` is the document to create it in when the caller has just folded
+   * a draft into it; otherwise the open project.
+   */
+  createDecisionSuite(input: {
+    project?: ProjectFile;
+    decisionRequestRevisionId: DecisionRequestRevisionId;
+    model: string;
+    connection?: { endpoint: string };
+  }): { project: ProjectFile; connectionRequirementId: ConnectionRequirementId } | undefined;
   renameSuite(name: string): boolean;
   deleteSuite(): void;
   addInput(candidate: ReturnType<typeof evaluationBindingCandidates>[number]): void;
@@ -165,12 +181,19 @@ export type EvaluationCheckAuthoringField =
   | "case-sensitive"
   | "trim-whitespace"
   | "negate"
+  | "structured-check"
   | "top-level"
   | "limit"
   | "tool-name"
   | "count"
   | "comparator"
-  | "arguments-subset";
+  | "arguments-subset"
+  | "question"
+  | "option"
+  | "value"
+  | "min"
+  | "max"
+  | "at-least";
 
 export interface EvaluationSuiteAuthoringError {
   message: string;
@@ -241,7 +264,10 @@ export function useEvaluationSuiteAuthoring({
     ? suiteId
     : project?.evaluationSuites[0]?.id;
   const suite = project?.evaluationSuites.find(({ id }) => id === effectiveSuiteId);
-  const effectiveRevisionId = suite?.input.conversationRevisionId;
+  // Chat-only authoring (the conversation input, tools, bindings to template
+  // uses) reads this; a decision suite's setup has its own owner (D51).
+  const chatSuite = suite && isChatEvaluationSuite(suite) ? suite : undefined;
+  const effectiveRevisionId = chatSuite?.input.conversationRevisionId;
   const validCaseIds = new Set(suite?.cases.map(({ id }) => id) ?? []);
   const explicitSelection = selection &&
     selection.projectId === project?.projectId &&
@@ -300,8 +326,10 @@ export function useEvaluationSuiteAuthoring({
   const candidates = project && effectiveRevisionId
     ? evaluationBindingCandidates(project, effectiveRevisionId)
     : [];
-  const diagnostics = project && effectiveSuiteId && effectiveRevisionId
-    ? evaluationSuitePreflight(project, effectiveSuiteId, effectiveRevisionId, [...effectiveSelectedCaseIds])
+  // A decision suite reads its own pinned revision, so the conversation
+  // revision argument only matters for chat.
+  const diagnostics = project && effectiveSuiteId && (effectiveRevisionId || (suite && !chatSuite))
+    ? evaluationSuitePreflight(project, effectiveSuiteId, effectiveRevisionId ?? project.defaults.conversationRevisionId, [...effectiveSelectedCaseIds])
     : [];
 
   const revisionChoices = useMemo(
@@ -318,8 +346,8 @@ export function useEvaluationSuiteAuthoring({
   const selectedRevisionDocument = project?.conversationRevisions.find(
     ({ id }) => id === effectiveRevisionId,
   );
-  const focusedCaseResolution = project && suite && selectedRevisionDocument && focusedCase
-    ? resolveEvaluationCase(project, selectedRevisionDocument, suite, focusedCase)
+  const focusedCaseResolution = project && chatSuite && selectedRevisionDocument && focusedCase
+    ? resolveEvaluationCase(project, selectedRevisionDocument, chatSuite, focusedCase)
     : undefined;
 
   // Both are discarded when the project changes, so a message never survives
@@ -396,8 +424,19 @@ export function useEvaluationSuiteAuthoring({
     const revisionLabel = template ? promptRevisionLabel(template, templateRevisionId) : "this revision";
     try {
       const requestedSuite = requestedSuiteId && project.evaluationSuites.find(({ id }) => id === requestedSuiteId);
+      if (requestedSuiteId && !requestedSuite) throw new Error("The selected evaluation suite no longer exists.");
       let landedSuiteId: EvaluationSuiteId;
-      if (requestedSuite) {
+      if (template?.kind === "decision") {
+        if (requestedSuite) {
+          adoptProjectMutation(retargetDecisionTemplateEvaluation(project, { templateId, templateRevisionId, suiteId: requestedSuite.id }));
+          landedSuiteId = requestedSuite.id;
+        } else {
+          const created = createDecisionTemplateEvaluation(project, { templateId, templateRevisionId });
+          adoptProjectMutation(created.project);
+          landedSuiteId = created.suiteId;
+        }
+      } else if (requestedSuite) {
+        if (!isChatEvaluationSuite(requestedSuite)) throw new Error("A saved prompt can only start a chat suite's input.");
         const parentRevisionId = requestedSuite.input.conversationRevisionId;
         const parent = project.conversationRevisions.find(({ id }) => id === parentRevisionId);
         const use = parent?.items.find((item) => item.kind === "template-use" && item.use.templateId === templateId);
@@ -491,27 +530,27 @@ export function useEvaluationSuiteAuthoring({
       setFocusedCaseId(id);
     },
     setRepetitions(value) {
-      if (!suite || !effectiveSuiteId) return;
+      if (!chatSuite || !effectiveSuiteId) return;
       commit((current) => updateEvaluationSuiteExecution(current, effectiveSuiteId, {
-        ...suite.execution,
+        ...chatSuite.execution,
         repetitions: value,
       }));
     },
     setToolExposed(id, exposed) {
-      if (!suite || !effectiveSuiteId) return;
-      const current = suite.execution.toolIds;
+      if (!chatSuite || !effectiveSuiteId) return;
+      const current = chatSuite.execution.toolIds;
       if (exposed === current.includes(id)) return;
       commit((project) => updateEvaluationSuiteExecution(project, effectiveSuiteId, {
-        ...suite.execution,
+        ...chatSuite.execution,
         toolIds: exposed
           ? [...current, id]
           : current.filter((toolId) => toolId !== id),
       }));
     },
     setTurnCeiling(value) {
-      if (!suite || !effectiveSuiteId) return;
+      if (!chatSuite || !effectiveSuiteId) return;
       commit((project) => updateEvaluationSuiteExecution(project, effectiveSuiteId, {
-        ...suite.execution,
+        ...chatSuite.execution,
         turnCeiling: normalizedTurnCeiling(value),
       }));
     },
@@ -551,6 +590,26 @@ export function useEvaluationSuiteAuthoring({
       setSelection(undefined);
       setFocusedCaseId(undefined);
       setStoredError(undefined);
+    },
+    createDecisionSuite(input) {
+      if (!project) return undefined;
+      try {
+        const created = createDecisionEvaluationSuite(input.project ?? project, {
+          decisionRequestRevisionId: input.decisionRequestRevisionId,
+          model: input.model,
+          ...(input.connection ? { connection: input.connection } : {}),
+        });
+        adoptProjectMutation(created.project);
+        setSuiteId(created.suiteId);
+        setSelection(undefined);
+        setVariantSelection(undefined);
+        setFocusedCaseId(undefined);
+        setStoredError(undefined);
+        return { project: created.project, connectionRequirementId: created.connectionRequirementId };
+      } catch (cause) {
+        setStoredPromptError({ projectId: project.projectId, message: mutationErrorMessage(cause) });
+        return undefined;
+      }
     },
     renameSuite(name) {
       return effectiveSuiteId

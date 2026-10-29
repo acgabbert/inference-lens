@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 
-import { constants } from "node:fs";
-import { access } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { createServer } from "node:net";
 import { spawn } from "node:child_process";
+
+import { CHROMIUM_OVERRIDE_ENV, resolveChromium } from "./e2e-chromium.mjs";
 
 const LOOPBACK_PROBE_TIMEOUT_MS = 2_000;
 const BROWSER_INSTALL_TIMEOUT_MS = 90_000;
@@ -73,13 +73,17 @@ function runCommand(argumentsList, { timeoutMs } = {}) {
   });
 }
 
-async function ensurePinnedChromium() {
+async function ensureChromium() {
   const { chromium } = await import("@playwright/test");
-  try {
-    await access(chromium.executablePath(), constants.X_OK);
-  } catch {
-    await runCommand(["install", "chromium"], { timeoutMs: BROWSER_INSTALL_TIMEOUT_MS });
-  }
+  const { executablePath, notice } = await resolveChromium({
+    env: process.env,
+    pinnedExecutable: chromium.executablePath(),
+    installPinned: () => runCommand(["install", "chromium"], { timeoutMs: BROWSER_INSTALL_TIMEOUT_MS }),
+  });
+  if (notice) console.warn(`\n${notice}\n`);
+  // The Playwright child inherits this, and the config launches it.
+  if (executablePath) process.env[CHROMIUM_OVERRIDE_ENV] = executablePath;
+  return notice;
 }
 
 async function main(argv = process.argv.slice(2)) {
@@ -88,8 +92,13 @@ async function main(argv = process.argv.slice(2)) {
     return;
   }
   await assertLoopbackAvailable();
-  await ensurePinnedChromium();
-  await runCommand(["test", ...argv]);
+  const chromiumNotice = await ensureChromium();
+  try {
+    await runCommand(["test", ...argv]);
+  } finally {
+    // Repeated after the results so a report of the run cannot miss it.
+    if (chromiumNotice) console.warn(`\n${chromiumNotice}\n`);
+  }
 }
 
 main().catch((error) => {

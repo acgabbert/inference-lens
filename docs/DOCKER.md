@@ -40,7 +40,8 @@ startup and `docker compose down` to stop it.
 
 The template does not require a `.env` file. To configure a server-side default
 credential or another supported setting, create a sibling `.env` containing the
-variables described in [Set a server-side default credential](#set-a-server-side-default-credential).
+variables described in [Set a server-side default credential](#set-a-server-side-default-credential),
+or a catalog of several, described in [Hold several server connections](#hold-several-server-connections).
 Compose passes only the `INFERENCE_LENS_*` variables named in the template to
 the container. Do not commit that `.env` file.
 
@@ -56,6 +57,16 @@ The container prints where to open it, then Vinext logs
 Open the app on `0.0.0.0` anyway and it says so, with a link to the equivalent
 `localhost` URL — nothing breaks there, but browsers withhold some web APIs
 from origins they do not trust.
+
+## Open saved run links
+
+The browser resolves [saved run links](RUN_LINKS.md) against local project
+folders selected in Chrome or Edge. No project volume or additional container
+route is needed. Keep the container running and open it on a consistent address
+and port, such as `http://localhost:3000`: links include that address, and each
+origin has its own remembered folder permissions and local registry. After a
+browser restart, Reconnect may be necessary. A link never uploads evidence or
+makes a local trace available on another machine.
 
 ## Connect to a provider
 
@@ -214,6 +225,16 @@ the run is blocked with a notice offering another protocol or another
 connection: the protocol switches are the server's, so enabling one means
 changing `INFERENCE_LENS_API_PROTOCOLS` and restarting.
 
+Add `systemone` to the list when the endpoint also answers System One decision
+requests at `<endpoint>/systemone`, as Ollama, llama.cpp, and OpenRouter do:
+`chat-completions,systemone`. Its key is presented as `Authorization: Bearer`.
+While the list is set, the profile's System One declaration follows it like the
+chat switches do; unset, the declaration is the browser's own. A list of only
+`systemone` is a decision-only server, and a chat run on it is blocked with the
+same notice. OpenRouter's `decisions` path is not a separate API, so
+`decisions` is not an accepted name, and an older release given `systemone`
+ignores the whole list with the warning and banner above.
+
 Leave `INFERENCE_LENS_MODEL` unset and the profile starts with no model rather
 than a guess: a local llama.cpp server has never heard of `gpt-4.1-mini`. A run
 is blocked until you pick one, with a notice pointing at the model picker,
@@ -232,6 +253,111 @@ default credential is released only to the origin it names — so each app start
 refreshes it and the UI keeps it locked; create a new profile to use another
 provider. Remove the variables and restart, and the profile unlocks and falls
 back to no authentication rather than failing every run.
+
+## Hold several server connections
+
+The `INFERENCE_LENS_API_*` variables give the service one server-held key. To
+hold more — say a chat gateway and a separate decision gateway, each with its
+own key — point `INFERENCE_LENS_CONNECTIONS` at a JSON catalog. Each entry
+becomes a locked profile in Connections beside **Server default**, and
+selecting the profile selects its key, so nobody re-enters a **Session key**
+every browser session.
+
+```json
+{
+  "schemaVersion": 1,
+  "connections": [
+    {
+      "id": "chat",
+      "name": "Chat gateway",
+      "endpoint": "https://openrouter.ai/api/v1",
+      "protocols": ["chat-completions", "responses"],
+      "apiKeyFile": "openrouter.key"
+    },
+    {
+      "id": "decide",
+      "name": "Decision models",
+      "endpoint": "https://decide.example.com/v1",
+      "model": "local-decision",
+      "protocols": ["systemone"],
+      "apiKeyEnv": "DECIDE_API_KEY"
+    }
+  ]
+}
+```
+
+| Field | Required | Meaning |
+| --- | --- | --- |
+| `schemaVersion` | yes | `1`. |
+| `id` | yes | Lowercase letters, digits, and dash, starting with a letter or digit, at most 63 characters, and unique. The browser stores it as the profile's identity, so keep it stable. `default` is reserved for the `INFERENCE_LENS_API_*` variables. |
+| `name` | no | The profile's name when it is first added; the `id` otherwise. After that the name is yours to change. |
+| `endpoint` | yes | An HTTP or HTTPS base URL, as for `INFERENCE_LENS_API_ENDPOINT`. User info, a query, or a fragment is refused rather than stripped. |
+| `model` | no | As `INFERENCE_LENS_MODEL`: fills in an empty model, never replaces one you chose. |
+| `protocols` | no | The names `INFERENCE_LENS_API_PROTOCOLS` accepts, as an array, and locked the same way. Absent leaves the profile's protocol switches with you. |
+| `apiKeyFile` | no | A file whose trimmed contents are the key. A relative path resolves against the catalog's own directory. |
+| `apiKeyEnv` | no | The name of an environment variable holding the key. Not together with `apiKeyFile`. |
+
+A connection with neither key field needs no key, like an endpoint set without
+`INFERENCE_LENS_API_KEY`. The catalog never takes the key itself: it is a file
+you copy, mount, and share, and keeping the secret out of it is the point.
+A key read from a file also stays out of the container environment, so
+`docker inspect` does not show it.
+
+Mount the catalog and its key files read-only and give the variable the
+in-container path. With the published Compose template, uncomment its
+`volumes` entry and add the variable to `.env`:
+
+```yaml
+    volumes:
+      - ~/.config/inference-lens:/config:ro
+```
+
+```sh
+INFERENCE_LENS_CONNECTIONS=/config/connections.json
+```
+
+With `docker run`, add `-v ~/.config/inference-lens:/config:ro` and
+`-e INFERENCE_LENS_CONNECTIONS=/config/connections.json`. An `apiKeyEnv`
+variable has to reach the container too: `--env-file` passes everything in
+`.env`, while the published Compose template passes only the variables it
+names, so add a line for it under `environment`.
+
+**Key file permissions.** The image runs as the `node` user (uid 1000).
+Docker Desktop maps bind-mount ownership, so a `0600` key file owned by you is
+readable. On Linux Docker Engine it is not, unless uid 1000 can read it — for
+example `chown 1000 openrouter.key`, or a group both share. An unreadable file
+shows up in Connections as "Its key file could not be read."
+
+**Editing it needs no restart.** The service reads the catalog and every key
+file per request, so a rotated key is used on the next request, and an added
+or removed connection reaches the browser on its next page load. A connection
+the catalog no longer lists has its profile released, as removing the
+`INFERENCE_LENS_API_*` variables releases **Server default**: the endpoint
+unlocks, authentication falls back to **No authentication**, and the profile
+is kept. To delete such a profile, remove its entry from the catalog first;
+while listed it would only be added back.
+
+**Mistakes.** A catalog that is structurally wrong — unreadable, invalid JSON,
+the wrong `schemaVersion`, an invalid or duplicate `id`, `default` declared,
+both key fields set, an unknown field, or an invalid endpoint — is refused as a
+whole, with a banner saying why. Its profiles are kept exactly as they were
+rather than released, so a typo does not unlock them all; fix the file and
+reload. **Server default** is not part of the catalog and keeps working. A
+problem with one connection's key — a missing or empty file, an unset
+`apiKeyEnv` variable — leaves the rest working: that profile is still listed,
+reports no key, and runs on it fail naming the connection. An unrecognized
+protocol name is ignored for that connection alone, with the banner described
+above. The server log has the full detail, file paths included, once per
+process; the browser never sees a path.
+
+**Authentication on your own profiles.** A profile you created can use a
+catalog key as well: **Authentication** offers **Server: <name>** for each
+connection that holds a key at the same scheme, hostname, and port as the
+profile's endpoint. Connections at other origins are not offered, because the
+service would never release their keys there.
+
+The service still has no user accounts: anyone who can open the UI can spend
+every key in the catalog, exactly as with **Server default**.
 
 ## Serve it from a name
 
@@ -264,8 +390,9 @@ it — the workbench itself has no user accounts.
 The image also contains the headless CLI, `inference-lens`. It runs one suite
 from a project folder with no browser and no server, and writes the same plan,
 result, and trace files the app writes, so the app's Runs and Evaluations
-workspaces open them afterwards. Give the image that command in place of the
-server:
+workspaces open them afterwards. A decision (System One) suite runs the same
+way, with the same flags and credentials. Give the image that command in place
+of the server:
 
 ```sh
 docker run --rm \
@@ -388,6 +515,20 @@ The service was reached under a DNS name rather than an address. See
 
 The service holds no key. Set both `INFERENCE_LENS_API_KEY` and
 `INFERENCE_LENS_API_ENDPOINT` and restart the container.
+
+**The server's connection catalog was refused**
+
+The file `INFERENCE_LENS_CONNECTIONS` names could not be read or broke a rule;
+the banner says which. Inside a container the path is the in-container one, so
+check the volume mount as well as the file. See
+[Hold several server connections](#hold-several-server-connections).
+
+**A catalog connection holds no key**
+
+Connections shows why. "Its key file could not be read" on Linux Docker Engine
+is usually ownership: the container runs as uid 1000. A relative `apiKeyFile`
+resolves against the catalog's directory, not the working directory. For
+`apiKeyEnv`, the variable has to be passed into the container.
 
 **The credential is bound to a different origin**
 

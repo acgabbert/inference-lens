@@ -14,11 +14,14 @@ import {
 import {
   parseExperimentPlanJson,
   parseExperimentResultJson,
+  type DecisionEvaluationExperimentPlan,
   type ExperimentResult,
   type ExperimentPlanV3,
 } from "../packages/core/src/experiment.ts";
+import type { DecisionRunTrace } from "../packages/core/src/decision-trace.ts";
 import type { RunId, RunTrace } from "../packages/core/src/run-kernel";
-import { parseRunTraceJson } from "../packages/core/src/run-trace";
+import { parseRunTraceJson, parseSavedRunTraceJson } from "../packages/core/src/run-trace";
+import type { SavedRunTrace } from "../packages/core/src/run-trace";
 import {
   listExperimentArtifactsWorkspace,
   listRunTraceWorkspace,
@@ -31,10 +34,8 @@ export type ProjectRunHistoryItem = RunHistoryItem;
 export type ProjectRunHistoryFailure = RunHistoryFailure;
 export type ProjectExperimentHistoryItem = ExperimentHistoryItem;
 
-export interface OpenedProjectExperiment {
-  plan: ExperimentPlanV3;
+interface OpenedExperimentBase {
   result?: ExperimentResult;
-  traces: ReadonlyMap<RunId, RunTrace>;
   traceFileNames: ReadonlyMap<RunId, string>;
   /**
    * Cells whose referenced trace was listed but could not be read back, keyed
@@ -43,6 +44,19 @@ export interface OpenedProjectExperiment {
    */
   unreadableTraces: ReadonlyMap<RunId, string>;
 }
+
+/** A saved experiment read back, keyed by the kind of run its cells hold. */
+export type OpenedProjectExperiment =
+  | (OpenedExperimentBase & {
+      kind: "chat";
+      plan: Exclude<ExperimentPlanV3, DecisionEvaluationExperimentPlan>;
+      traces: ReadonlyMap<RunId, RunTrace>;
+    })
+  | (OpenedExperimentBase & {
+      kind: "decision";
+      plan: DecisionEvaluationExperimentPlan;
+      traces: ReadonlyMap<RunId, DecisionRunTrace>;
+    });
 
 export type ProjectRunHistoryStatus = "idle" | "loading" | "loaded" | "failed";
 
@@ -57,6 +71,8 @@ export interface ProjectRunHistoryState {
   error?: string;
   refresh(): Promise<void>;
   readTrace(fileName: string): Promise<RunTrace>;
+  /** Either kind, for opening a history entry in Compose (D30). */
+  readSavedTrace(fileName: string): Promise<SavedRunTrace>;
   readExperiment(item: ProjectExperimentHistoryItem): Promise<OpenedProjectExperiment>;
 }
 
@@ -167,6 +183,14 @@ export function useProjectRunHistory(
     [workspace],
   );
 
+  const readSavedTrace = useCallback(
+    async (fileName: string): Promise<SavedRunTrace> => {
+      if (!workspace) throw new Error("The project folder is no longer open.");
+      return parseSavedRunTraceJson(await readRunTraceWorkspace(workspace, fileName));
+    },
+    [workspace],
+  );
+
   const readExperiment = useCallback(
     async (item: ProjectExperimentHistoryItem): Promise<OpenedProjectExperiment> => {
       if (!workspace) throw new Error("The project folder is no longer open.");
@@ -182,15 +206,22 @@ export function useProjectRunHistory(
             plan,
           )
         : undefined;
-      const traces = new Map<RunId, RunTrace>();
+      const runKind = plan.kind === "decision-evaluation" ? "decision" : "chat";
+      const traces = new Map<RunId, RunTrace | DecisionRunTrace>();
       const traceFileNames = new Map<RunId, string>();
       const unreadableTraces = new Map<RunId, string>();
       await Promise.all(item.cells.map(async (cell) => {
         if (!cell.traceFileName) return;
         try {
-          const trace = parseRunTraceJson(
+          const saved = parseSavedRunTraceJson(
             await readRunTraceWorkspace(workspace, cell.traceFileName),
           );
+          // Each plan's cells hold its own kind of run (D47).
+          if (saved.kind !== runKind) {
+            unreadableTraces.set(cell.runId, `${cell.traceFileName} holds a ${saved.kind} run, not a ${runKind} one.`);
+            return;
+          }
+          const trace = saved.trace;
           if (trace.runId !== cell.runId) {
             unreadableTraces.set(
               cell.runId,
@@ -210,13 +241,10 @@ export function useProjectRunHistory(
           );
         }
       }));
-      return {
-        plan,
-        ...(result ? { result } : {}),
-        traces,
-        traceFileNames,
-        unreadableTraces,
-      };
+      const common = { ...(result ? { result } : {}), traceFileNames, unreadableTraces };
+      return plan.kind === "decision-evaluation"
+        ? { ...common, kind: "decision", plan, traces: traces as ReadonlyMap<RunId, DecisionRunTrace> }
+        : { ...common, kind: "chat", plan, traces: traces as ReadonlyMap<RunId, RunTrace> };
     },
     [workspace],
   );
@@ -232,6 +260,7 @@ export function useProjectRunHistory(
     error,
     refresh,
     readTrace,
+    readSavedTrace,
     readExperiment,
   };
 }

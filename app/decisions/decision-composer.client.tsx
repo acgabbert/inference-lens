@@ -1,0 +1,524 @@
+"use client";
+
+import { useId, useState } from "react";
+import type { ReactNode, RefObject } from "react";
+import type { DecisionQuestionType } from "../../packages/core/src/decision";
+import { BlockerChip } from "../blocker-chip.client";
+import { ModelCombobox } from "../model-combobox.client";
+import { PaneTabs } from "../workbench-shell.client";
+import type { DecisionDraftProblem, DecisionQuestionRow, DraftValue } from "./decision-draft";
+import type { DecisionDraftHandle } from "./use-decision-draft.client";
+import type { DecisionTargetHandle } from "./use-decision-target.client";
+
+/** Names the element that says, in visible text, why Run is refused. */
+export const DECISION_READINESS_SUMMARY_ID = "decision-readiness-summary";
+
+const QUESTION_TYPES: { id: DecisionQuestionType; label: string }[] = [
+  { id: "choice", label: "Choice" },
+  { id: "score", label: "Score" },
+  { id: "noul", label: "Noul (true/false)" },
+];
+
+/** What each type returns, shown under the Type control. */
+const TYPE_HINTS: Record<DecisionQuestionType, string> = {
+  choice: "Picks one option and returns a probability for each.",
+  score: "Rates the state on your levels, low to high. The score is a weighted position, so it can fall between levels.",
+  noul: "Answers yes or no, as the probability that the answer is true.",
+};
+
+export interface DecisionComposerProps {
+  modelInputRef?: RefObject<HTMLInputElement | null>;
+  /** Compose's Chat / Decision switch, placed at the start of the header. */
+  kindSwitch?: ReactNode;
+  draft: DecisionDraftHandle;
+  target: DecisionTargetHandle;
+  /** Problems that block Run now, from the draft and the target together. */
+  blockers: DecisionDraftProblem[];
+  /** A run is executing, so the draft and target are read-only (D17). */
+  locked: boolean;
+  /** The open project keeps the last valid request until the problems are fixed. */
+  unsaved: boolean;
+  onOpenConnections(): void;
+  /**
+   * Starts an evaluation suite pinned to this request's revision (D51).
+   * Absent without a project, where there is nowhere to keep a suite.
+   */
+  newSuite?: { onCreate(): void; disabledReason?: string };
+  /** The saved prompt a template-backed request is pinned to; its content is then read-only. */
+  pinned?: ReactNode;
+  /** Stages the authored request as a saved decision prompt for review in Prompts. */
+  capture?: { onCapture(): void; disabled: boolean };
+}
+
+/**
+ * A string-first field (U3). Any other JSON value is shown as it is and left
+ * to the JSON view, so the form never stringifies it.
+ */
+function DraftField({
+  label,
+  value,
+  multiline = false,
+  hint,
+  disabled,
+  onChange,
+}: {
+  label: string;
+  value: DraftValue;
+  multiline?: boolean;
+  /** One line on what the field is for, read with it by assistive technology. */
+  hint?: string;
+  disabled: boolean;
+  onChange(value: DraftValue): void;
+}) {
+  const hintId = useId();
+  if (value.kind === "json") {
+    return (
+      <div className="decision-json-value">
+        <span className="decision-field-label">{label}</span>
+        <code>{JSON.stringify(value.value)}</code>
+        <small>A JSON value. Edit it in the JSON view.</small>
+      </div>
+    );
+  }
+  return (
+    <label className="decision-field">
+      <span className="decision-field-label">{label}</span>
+      {multiline ? (
+        <textarea
+          aria-describedby={hint ? hintId : undefined}
+          disabled={disabled}
+          rows={2}
+          value={value.text}
+          onChange={(event) => onChange({ kind: "text", text: event.target.value })}
+        />
+      ) : (
+        <input
+          aria-describedby={hint ? hintId : undefined}
+          disabled={disabled}
+          type="text"
+          value={value.text}
+          onChange={(event) => onChange({ kind: "text", text: event.target.value })}
+        />
+      )}
+      {hint && <small className="decision-hint" id={hintId}>{hint}</small>}
+    </label>
+  );
+}
+
+function QuestionCard({
+  row,
+  index,
+  count,
+  draft,
+  disabled,
+}: {
+  row: DecisionQuestionRow;
+  index: number;
+  count: number;
+  draft: DecisionDraftHandle;
+  disabled: boolean;
+}) {
+  const name = row.id.trim() || `question ${index + 1}`;
+  return (
+    <article className="decision-question" aria-label={`Question ${index + 1}`} data-question-row={row.rowId}>
+      <div className="decision-question-header">
+        <label className="decision-field decision-question-id">
+          <span className="decision-field-label">Question id</span>
+          <input
+            disabled={disabled}
+            type="text"
+            value={row.id}
+            onChange={(event) => draft.updateQuestion(row.rowId, { id: event.target.value })}
+          />
+        </label>
+        <label className="decision-field">
+          <span className="decision-field-label">Type</span>
+          <select
+            disabled={disabled}
+            value={row.type}
+            onChange={(event) => draft.changeType(row.rowId, event.target.value as DecisionQuestionType)}
+          >
+            {QUESTION_TYPES.map(({ id, label }) => <option key={id} value={id}>{label}</option>)}
+          </select>
+        </label>
+        <div className="decision-row-actions">
+          <button aria-label={`Move ${name} up`} className="text-button" disabled={disabled || index === 0} type="button" onClick={() => draft.moveQuestion(row.rowId, index - 1)}>↑</button>
+          <button aria-label={`Move ${name} down`} className="text-button" disabled={disabled || index === count - 1} type="button" onClick={() => draft.moveQuestion(row.rowId, index + 1)}>↓</button>
+          <button aria-label={`Remove ${name}`} className="text-button" disabled={disabled} type="button" onClick={() => draft.removeQuestion(row.rowId)}>Remove</button>
+        </div>
+      </div>
+      <small className="decision-hint">{TYPE_HINTS[row.type]}</small>
+      <DraftField
+        disabled={disabled}
+        hint="The question to ask about the state, in plain words."
+        label="Instructions"
+        multiline
+        value={row.instructions}
+        onChange={(instructions) => draft.updateQuestion(row.rowId, { instructions })}
+      />
+      {row.type === "noul" ? (
+        <div className="decision-options">
+          <label className="capability-toggle">
+            <input
+              checked={row.noul.enabled}
+              disabled={disabled}
+              type="checkbox"
+              onChange={(event) => draft.updateQuestion(row.rowId, { noul: { ...row.noul, enabled: event.target.checked } })}
+            />
+            <span>Describe true and false</span>
+          </label>
+          {row.noul.enabled && (
+            <>
+              <DraftField disabled={disabled} label="True means" value={row.noul.true} onChange={(value) => draft.updateQuestion(row.rowId, { noul: { ...row.noul, true: value } })} />
+              <DraftField disabled={disabled} label="False means" value={row.noul.false} onChange={(value) => draft.updateQuestion(row.rowId, { noul: { ...row.noul, false: value } })} />
+            </>
+          )}
+          {row.options.length > 0 && (
+            <small className="decision-kept-note">
+              {row.options.length} {row.options.length === 1 ? "option is" : "options are"} kept for switching back to choice or score.
+            </small>
+          )}
+        </div>
+      ) : (
+        <div className="decision-options">
+          <span className="decision-field-label">{row.type === "choice" ? "Options" : "Levels, low to high"}</span>
+          <small className="decision-hint">
+            {row.type === "choice"
+              ? "The only answers allowed. A description helps the model tell options apart."
+              : "The only answers allowed, in order. The first level is 0."}
+          </small>
+          <ol className="decision-option-list">
+            {row.options.map((option, optionIndex) => (
+              <li className="decision-option" key={option.rowId}>
+                <DraftField
+                  disabled={disabled}
+                  label={row.type === "choice" ? `Option ${optionIndex + 1} label` : `Level ${optionIndex}`}
+                  value={option.label}
+                  onChange={(label) => draft.updateOption(row.rowId, option.rowId, { label })}
+                />
+                {row.type === "choice" && (
+                  <DraftField
+                    disabled={disabled}
+                    label={`Option ${optionIndex + 1} description`}
+                    value={option.description ?? { kind: "text", text: "" }}
+                    onChange={(description) =>
+                      draft.updateOption(row.rowId, option.rowId, {
+                        // Clearing a description returns it to "none", sent as null.
+                        description: description.kind === "text" && description.text === "" ? null : description,
+                      })}
+                  />
+                )}
+                <div className="decision-row-actions">
+                  <button aria-label={`Move ${row.type === "choice" ? "option" : "level"} ${optionIndex + 1} up`} className="text-button" disabled={disabled || optionIndex === 0} type="button" onClick={() => draft.moveOption(row.rowId, option.rowId, optionIndex - 1)}>↑</button>
+                  <button aria-label={`Move ${row.type === "choice" ? "option" : "level"} ${optionIndex + 1} down`} className="text-button" disabled={disabled || optionIndex === row.options.length - 1} type="button" onClick={() => draft.moveOption(row.rowId, option.rowId, optionIndex + 1)}>↓</button>
+                  <button aria-label={`Remove ${row.type === "choice" ? "option" : "level"} ${optionIndex + 1}`} className="text-button" disabled={disabled} type="button" onClick={() => draft.removeOption(row.rowId, option.rowId)}>Remove</button>
+                </div>
+              </li>
+            ))}
+          </ol>
+          <button className="text-button" disabled={disabled} type="button" onClick={() => draft.addOption(row.rowId)}>
+            + Add {row.type === "choice" ? "option" : "level"}
+          </button>
+        </div>
+      )}
+    </article>
+  );
+}
+
+/** The Decision kind's request pane: target, readiness, and the D18 editor. */
+/**
+ * One field per template variable the request uses (D40). An absent value and
+ * an empty one differ: only the first blocks Run.
+ */
+function DecisionVariables({ handle, disabled }: { handle: DecisionDraftHandle; disabled: boolean }) {
+  if (handle.variables.length === 0) return null;
+  return (
+    <section className="decision-variables" aria-label="Variables">
+      <span className="decision-field-label">Variables</span>
+      {handle.variables.map((name) => (
+        <DecisionVariableField key={name} name={name} handle={handle} disabled={disabled} />
+      ))}
+    </section>
+  );
+}
+
+/**
+ * Multi-line, like a chat run value: templated values often span lines. The
+ * name comes from the tag alone, since a wrapping label would also read the
+ * textarea's own text.
+ */
+function DecisionVariableField({ name, handle, disabled }: { name: string; handle: DecisionDraftHandle; disabled: boolean }) {
+  const nameId = useId();
+  return (
+    <label className="decision-field">
+      <span className="decision-variable-name" id={nameId}><code>{`{{${name}}}`}</code></span>
+      <textarea
+        aria-labelledby={nameId}
+        disabled={disabled}
+        placeholder="No value"
+        rows={3}
+        value={handle.values[name] ?? ""}
+        onChange={(event) => handle.setValue(name, event.target.value)}
+      />
+    </label>
+  );
+}
+
+/**
+ * Detailed guidance is available without pushing the state editor out of
+ * the initial view. An edit never changes the disclosure's open state.
+ */
+function DecisionGuide() {
+  const [open, setOpen] = useState(false);
+  return (
+    <details className="decision-guide" open={open} onToggle={(event) => setOpen(event.currentTarget.open)}>
+      <summary>How decision requests work</summary>
+      <dl>
+        <dt>State</dt>
+        <dd>What the model judges, such as a ticket, a message, or a document. Like the user message in chat. Use JSON for structured input.</dd>
+        <dt>Questions</dt>
+        <dd>What you ask about the state. One request can ask several; each is answered on its own.</dd>
+        <dt>Instructions</dt>
+        <dd>The question itself, in plain words. Each question has its own; there is no shared system prompt.</dd>
+        <dt>Options and levels</dt>
+        <dd>The only answers allowed. The model does not write text: it returns a probability for each option.</dd>
+        <dt>Question id</dt>
+        <dd>The key the answer comes back under. The model never sees it.</dd>
+        <dt>Types</dt>
+        <dd>
+          <strong>Choice</strong> picks one option. <strong>Score</strong> rates on ordered levels and can land between them.{" "}
+          <strong>Noul</strong> gives the probability that the answer is true.
+        </dd>
+      </dl>
+    </details>
+  );
+}
+
+/**
+ * Loads the worked example. An untouched draft is replaced at once; anything
+ * else is the user's work, so replacing it is confirmed first.
+ */
+function DecisionExampleControl({ handle, disabled }: { handle: DecisionDraftHandle; disabled: boolean }) {
+  const [confirming, setConfirming] = useState(false);
+  if (confirming) {
+    return (
+      <div className="decision-example decision-example-confirm" role="group" aria-label="Replace with example">
+        <span>Replace the current request with the example?</span>
+        <button
+          className="button secondary"
+          disabled={disabled}
+          type="button"
+          onClick={() => { setConfirming(false); handle.loadExample(); }}
+        >Replace with example</button>
+        <button className="text-button" type="button" onClick={() => setConfirming(false)}>Cancel</button>
+      </div>
+    );
+  }
+  return (
+    <div className="decision-example">
+      <button
+        className="text-button"
+        disabled={disabled}
+        type="button"
+        onClick={() => (handle.touched ? setConfirming(true) : handle.loadExample())}
+      >Load example</button>
+      <small>A support ticket asked one question of each type.</small>
+    </div>
+  );
+}
+
+/** State and questions, in the Form or JSON view; shared by Compose and the library. */
+export function DecisionInputEditor({
+  handle,
+  disabled: locked = false,
+}: {
+  handle: DecisionDraftHandle;
+  disabled?: boolean;
+}) {
+  const { draft } = handle;
+  const stateHintId = useId();
+  return (
+    <div className="decision-input-editor">
+      {draft.view === "json" ? (
+        <label className="decision-field decision-json-editor">
+          <span className="decision-field-label">Decision input (state and questions)</span>
+          <textarea
+            aria-invalid={draft.json.error ? "true" : undefined}
+            disabled={locked}
+            rows={24}
+            spellCheck={false}
+            value={draft.json.text}
+            onChange={(event) => handle.setJsonText(event.target.value)}
+          />
+          {draft.json.error && <span className="decision-json-error" role="alert">{draft.json.error}</span>}
+        </label>
+      ) : (
+        <>
+          <section className="decision-state" aria-label="State">
+            <div className="decision-section-heading">
+              <span className="decision-field-label">State</span>
+              <PaneTabs
+                disabled={locked}
+                label="State format"
+                value={draft.state.mode}
+                onChange={(value) => handle.setStateMode(value as "text" | "json")}
+                tabs={[{ id: "text", label: "Text" }, { id: "json", label: "JSON" }]}
+              />
+            </div>
+            <small className="decision-hint" id={stateHintId}>
+              What the model judges, such as a ticket, a message, or a document.
+            </small>
+            <textarea
+              aria-describedby={stateHintId}
+              aria-label={draft.state.mode === "json" ? "State JSON" : "State text"}
+              disabled={locked}
+              rows={draft.state.mode === "json" ? 8 : 4}
+              spellCheck={draft.state.mode === "text"}
+              value={draft.state.text}
+              onChange={(event) => handle.setStateText(event.target.value)}
+            />
+          </section>
+          <section className="decision-questions" aria-label="Questions">
+            {draft.questions.map((row, index) => (
+              <QuestionCard
+                count={draft.questions.length}
+                disabled={locked}
+                draft={handle}
+                index={index}
+                key={row.rowId}
+                row={row}
+              />
+            ))}
+            <button className="button secondary" disabled={locked} type="button" onClick={handle.addQuestion}>
+              + Add question
+            </button>
+          </section>
+        </>
+      )}
+    </div>
+  );
+}
+
+export const DECISION_NEW_SUITE_REASON_ID = "decision-new-suite-reason";
+
+export function DecisionComposer({ modelInputRef, kindSwitch, draft: handle, target, blockers, locked, unsaved, onOpenConnections, newSuite, pinned, capture }: DecisionComposerProps) {
+  const { draft } = handle;
+  const discovery = target.discovery;
+  return (
+    <section className="composer decision-composer" aria-label="Decision request">
+      <div className="panel-header request-header">
+        {kindSwitch}
+        <PaneTabs
+          disabled={locked}
+          label="Decision editor"
+          value={draft.view}
+          onChange={(value) => (value === "json" ? handle.showJson() : handle.showForm())}
+          tabs={[{ id: "form", label: "Form" }, { id: "json", label: "JSON" }]}
+        />
+      </div>
+      {/* Everything under the header scrolls as one: the notices, the pin and
+          its actions stack tall enough to starve a nested scroller on a short
+          window, leaving the questions below the fold out of reach. */}
+      <div className="pane-scroll decision-scroll">
+        {blockers.length > 0 && (
+          <div className="run-readiness-slot">
+            <BlockerChip
+              label="Run readiness"
+              tone="blocked"
+              assertive
+              summary={`${blockers[0]!.location}: ${blockers[0]!.message}`}
+              summaryId={DECISION_READINESS_SUMMARY_ID}
+              issues={blockers.map(({ location, message }) => `${location}: ${message}`)}
+              noun={{ one: "problem", many: "problems" }}
+              {...(blockers.some(({ location }) => location === "Connection")
+                ? { actions: [{ key: "connections", label: "Open Connections", primary: true as const, onSelect: onOpenConnections }] }
+                : {})}
+            />
+          </div>
+        )}
+        {capture && (
+          <div className="decision-new-suite">
+            <button className="text-button" disabled={capture.disabled} type="button" onClick={capture.onCapture}>
+              Save as decision prompt
+            </button>
+          </div>
+        )}
+        {pinned}
+        {newSuite && (
+          <div className="decision-new-suite">
+            <button
+              aria-describedby={newSuite.disabledReason ? DECISION_NEW_SUITE_REASON_ID : undefined}
+              className="text-button"
+              disabled={Boolean(newSuite.disabledReason)}
+              type="button"
+              onClick={newSuite.onCreate}
+            >New suite from this request</button>
+            {newSuite.disabledReason && <small id={DECISION_NEW_SUITE_REASON_ID}>{newSuite.disabledReason}</small>}
+          </div>
+        )}
+        {unsaved && (
+          <p className="decision-unsaved" role="status">
+            Not saved to the project until the request is valid. The project keeps its last valid version.
+          </p>
+        )}
+        {handle.viewProblems.length > 0 && (
+          <div className="decision-view-problems" role="alert">
+            <strong>{draft.view === "json" ? "Fix the JSON before switching to the form" : "The form cannot become one JSON object yet"}</strong>
+            <ul>
+              {handle.viewProblems.map((problem, index) => (
+                <li key={index}><span>{problem.location}:</span> {problem.message}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+        <div className="request-content decision-content">
+          <div className="decision-help">
+            <p className="decision-introduction">
+              A decision model answers questions about your input with probabilities. Think of it as a classifier you set up in words.
+            </p>
+            <DecisionExampleControl disabled={locked || Boolean(pinned)} handle={handle} />
+            <DecisionGuide />
+          </div>
+          <fieldset className="decision-target" disabled={locked}>
+            <legend>Target</legend>
+            {target.profiles.length === 0 ? (
+              <p className="decision-target-empty">
+                No connection declares System One.{" "}
+                <button className="text-button" type="button" onClick={onOpenConnections}>Open Connections</button>
+              </p>
+            ) : (
+              <>
+                <label className="decision-field">
+                  <span className="decision-field-label">Decision connection</span>
+                  <select value={target.profile?.id ?? ""} onChange={(event) => target.selectProfile(event.target.value)}>
+                    {target.profiles.map((profile) => (
+                      <option key={profile.id} value={profile.id}>{profile.name || "Untitled profile"} · {profile.endpoint}</option>
+                    ))}
+                  </select>
+                </label>
+                <ModelCombobox
+                  discovery={discovery}
+                  favoriteModels={target.profile?.favoriteModels ?? []}
+                  inputRef={modelInputRef}
+                  idPrefix="decision-model"
+                  readinessTarget={false}
+                  value={target.model}
+                  onChange={target.setModel}
+                  onLoadModels={(force) => void target.loadModels(force)}
+                  onToggleFavoriteModel={target.toggleFavoriteModel}
+                />
+                {discovery?.status === "loaded" && discovery.unfiltered && (
+                  <p className="decision-unfiltered" role="status">
+                    This server&apos;s listing does not mark decision models, so every model is listed. Type a decision model id if it is not here.
+                  </p>
+                )}
+              </>
+            )}
+          </fieldset>
+          <DecisionInputEditor handle={handle} disabled={locked || Boolean(pinned)} />
+          <DecisionVariables disabled={locked} handle={handle} />
+        </div>
+      </div>
+    </section>
+  );
+}

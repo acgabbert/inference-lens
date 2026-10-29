@@ -2,6 +2,9 @@
 
 Inference Lens is a local web workbench for sending streaming or buffered chat-completion requests to an OpenAI-compatible API and inspecting normalized run events. **Inspect every model run.** The fastest way to try it is the [Docker quick start](#quick-start) — one command, nothing to install. To run from source instead, install Node.js 22.13 or newer, then run `npm ci` followed by `npm run dev` from the repository root and open the local URL printed in the terminal.
 
+See the [documentation guide](docs/README.md) for current contracts, open plans,
+and the completed-plan archive.
+
 `npm run dev` reads the same server configuration as Compose from a `.env` file
 in the repository root. To configure a server-default connection for local
 development:
@@ -54,12 +57,22 @@ fixtures and for driving them through the UI in a browser.
 
 Inference Lens projects are visible, self-contained
 `<name>.inference-lens/` bundles with a strict, credential-free `project.json`
-manifest. New projects are protected from Git by default through an internal
-`.gitignore`; the creation dialog can disable that protection when a project is
-intended for version control. In browsers that support directory access,
+manifest. New projects are protected from ordinary Git staging by default through
+an internal `.gitignore`. The creation dialog also offers **Share definitions;
+keep run history local**, which allows only `project.json` and `.gitignore`,
+or **Manage Git rules myself**, which creates no ignore file. Sharing definitions
+includes every persisted draft and saved value in the manifest; Gitignore does
+not untrack existing files or erase history. See
+[Git sharing policy](docs/PROJECT_FORMAT.md#git-sharing-policy) for existing
+projects and the exact rules. In browsers that support directory access,
 **New project** selects the bundle's parent folder and **Open project** selects
 an existing bundle. Other browsers can use **Import** and **Export** with the
-same Project v10 JSON format.
+same Project v15 JSON format.
+
+The Prompts library authors both chat prompts and whole System One decision
+requests. See [Saved decision prompts](docs/SYSTEM_ONE_SAVED_PROMPTS.md) for
+capture, variable defaults, pinned revisions, update, detach, and evaluating or
+deliberately retargeting a saved revision in a suite.
 
 The Docker container does not need a project volume: the browser reads and
 writes only the host folder the user explicitly selects. Tauri uses a native
@@ -89,7 +102,7 @@ history costs nothing until its history is asked for.
 ## Tool registry
 
 Reusable, secret-free tool definitions live in a versioned local registry.
-Definitions can be copied into an open Project v10 file or attached only to the
+Definitions can be copied into an open Project v15 file or attached only to the
 next run. The GUI schema builder and Advanced JSON mode share one canonical
 JSON Schema object, so unsupported keywords are preserved. See
 [the tool registry design](docs/TOOL_REGISTRY.md) for snapshot and persistence

@@ -11,6 +11,7 @@ import type {
 import { EvaluationSuiteRail } from "../evaluations/evaluation-suite-rail.client";
 import type { EvaluationSuiteHistoryHandle } from "../evaluations/evaluation-suite-history.client";
 import type { EvaluationSuiteAuthoringHandle } from "../evaluations/use-evaluation-suite-authoring.client";
+import type { DecisionSuiteSettingsHandle } from "../evaluations/use-decision-suite-settings.client";
 import type { EvaluationCaseSource } from "../../packages/core/src/evaluation-case-sources";
 import { PaneEmptyState } from "../pane-empty-state.client";
 import styles from "./evaluations-mode.module.css";
@@ -50,10 +51,15 @@ interface EvaluationsModeProps {
   history?: EvaluationSuiteHistoryHandle;
   layout: EvaluationsLayoutHandle;
   modelFavorites?: ModelFavoritesHandle;
+  /** Uses the host's existing project save flow, preserving the current draft. */
+  projectPrerequisiteAction: { label: string; onClick(): void };
   /** Leaves this mode for the request composer's prompt library. */
   onOpenTemplates(): void;
   caseSource?: EvaluationCaseSource;
   onOpenSourceTrace?(source: EvaluationCaseSource): void;
+  decisionSettings?: DecisionSuiteSettingsHandle;
+  /** Creates a decision suite from Decision Compose's active request. */
+  onCreateDecision?: { create(): void; disabledReason?: string };
 }
 
 /**
@@ -71,9 +77,12 @@ export function EvaluationsMode({
   history,
   layout,
   modelFavorites,
+  projectPrerequisiteAction,
   onOpenTemplates,
   caseSource,
   onOpenSourceTrace,
+  decisionSettings,
+  onCreateDecision,
 }: EvaluationsModeProps) {
   const project = authoring.project;
   const constrainedPreview = useSyncExternalStore(
@@ -90,7 +99,8 @@ export function EvaluationsMode({
         <PaneEmptyState
           eyebrow="Evaluations"
           heading="Open or save a project first"
-          detail="Evaluation suites are portable project content, so they need a project document."
+          detail="Run one prompt against several inputs and check the answers. Evaluation suites belong to a project; save your current draft to get started."
+          action={projectPrerequisiteAction}
         />
       </div>
     );
@@ -103,6 +113,7 @@ export function EvaluationsMode({
         {...(authoring.suiteId ? { selectedId: authoring.suiteId } : {})}
         onSelect={authoring.selectSuite}
         onCreate={authoring.createSuite}
+        {...(onCreateDecision ? { onCreateDecision } : {})}
       />
       {/* The editor labels its own region; wrapping it only supplies scroll. */}
       <div className={styles.editor}>
@@ -115,6 +126,7 @@ export function EvaluationsMode({
           onOpenTemplates={onOpenTemplates}
           {...(caseSource ? { caseSource } : {})}
           {...(onOpenSourceTrace ? { onOpenSourceTrace } : {})}
+          {...(decisionSettings ? { decisionSettings } : {})}
         />
       </div>
       {previewOpen ? (

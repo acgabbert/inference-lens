@@ -2,20 +2,25 @@
 
 import {
   PROJECT_FILE_NAME,
-  PROJECT_GITIGNORE_CONTENTS,
+  projectGitignoreContents,
   parseProjectJson,
   projectDirectoryName,
   projectExportFileName,
   serializeProjectFile,
 } from "../packages/core/src/project.ts";
-import type { ProjectFile } from "../packages/core/src/project.ts";
+import type { ProjectFile, ProjectGitPolicy } from "../packages/core/src/project.ts";
+import type { WorkbenchFile, WorkbenchMutationResult, WorkbenchStorage } from "../packages/core/src/workbench-store.ts";
+import { nativeMigrationStorage } from "./migration-native.client.ts";
+import type { MigrationStorage } from "../packages/core/src/migration-journal.ts";
+import { browserMigrationStorage, browserWorkbenchStorage, coordinateProjectWrites } from "./workbench-directory.client.ts";
 import {
   assertTraceEntryName,
+  serializeDecisionRunTrace,
   serializeRunTrace,
   TRACES_DIRECTORY_NAME,
   traceFileName,
 } from "../packages/core/src/run-trace.ts";
-import type { RunTrace } from "../packages/core/src/run-kernel/index.ts";
+import type { SavedRunTrace } from "../packages/core/src/run-trace.ts";
 import {
   EVALUATION_ASSESSMENT_FILE_SUFFIX,
   assertExperimentEntryName,
@@ -64,6 +69,7 @@ import type {
   FileSystemFileHandleLike,
   StoredRunTraceFile,
 } from "./project-directory.client.ts";
+import { rememberProjectLocation } from "./project-location-registry.client.ts";
 import { isTauriRuntime } from "./runtime.client.ts";
 import {
   clearStoredWorkspace,
@@ -103,7 +109,16 @@ interface DirectoryPickerWindow extends Window {
  * memory as compact summaries rather than as every trace the folder holds.
  */
 interface WorkspaceStorage {
-  save(contents: string): Promise<void>;
+  /** Opt-in recovery adapter. Creating a handle never creates recovery files. */
+  workbench: WorkbenchStorage;
+  /** Opt-in byte-preserving migration staging; never replaces the manifest. */
+  migration: MigrationStorage;
+  /**
+   * `precondition` runs inside the project's write scope before the manifest
+   * is read, so nothing can change the answer before the write lands. It throws
+   * to refuse the write.
+   */
+  save(contents: string, precondition?: () => Promise<void>): Promise<void>;
   saveTrace(runId: string, fileName: string, contents: string): Promise<void>;
   listTraces(): Promise<StoredRunTraceFile[]>;
   readTrace(fileName: string): Promise<string>;
@@ -139,7 +154,7 @@ export type WorkspaceResumeOutcome =
 
 export interface ProjectCreationOptions {
   name: string;
-  protectFromGit: boolean;
+  gitPolicy: ProjectGitPolicy;
 }
 
 interface NativeWorkspace {
@@ -174,24 +189,38 @@ async function readBrowserManifest(
   return (await fileHandle.getFile()).text();
 }
 
+/**
+ * The manifest on disk no longer matches what this handle last read or wrote.
+ * The storage cannot tell who changed it; the project owner can, because it
+ * hears other tabs of this app announce their saves.
+ */
+export class ProjectManifestConflictError extends Error {
+  constructor() {
+    super(`${PROJECT_FILE_NAME} changed outside Inference Lens. Reopen the project before saving.`);
+    this.name = "ProjectManifestConflictError";
+  }
+}
+
 function browserStorage(
   directory: FileSystemDirectoryHandleLike,
   initialContents: string,
+  projectId: ProjectFile["projectId"],
 ): WorkspaceStorage {
   let lastContents = initialContents;
   return {
-    async save(contents: string): Promise<void> {
-      const fileHandle = await directory.getFileHandle(PROJECT_FILE_NAME);
-      const currentContents = await (await fileHandle.getFile()).text();
-      if (currentContents !== lastContents) {
-        throw new Error(
-          `${PROJECT_FILE_NAME} changed outside Inference Lens. Reopen the project before saving.`,
-        );
-      }
-      const writable = await fileHandle.createWritable();
-      await writable.write(contents);
-      await writable.close();
-      lastContents = contents;
+    workbench: browserWorkbenchStorage(directory),
+    migration: browserMigrationStorage(directory),
+    save(contents: string, precondition?: () => Promise<void>): Promise<void> {
+      return coordinateProjectWrites(projectId, async () => {
+        await precondition?.();
+        const fileHandle = await directory.getFileHandle(PROJECT_FILE_NAME);
+        const currentContents = await (await fileHandle.getFile()).text();
+        if (currentContents !== lastContents) throw new ProjectManifestConflictError();
+        const writable = await fileHandle.createWritable();
+        await writable.write(contents);
+        await writable.close();
+        lastContents = contents;
+      });
     },
     async saveTrace(
       _runId: string,
@@ -291,22 +320,77 @@ function browserStorage(
   };
 }
 
+/** Kept off the public handle: only a reopen needs the directory again. */
+const browserDirectories = new WeakMap<ProjectWorkspaceHandle, FileSystemDirectoryHandleLike>();
+const browserProjectIds = new WeakMap<ProjectWorkspaceHandle, ProjectFile["projectId"]>();
+const browserManifestContents = new WeakMap<ProjectWorkspaceHandle, string>();
+let rememberTail: Promise<void> = Promise.resolve();
+
+/** Reopen retains its directory identity; a separately opened copy does not. */
+export function isSameProjectWorkspace(previous: ProjectWorkspaceHandle | null | undefined, next: ProjectWorkspaceHandle | null | undefined): boolean {
+  if (previous === next) return true;
+  if (!previous || !next) return false;
+  const directory = browserDirectories.get(previous);
+  return Boolean(directory && directory === browserDirectories.get(next) && browserProjectIds.get(previous) === browserProjectIds.get(next));
+}
+
 function browserWorkspace(
   directory: FileSystemDirectoryHandleLike,
   contents: string,
+  projectId: ProjectFile["projectId"],
 ): ProjectWorkspaceHandle {
-  return {
+  const handle: ProjectWorkspaceHandle = {
     kind: "browser-directory",
     displayName: directory.name,
     displayPath: directory.name,
-    storage: browserStorage(directory, contents),
+    storage: browserStorage(directory, contents, projectId),
   };
+  browserDirectories.set(handle, directory);
+  browserProjectIds.set(handle, projectId);
+  browserManifestContents.set(handle, contents);
+  return handle;
+}
+
+/**
+ * Reads the manifest again into a fresh handle, for a tab that becomes the
+ * project's editor. The read runs in the project's write scope so it cannot
+ * observe a save half-way, and the old handle is never revived: its expected
+ * contents belong to the document it was opened with.
+ */
+export async function reopenProjectWorkspace(
+  handle: ProjectWorkspaceHandle,
+  projectId: ProjectFile["projectId"],
+): Promise<OpenedProjectWorkspace> {
+  const directory = browserDirectories.get(handle);
+  if (!directory) throw new Error("Only a browser project folder can be reopened.");
+  const contents = await coordinateProjectWrites(projectId, () => readBrowserManifest(directory));
+  const project = parseProjectJson(contents);
+  if (project.projectId !== projectId) {
+    throw new Error(`${directory.name} now holds a different project. Open it again from the Project menu.`);
+  }
+  return { project, handle: browserWorkspace(directory, contents, projectId) };
+}
+
+/** Revalidate a preflighted target after any replacement dialog or queued save.
+ * A changed target must be inspected afresh rather than adopted from a stale read. */
+export async function revalidateLinkedProjectWorkspace(opened: OpenedProjectWorkspace): Promise<void> {
+  const refreshed = await reopenProjectWorkspace(opened.handle, opened.project.projectId);
+  if (browserManifestContents.get(refreshed.handle) !== browserManifestContents.get(opened.handle)) {
+    throw new Error("The linked project changed while waiting to open. Retry to read its latest contents.");
+  }
 }
 
 async function rememberBrowserWorkspace(
   directory: FileSystemDirectoryHandleLike,
   project: ProjectFile,
 ): Promise<void> {
+  const previous = await readStoredWorkspace();
+  // Preserve compare-and-delete tokens across restore and folder refreshes.
+  if (previous) {
+    try {
+      if (directory === previous.handle || await directory.isSameEntry?.(previous.handle)) return;
+    } catch { /* A stale handle must not prevent remembering the accepted folder. */ }
+  }
   await writeStoredWorkspace({
     version: 1,
     recordId: crypto.randomUUID(),
@@ -316,6 +400,32 @@ async function rememberBrowserWorkspace(
     handle: directory,
     savedAt: Date.now(),
   });
+}
+
+/** Persist discovery only after the project owner accepts a workspace. */
+export async function rememberAcceptedProjectWorkspace(opened: OpenedProjectWorkspace): Promise<void> {
+  const directory = browserDirectories.get(opened.handle);
+  if (!directory) return;
+  const remember = rememberTail.catch(() => undefined).then(async () => {
+    await rememberBrowserWorkspace(directory, opened.project);
+    await rememberProjectLocation(opened.project.projectId, opened.project.name, directory);
+  });
+  rememberTail = remember;
+  await remember;
+}
+
+/** Inspect a registry candidate without adoption, writes or last-project effects. */
+export async function inspectBrowserProjectDirectory(directory: FileSystemDirectoryHandleLike, projectId: ProjectFile["projectId"]): Promise<OpenedProjectWorkspace> {
+  const contents = await readBrowserManifest(directory);
+  const project = parseProjectJson(contents);
+  if (project.projectId !== projectId) throw new Error(`Wrong project: ${directory.name} contains ${project.projectId}, but this link requests ${projectId}. Locate the matching project folder.`);
+  return { project, handle: browserWorkspace(directory, contents, project.projectId) };
+}
+
+export async function locateLinkedProject(projectId: ProjectFile["projectId"]): Promise<OpenedProjectWorkspace | null> {
+  const opened = await openBrowserProjectFolder();
+  if (opened && opened.project.projectId !== projectId) throw new Error(`Wrong project: ${opened.project.name} contains ${opened.project.projectId}, but this link requests ${projectId}. Locate the matching project folder.`);
+  return opened;
 }
 
 async function openBrowserProjectFolder(): Promise<OpenedProjectWorkspace | null> {
@@ -345,10 +455,9 @@ async function openBrowserProjectFolder(): Promise<OpenedProjectWorkspace | null
       throw error;
     }
     const project = parseProjectJson(contents);
-    await rememberBrowserWorkspace(directory, project);
     return {
       project,
-      handle: browserWorkspace(directory, contents),
+      handle: browserWorkspace(directory, contents, project.projectId),
     };
   } catch (error) {
     const failure = classifyPickerError(error);
@@ -388,12 +497,13 @@ async function createBrowserProjectFolder(
     }
     const directory = await parent.getDirectoryHandle(bundleName, { create: true });
     try {
-      if (options.protectFromGit) {
+      const gitignoreContents = projectGitignoreContents(options.gitPolicy);
+      if (gitignoreContents !== null) {
         const ignoreFile = await directory.getFileHandle(".gitignore", {
           create: true,
         });
         const ignoreWritable = await ignoreFile.createWritable();
-        await ignoreWritable.write(PROJECT_GITIGNORE_CONTENTS);
+        await ignoreWritable.write(gitignoreContents);
         await ignoreWritable.close();
       }
       const contents = serializeProjectFile(project);
@@ -403,10 +513,9 @@ async function createBrowserProjectFolder(
       const writable = await fileHandle.createWritable();
       await writable.write(contents);
       await writable.close();
-      await rememberBrowserWorkspace(directory, project);
       return {
         project,
-        handle: browserWorkspace(directory, contents),
+        handle: browserWorkspace(directory, contents, project.projectId),
       };
     } catch (error) {
       try {
@@ -493,10 +602,11 @@ async function resumeStoredWorkspace(
   if (load.kind === "forget") {
     return forgetStoredWorkspace(record, load.message);
   }
+  const project = parseProjectJson(load.contents);
   return {
     kind: "resumed",
-    project: parseProjectJson(load.contents),
-    handle: browserWorkspace(record.handle, load.contents),
+    project,
+    handle: browserWorkspace(record.handle, load.contents, project.projectId),
   };
 }
 
@@ -524,6 +634,13 @@ function nativeWorkspaceHandle(
     displayName: workspace.displayName,
     displayPath: workspace.displayPath,
     storage: {
+      migration: nativeMigrationStorage(workspace.workspaceId, invokeNative),
+      workbench: {
+        list: () => invokeNative<WorkbenchFile[]>("list_workbench_records", { workspaceId: workspace.workspaceId }),
+        mutate: (path, expectedContents, contents, projectId) => invokeNative<WorkbenchMutationResult>("mutate_workbench_record", {
+          workspaceId: workspace.workspaceId, path, expectedContents, contents, projectId,
+        }),
+      },
       async save(contents: string): Promise<void> {
         await invokeNative("save_project_workspace", {
           workspaceId: workspace.workspaceId,
@@ -616,7 +733,7 @@ async function createNativeProjectFolder(
     {
       contents: serializeProjectFile(project),
       bundleName: projectDirectoryName(options.name),
-      protectFromGit: options.protectFromGit,
+      gitignoreContents: projectGitignoreContents(options.gitPolicy),
     },
   );
   if (!workspace) return null;
@@ -644,18 +761,26 @@ export async function createProjectFolder(
 export async function saveProjectWorkspace(
   handle: ProjectWorkspaceHandle,
   project: ProjectFile,
+  precondition?: () => Promise<void>,
 ): Promise<void> {
-  await handle.storage.save(serializeProjectFile(project));
+  await handle.storage.save(serializeProjectFile(project), precondition);
+}
+
+/** Serializes a saved run by its kind (D22, D29). */
+function serializeSavedRunTrace(saved: SavedRunTrace): string {
+  return saved.kind === "decision"
+    ? serializeDecisionRunTrace(saved.trace)
+    : serializeRunTrace(saved.trace);
 }
 
 export async function saveRunTraceWorkspace(
   handle: ProjectWorkspaceHandle,
-  trace: RunTrace,
+  saved: SavedRunTrace,
 ): Promise<void> {
-  const contents = serializeRunTrace(trace);
+  const contents = serializeSavedRunTrace(saved);
   await handle.storage.saveTrace(
-    trace.runId,
-    traceFileName(trace.runId),
+    saved.trace.runId,
+    traceFileName(saved.trace.runId),
     contents,
   );
 }
@@ -846,36 +971,36 @@ export function runTraceWorkspacePath(
 
 export function runTraceWorkspaceLocation(
   handle: ProjectWorkspaceHandle,
-  trace: RunTrace,
+  saved: SavedRunTrace,
 ): string {
-  return runTraceWorkspacePath(handle, traceFileName(trace.runId));
+  return runTraceWorkspacePath(handle, traceFileName(saved.trace.runId));
 }
 
-export function downloadRunTrace(trace: RunTrace): void {
-  const blob = new Blob([serializeRunTrace(trace)], {
+export function downloadRunTrace(saved: SavedRunTrace): void {
+  const blob = new Blob([serializeSavedRunTrace(saved)], {
     type: "application/json",
   });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = traceFileName(trace.runId);
+  link.download = traceFileName(saved.trace.runId);
   link.click();
   URL.revokeObjectURL(url);
 }
 
 export async function exportRunTraceFile(
-  trace: RunTrace,
+  saved: SavedRunTrace,
 ): Promise<RunTraceExportResult> {
-  const contents = serializeRunTrace(trace);
-  const fileName = traceFileName(trace.runId);
+  const contents = serializeSavedRunTrace(saved);
+  const fileName = traceFileName(saved.trace.runId);
   if (isTauriRuntime()) {
     const location = await invokeNative<string | null>("export_run_trace", {
-      runId: trace.runId,
+      runId: saved.trace.runId,
       contents,
     });
     return location ? { kind: "saved", location } : { kind: "cancelled" };
   }
-  downloadRunTrace(trace);
+  downloadRunTrace(saved);
   return { kind: "downloaded", fileName };
 }
 
@@ -890,4 +1015,15 @@ export function downloadProjectFile(project: ProjectFile): void {
   link.click();
   const revokeObjectURL = URL.revokeObjectURL.bind(URL);
   globalThis.setTimeout(() => revokeObjectURL(url), 0);
+}
+
+/** Revalidates the folder identity and exact evidence before copying a browser link. */
+export async function savedRunReferenceForWorkspace(handle: ProjectWorkspaceHandle, runId: import("../packages/core/src/run-kernel/types.ts").RunId): Promise<import("../packages/core/src/run-reference.ts").RunReferenceV1> {
+  const directory = browserDirectories.get(handle);
+  if (!directory) throw new Error("Copying run links is currently available in the browser. Open this project folder in Chrome or Edge.");
+  const { project } = await reopenProjectWorkspace(handle, browserProjectIds.get(handle)!);
+  const reference = { version: 1 as const, projectId: project.projectId, runId };
+  const { resolveRunReference } = await import("../packages/core/src/run-reference-resolution.ts");
+  await resolveRunReference(reference, handle.storage);
+  return reference;
 }

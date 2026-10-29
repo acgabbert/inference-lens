@@ -117,6 +117,7 @@ function finishedEvaluation(answer: string): FinishedEvaluation {
   const cell = plan.cells[0]!;
   const state = completed(materializeExperimentCellInput(plan, cell.cellId), answer);
   return {
+    kind: "chat",
     plan,
     result: {
       schemaVersion: 6,

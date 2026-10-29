@@ -142,10 +142,28 @@ test("projects the predictable active-run summary without placeholders", () => {
     phase: "active",
     status: "running",
     totalDurationMs: 600,
+    clockStartedAt: "2026-07-30T12:00:00.000Z",
     ttfoMs: 500,
     totalTokens: undefined,
     outputTokensPerSecond: undefined,
   });
+});
+
+test("offers a live clock only while a provider request is in flight", () => {
+  const next = events();
+  const running = reduceAll(baseEvents(next));
+  assert.equal(
+    runInspectionSummary({ ...running, status: { kind: "starting" } })?.clockStartedAt,
+    "2026-07-30T12:00:00.000Z",
+  );
+  // Time spent waiting on tool results or on the user is not request time.
+  assert.equal(
+    runInspectionSummary({
+      ...running,
+      status: { kind: "paused", reason: "tool_results_ready" },
+    })?.clockStartedAt,
+    undefined,
+  );
 });
 
 test("projects duration, first output, tokens, and rate for a terminal run", () => {
@@ -173,6 +191,7 @@ test("projects duration, first output, tokens, and rate for a terminal run", () 
     phase: "terminal",
     status: "completed",
     totalDurationMs: 1650,
+    clockStartedAt: undefined,
     ttfoMs: 500,
     totalTokens: 30,
     outputTokensPerSecond: 20,

@@ -1,9 +1,10 @@
 import { z } from "zod";
 
-import { CHECK_SCHEMA_VERSION, checkDefinitionSchema } from "./checks.ts";
+import { CHECK_SCHEMA_VERSION, checkDefinitionSchema, checkRunKindIssue, checkVocabularyIssue } from "./checks.ts";
+import type { CheckSchemaVersion } from "./checks.ts";
 import type { CheckDefinition } from "./checks.ts";
 import { EVALUATION_ASSESSMENT_FILE_SUFFIX } from "./experiment.ts";
-import type { EvaluationCriteriaOverride, ExperimentPlanV4 } from "./experiment.ts";
+import type { EvaluationCriteriaOverride, ExperimentPlan } from "./experiment.ts";
 import { stableJsonValue } from "./stable-json.ts";
 import type {
   EntityId,
@@ -49,11 +50,11 @@ export interface EvaluationAssessmentV1 {
   name: string;
   createdAt: string;
   /**
-   * Pinned as a literal, exactly as the plan pins it. A reassessment cannot
-   * use a check kind the execution's vocabulary lacked, because the
-   * execution's own artifact would not parse under this build.
+   * The vocabulary these criteria are written in. New reassessments record
+   * `CHECK_SCHEMA_VERSION`, independent of the execution's own version: they
+   * are saved separately and never change how the execution was scored as run.
    */
-  checkSchemaVersion: typeof CHECK_SCHEMA_VERSION;
+  checkSchemaVersion: CheckSchemaVersion;
   scoringPolicy: "strict";
   cases: EvaluationAssessmentCase[];
 }
@@ -91,7 +92,7 @@ const assessmentSchema = z
     experimentId: entityId("experiment"),
     name: z.string().trim().min(1).max(EVALUATION_ASSESSMENT_NAME_MAX_LENGTH),
     createdAt: z.string().datetime(),
-    checkSchemaVersion: z.literal(CHECK_SCHEMA_VERSION),
+    checkSchemaVersion: z.union([z.literal(3), z.literal(4), z.literal(CHECK_SCHEMA_VERSION)]),
     scoringPolicy: z.literal("strict"),
     cases: z.array(assessmentCaseSchema).min(1),
   })
@@ -122,9 +123,9 @@ export function evaluationAssessmentFileName(assessmentId: EvaluationAssessmentI
 
 function assertAssessmentReferences(
   assessment: EvaluationAssessmentV1,
-  plan: ExperimentPlanV4,
+  plan: ExperimentPlan,
 ): void {
-  if (plan.kind !== "evaluation") {
+  if (plan.kind === "repeated-request") {
     throw new EvaluationAssessmentError(
       "Only an evaluation experiment can be reassessed; a repeated-request experiment has no checks.",
     );
@@ -134,6 +135,17 @@ function assertAssessmentReferences(
   }
   // Cases are aligned against the execution's own plan, never against the
   // current authored suite: the evidence is what the execution captured.
+  for (const assessmentCase of assessment.cases) {
+    for (const check of assessmentCase.checks) {
+      const issue = checkVocabularyIssue(check, assessment.checkSchemaVersion) ??
+        checkRunKindIssue(check.kind, plan.kind === "evaluation" ? "chat" : "decision");
+      if (issue) {
+        throw new EvaluationAssessmentError(
+          `Invalid reassessment at case ${assessmentCase.caseId}, check ${check.checkId}: ${issue}`,
+        );
+      }
+    }
+  }
   const known = new Set(plan.suite.cases.map((evaluationCase) => evaluationCase.caseId));
   const seenCases = new Set<EvaluationCaseId>();
   assessment.cases.forEach((assessmentCase) => {
@@ -161,7 +173,7 @@ function assertAssessmentReferences(
 
 export function parseEvaluationAssessmentFile(
   value: unknown,
-  plan: ExperimentPlanV4,
+  plan: ExperimentPlan,
 ): EvaluationAssessmentV1 {
   const version = unsupportedAssessmentVersionSchema.safeParse(value);
   if (version.success && version.data.schemaVersion !== EVALUATION_ASSESSMENT_SCHEMA_VERSION) {
@@ -176,7 +188,7 @@ export function parseEvaluationAssessmentFile(
 
 export function parseEvaluationAssessmentJson(
   contents: string,
-  plan: ExperimentPlanV4,
+  plan: ExperimentPlan,
 ): EvaluationAssessmentV1 {
   let value: unknown;
   try {
@@ -220,9 +232,9 @@ export interface NewEvaluationAssessment {
  */
 export function createEvaluationAssessment(
   input: NewEvaluationAssessment,
-  plan: ExperimentPlanV4,
+  plan: ExperimentPlan,
 ): EvaluationAssessmentV1 {
-  if (plan.kind !== "evaluation") {
+  if (plan.kind === "repeated-request") {
     throw new EvaluationAssessmentError(
       "Only an evaluation experiment can be reassessed; a repeated-request experiment has no checks.",
     );
@@ -259,7 +271,7 @@ function sameChecks(left: readonly CheckDefinition[], right: readonly CheckDefin
 
 export function serializeEvaluationAssessment(
   assessment: EvaluationAssessmentV1,
-  plan: ExperimentPlanV4,
+  plan: ExperimentPlan,
 ): string {
   return `${JSON.stringify(stableJsonValue(parseEvaluationAssessmentFile(assessment, plan)), null, 2)}\n`;
 }

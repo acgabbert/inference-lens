@@ -2,17 +2,19 @@ import { existsSync, readFileSync } from "node:fs";
 
 import {
   detectContainerRuntime,
-  EnvironmentCredentialStore,
   parseAllowedHosts,
+  ServerConnectionStore,
 } from "../../services/api/src";
 import type { WorkbenchRequestPolicy } from "../../services/api/src";
 
 /**
- * HTTP-framework adapter for the Compose credential source. The rest of the
- * execution service receives only the CredentialStore interface.
+ * HTTP-framework adapter for the Compose credential sources: the
+ * `INFERENCE_LENS_API_*` variables and the `INFERENCE_LENS_CONNECTIONS`
+ * catalog. The rest of the execution service receives only the
+ * CredentialStore interface.
  */
-export function runtimeCredentialStore(): EnvironmentCredentialStore {
-  return new EnvironmentCredentialStore(process.env);
+export function runtimeCredentialStore(): ServerConnectionStore {
+  return new ServerConnectionStore(process.env);
 }
 
 /**

@@ -1,0 +1,38 @@
+# System One wire fixtures
+
+The `llamacpp-*` and `ollama-*` files and the `openrouter-*` files other
+than `openrouter-extras` and `openrouter-error` are **captured**, from a live
+`llama-server`, a local Ollama, and `https://openrouter.ai`; their
+`provenance` block records the build, model, and date. Each one is the
+request body sent and the response body exactly as received. The Bearer key
+went only in a request header, which isn't stored. OpenRouter's `user_id` is
+replaced with `user_REDACTED`, and oversized requests aren't stored (each
+`note` describes it). The Ollama model listing keeps two of its entries. The rest are
+**doc-derived**: assembled from the field names and examples
+in the primary docs listed in
+[the System One plan](../../../docs/SYSTEM_ONE_PROTOCOL_PLAN.md#sources), not
+captured from a live server. Each file says so in its `provenance` block.
+
+They exist so the Phase 1 adapter can be built and tested before any
+implementation is reachable from this machine. Replace each one with a
+redacted capture (set `provenance.kind` to `"captured"` and record the server,
+version, and date) before host or UI work depends on it. A doc-derived fixture
+can only prove the adapter agrees with the docs; it cannot prove the docs agree
+with a server.
+
+Shape:
+
+```jsonc
+{
+  "provenance": { "kind": "doc-derived" | "captured", "implementation": "…", "sources": ["…"] /* or server, model, captured, note */ },
+  "request": { … },          // the body Inference Lens sends, when relevant
+  "response": {
+    "status": 200,
+    "body": { … }            // the response body exactly as the server would send it
+  }
+}
+```
+
+`scripts/system-one-provider.mjs` (`npm run dev:systemone-provider`) serves the
+captured files here to the browser, selected by model id; see
+[the provider fixture guide](../../../docs/PROVIDER_FIXTURES.md).

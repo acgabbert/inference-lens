@@ -46,7 +46,7 @@ function plan(): RepeatedExperimentPlanV3 {
   const { runId: sourceRunId, ...commonInput } = input;
   assert.equal(sourceRunId, "run_source");
   return {
-    schemaVersion: 4,
+    schemaVersion: 5,
     experimentId: "experiment_example",
     kind: "repeated-request",
     createdAt: "2026-07-30T12:00:01.000Z",
@@ -134,6 +134,15 @@ test("rejects pre-v4 experiment artifacts instead of migrating them", () => {
   );
 });
 
+test("a Version 4 plan opens as its Version 5 equivalent", () => {
+  const current = plan();
+  const legacy = { ...JSON.parse(serializeExperimentPlan(current)), schemaVersion: 4 };
+  const opened = parseExperimentPlanJson(JSON.stringify(legacy));
+  assert.equal(opened.schemaVersion, 5);
+  assert.deepEqual(opened, parseExperimentPlanJson(serializeExperimentPlan(current)));
+  assert.equal(serializeExperimentPlan(opened), serializeExperimentPlan(current));
+});
+
 test("rejects legacy fragment provenance inside a Version 4 plan", () => {
   const mislabelled = JSON.parse(serializeExperimentPlan(plan()));
   mislabelled.commonInput.templateResolutions = [{
@@ -147,8 +156,8 @@ test("rejects legacy fragment provenance inside a Version 4 plan", () => {
     outputMessageIds: [mislabelled.commonInput.messages[0].id],
     fragmentRole: "user",
   }];
+  mislabelled.schemaVersion = 4;
 
-  assert.equal(mislabelled.schemaVersion, 4);
   assert.throws(
     () => parseExperimentPlanJson(JSON.stringify(mislabelled)),
     ExperimentValidationError,

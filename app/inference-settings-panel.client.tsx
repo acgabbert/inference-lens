@@ -119,6 +119,25 @@ export interface InferenceSettingsPanelProps {
    * control. The header keeps the badge while collapsed, where it summarises.
    */
   scopeOnModelField?: boolean;
+  /**
+   * Renders the model field above the disclosure instead of inside it, so the
+   * most frequent change needs no expansion. The field is the same one — same
+   * ref, override marker and readiness target — not a second input, and the
+   * body no longer offers it. The scope badge stays on the toggle's header,
+   * which is always on screen, rather than on a field that is now too short
+   * to carry it.
+   */
+  modelAbove?: boolean;
+  /**
+   * `"differences"` summarises only what departs from the baseline — values
+   * that differ from `inherited`, an explicit temperature, and a deliberate
+   * choice of buffering on a connection that could stream — so a collapsed
+   * panel reads as "what is unusual about this run". Delivery is checked
+   * against the connection rather than `inherited`, because a caller keeps it
+   * as a session preference that has no parent scope to differ from. The model
+   * is left out of it when `modelAbove`, since its own field already shows it.
+   */
+  summaryMode?: "values" | "differences";
 }
 
 function temperatureSummary(temperature: number | undefined): string {
@@ -142,7 +161,9 @@ function deliverySummary(responseMode: "streaming" | "buffered"): string {
  * mounts sit inside `overflow: auto` panes and the third inside a modal, where
  * an anchored popover is either clipped or in the top layer above a dialog. The
  * collapsed state still renders every value as a summary, so collapsing hides
- * the controls without hiding what the next run will send.
+ * the controls without hiding what the next run will send. In `"differences"`
+ * mode the summary lists only what departs from the baseline, and a value it
+ * leaves out is one the caller shows elsewhere or the run sends by default.
  */
 export function InferenceSettingsPanel({
   idPrefix,
@@ -168,6 +189,8 @@ export function InferenceSettingsPanel({
   notes,
   showDelivery = true,
   scopeOnModelField = false,
+  modelAbove = false,
+  summaryMode = "values",
 }: InferenceSettingsPanelProps) {
   const scope = useId();
   const bodyId = `${idPrefix}-settings-body-${scope}`;
@@ -212,21 +235,88 @@ export function InferenceSettingsPanel({
     }
   }
 
+  // A frozen panel has no field to show the model, so it keeps its own copy.
+  const modelShownAbove = modelAbove && !readOnly;
+  const differencesOnly = summaryMode === "differences";
+  const showTemperatureFact = !differencesOnly ||
+    (inherited ? temperatureOverridden : value.temperature !== undefined);
+  const showDeliveryFact = showDelivery && (!differencesOnly ||
+    Boolean(deliveryOverridden) ||
+    (streamingAvailable && value.responseMode === "buffered"));
   const facts = [
     connection?.summary,
     protocol?.summary,
-    value.model || "No model",
-    temperatureSummary(value.temperature),
-    showDelivery ? deliverySummary(value.responseMode) : undefined,
+    modelShownAbove ? undefined : value.model || "No model",
+    showTemperatureFact ? temperatureSummary(value.temperature) : undefined,
+    showDeliveryFact ? deliverySummary(value.responseMode) : undefined,
     repetitions?.summary,
     overrideCount > 0 ? `${overrideCount} ${overrideCount === 1 ? "override" : "overrides"}` : undefined,
   ].filter((fact): fact is string => Boolean(fact));
 
+  const badgeOnModelField = scopeOnModelField && open && !modelShownAbove;
+  const modelField = (
+    <div
+      className={
+        scopeOnModelField && !modelShownAbove
+          ? "inference-settings-field inference-settings-field-scoped"
+          : "inference-settings-field"
+      }
+    >
+      {/* Outside the field's own `label`, deliberately: nested in it,
+          the badge becomes part of the label text that locates this
+          control, and the field stops being reachable as "Model". */}
+      {scopeOnModelField && !modelShownAbove ? (
+        <span className="inference-settings-scope inference-settings-field-scope">
+          {scopeLabel}
+        </span>
+      ) : null}
+      <ModelCombobox
+        idPrefix={`${idPrefix}-model`}
+        readinessTarget={readinessTarget}
+        {...(modelInputRef ? { inputRef: modelInputRef } : {})}
+        value={value.model}
+        onChange={(model) => onChange({ ...value, model })}
+        discovery={modelDiscovery}
+        onLoadModels={(force) => onLoadModels?.(force)}
+        favoriteModels={favoriteModels}
+        onToggleFavoriteModel={(model) => onToggleFavoriteModel?.(model)}
+      />
+      {modelOverridden && modelShownAbove ? (
+        // The row's height is budgeted, so the marker is an icon in the field's
+        // own line; the words ride on its name and tooltip.
+        <button
+          aria-label={`Revert model to ${inherited.label}`}
+          className="inference-settings-override-compact text-button"
+          onClick={() => revertSharedField("model")}
+          title={`Overrides ${inherited.label}. Revert`}
+          type="button"
+        >
+          ↺
+        </button>
+      ) : modelOverridden ? (
+        <OverrideMarker
+          field="model"
+          override={{
+            inheritedFrom: inherited.label,
+            onRevert: () => revertSharedField("model"),
+          }}
+        />
+      ) : null}
+    </div>
+  );
+
   return (
     <section
-      className={open ? "inference-settings open" : "inference-settings"}
+      className={[
+        "inference-settings",
+        open ? "open" : "",
+        modelShownAbove ? "model-above" : "",
+      ].filter(Boolean).join(" ")}
       aria-label={label}
     >
+      {modelShownAbove ? (
+        <div className="inference-settings-model-row">{modelField}</div>
+      ) : null}
       <div className="inference-settings-header">
         <button
           aria-controls={bodyId}
@@ -242,7 +332,7 @@ export function InferenceSettingsPanel({
                 audible here so the scope is not visual-only for a reader. */}
             <span
               className={
-                scopeOnModelField && open
+                badgeOnModelField
                   ? "inference-settings-scope visually-hidden"
                   : "inference-settings-scope"
               }
@@ -305,42 +395,7 @@ export function InferenceSettingsPanel({
             </dl>
           ) : (
             <div className="inference-settings-grid">
-              <div
-                className={
-                  scopeOnModelField
-                    ? "inference-settings-field inference-settings-field-scoped"
-                    : "inference-settings-field"
-                }
-              >
-                {/* Outside the field's own `label`, deliberately: nested in it,
-                    the badge becomes part of the label text that locates this
-                    control, and the field stops being reachable as "Model". */}
-                {scopeOnModelField ? (
-                  <span className="inference-settings-scope inference-settings-field-scope">
-                    {scopeLabel}
-                  </span>
-                ) : null}
-                <ModelCombobox
-                  idPrefix={`${idPrefix}-model`}
-                  readinessTarget={readinessTarget}
-                  {...(modelInputRef ? { inputRef: modelInputRef } : {})}
-                  value={value.model}
-                  onChange={(model) => onChange({ ...value, model })}
-                  discovery={modelDiscovery}
-                  onLoadModels={(force) => onLoadModels?.(force)}
-                  favoriteModels={favoriteModels}
-                  onToggleFavoriteModel={(model) => onToggleFavoriteModel?.(model)}
-                />
-                {modelOverridden ? (
-                  <OverrideMarker
-                    field="model"
-                    override={{
-                      inheritedFrom: inherited.label,
-                      onRevert: () => revertSharedField("model"),
-                    }}
-                  />
-                ) : null}
-              </div>
+              {modelShownAbove ? null : modelField}
               {protocol?.control ? (
                 <div className="inference-settings-field">
                   {protocol.control}

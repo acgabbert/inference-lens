@@ -4,7 +4,7 @@ import test from "node:test";
 import { createHeadlessSummary, headlessRepeatedOutcome } from "../packages/cli/src/summary.ts";
 import type {
   EvaluationBakeoffAssessment,
-  EvaluationExperimentPlanV4,
+  EvaluationExperimentPlan,
   ExperimentResult,
   RepeatedExperimentAggregate,
 } from "../packages/core/src/experiment.ts";
@@ -13,7 +13,7 @@ test("summary v1 reports a stop with only the fields it shipped with", () => {
   const plan = {
     experimentId: "experiment_stopped",
     suite: { suiteId: "evaluation-suite_triage", name: "Triage" },
-  } as unknown as EvaluationExperimentPlanV4;
+  } as unknown as EvaluationExperimentPlan;
   const result = {
     status: "stopped",
     stop: { reason: "tool_unavailable", cellId: "experiment-cell_1", toolId: "tool_lookup", startedCells: 1 },

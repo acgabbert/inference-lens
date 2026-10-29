@@ -1,0 +1,161 @@
+{
+  "name": "[Inference Lens F0] Nested output \u2014 Agent 3.1",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "a533f8cf-f461-4f19-a2a0-97ac509f821a",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -640,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=IL_F0_CAPTURE\nReturn answer IL_F0_ANSWER and count 7 using the connected output parser.",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "You are executing a synthetic Inference Lens provider-wire fixture.",
+          "enableStreaming": false,
+          "maxIterations": 3
+        }
+      },
+      "id": "eb2b0f2f-a2e0-40b2-9774-321fa54e2dca",
+      "name": "Final output agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        -320,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "template-echo-model",
+          "mode": "id"
+        },
+        "options": {
+          "temperature": 0
+        }
+      },
+      "id": "6ce79c9f-ea2f-4db4-a4ca-7b303ab3b4e0",
+      "name": "Fixture OpenAI Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        -360,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "description": "Echo one string through a deterministic n8n sub-workflow for the Inference Lens provider-wire contract fixture.",
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "value": "",
+          "mode": "list"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "text": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('text', `The exact string to echo`, 'string') }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "text",
+              "displayName": "text",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        }
+      },
+      "id": "97d736ff-29c3-420b-924b-b4d86bb9a058",
+      "name": "il_echo_string",
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 2.2,
+      "position": [
+        -120,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "schemaType": "manual",
+        "inputSchema": "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"answer\": {\n      \"type\": \"string\"\n    },\n    \"count\": {\n      \"type\": \"integer\"\n    },\n    \"note\": {\n      \"type\": \"string\"\n    },\n    \"output\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"label\": {\n          \"type\": \"string\"\n        }\n      },\n      \"required\": [\n        \"label\"\n      ]\n    }\n  },\n  \"required\": [\n    \"answer\",\n    \"count\",\n    \"output\"\n  ],\n  \"additionalProperties\": false\n}"
+      },
+      "id": "39e2659e-2098-4e5f-bbc8-316aabeeb10b",
+      "name": "Structured Output Parser",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        80,
+        240
+      ]
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Final output agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fixture OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Final output agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "il_echo_string": {
+      "ai_tool": [
+        [
+          {
+            "node": "Final output agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Structured Output Parser": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Final output agent",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false,
+  "tags": []
+}

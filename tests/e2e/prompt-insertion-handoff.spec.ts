@@ -86,6 +86,7 @@ test("Messages inserts a searched exact prompt revision at the chosen position",
   await expect(page.getByRole("button", { name: /^Run current conversation/ })).toBeVisible();
 
   await page.getByRole("button", { name: "Insert saved prompt…" }).click();
+  await page.getByRole("button", { name: "More options…" }).click();
   const dialog = page.getByRole("dialog", { name: "Insert saved prompt" });
 
   await dialog.getByRole("searchbox", { name: "Search prompts" }).fill("incident");
@@ -109,6 +110,7 @@ test("Messages inserts a searched exact prompt revision at the chosen position",
 test("Messages keeps the saved-prompt control labels compact", async ({ page }) => {
   const dialog = page.getByRole("dialog", { name: "Insert saved prompt" });
   await page.getByRole("button", { name: "Insert saved prompt…" }).click();
+  await page.getByRole("button", { name: "More options…" }).click();
 
   await dialog.getByLabel("Revision").selectOption("template-revision_incident-triage-2");
   await expect(dialog.getByLabel("Revision").locator(".."))
@@ -119,6 +121,7 @@ test("Messages keeps the insertion action visible with a long prompt preview", a
   await page.setViewportSize({ width: 390, height: 640 });
   const dialog = page.getByRole("dialog", { name: "Insert saved prompt" });
   await page.getByRole("button", { name: "Insert saved prompt…" }).click();
+  await page.getByRole("button", { name: "More options…" }).click();
 
   await expect(dialog.getByRole("button", { name: "Insert prompt", exact: true })).toBeInViewport();
 });
@@ -126,6 +129,7 @@ test("Messages keeps the insertion action visible with a long prompt preview", a
 test("Messages replaces an entirely empty draft with the saved prompt", async ({ page }) => {
   await importProject(page, emptyDraftFixture(), "Empty prompt insertion fixture");
   await page.getByRole("button", { name: "Insert saved prompt…" }).click();
+  await page.getByRole("button", { name: "More options…" }).click();
   const dialog = page.getByRole("dialog", { name: "Insert saved prompt" });
 
   await expect(dialog.getByText("The empty draft will be replaced.")).toBeVisible();

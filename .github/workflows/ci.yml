@@ -13,7 +13,7 @@ concurrency:
 jobs:
   web:
     name: Web
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # A hung test would otherwise run to GitHub's 6-hour default.
     timeout-minutes: 20
     steps:
@@ -35,9 +35,13 @@ jobs:
       # `npm test` runs `npm run build` first, so the web build is covered here.
       - run: npm test
 
-  e2e:
-    name: End-to-end
-    runs-on: ubuntu-latest
+  e2e-shards:
+    name: End-to-end shard ${{ matrix.shard }}/4
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    runs-on: ubuntu-24.04
     # Above playwright.config.ts's globalTimeout, so the suite's own bound
     # fires first and leaves a report rather than the job being cut off.
     timeout-minutes: 35
@@ -51,14 +55,42 @@ jobs:
 
       - run: npm ci
 
-      - run: npx playwright install --with-deps chromium
+      - uses: ./.github/actions/playwright-chromium
+
+      # Keep two browser workers per machine; scale across isolated runners.
+      - run: npm run test:e2e -- --shard=${{ matrix.shard }}/4 --workers=2
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report-${{ matrix.shard }}
+          path: |
+            playwright-report
+            test-results
+          retention-days: 7
+
+  # The browser checks outside the ordinary suite, in parallel with its shards
+  # rather than appended to one of them.
+  e2e-lanes:
+    name: End-to-end safe regex and Python MCP
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - uses: ./.github/actions/playwright-chromium
 
       # AGENTS.md requires every user-visible change to be verified against a
       # running app. Without this job that rule is unenforced, and a browser
       # check can go stale without anything failing.
       - run: npm run test:safe-regex:browser
-
-      - run: npm run test:e2e
 
       # The Node MCP fixture negotiates at most 2025-11-25 and cannot be killed
       # mid-call as a separate process; this lane runs the same host against the
@@ -76,11 +108,25 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
-          name: playwright-report
+          name: playwright-report-lanes
           path: |
             playwright-report
             test-results
           retention-days: 7
+
+  # Preserve the existing check name and require every browser job to succeed.
+  e2e:
+    name: End-to-end
+    needs: [e2e-shards, e2e-lanes]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    steps:
+      - name: Require all browser jobs
+        env:
+          SHARDS_RESULT: ${{ needs.e2e-shards.result }}
+          LANES_RESULT: ${{ needs.e2e-lanes.result }}
+        run: test "$SHARDS_RESULT" = success && test "$LANES_RESULT" = success
 
   desktop:
     name: Desktop host

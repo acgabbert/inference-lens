@@ -41,16 +41,17 @@ test("project setting overrides are marked and revert one field at a time", asyn
   ).toHaveText("Project settings");
 
   const panel = await openInferenceSettings(page);
-  // Open, the badge moves onto the field that actually carries that scope.
-  // Model and temperature are saved with the project; delivery below them is
-  // only a session preference, so the header must not keep a badge that would
-  // read as covering it — and must not print the same badge twice.
+  // The composer's model field sits above the disclosure, too short to carry a
+  // badge, so the header keeps it open or closed and prints it exactly once.
+  // It covers the model and temperature; delivery below is still only a
+  // session preference, which the badge does not claim to describe.
   await expect(
-    panel.locator(".inference-settings-field-scope"),
+    panel.locator(".inference-settings-header .inference-settings-scope"),
   ).toHaveText("Project settings");
   await expect(
     panel.locator(".inference-settings-header .inference-settings-scope"),
-  ).toHaveClass(/visually-hidden/);
+  ).not.toHaveClass(/visually-hidden/);
+  await expect(panel.locator(".inference-settings-field-scope")).toHaveCount(0);
   await expect(panel.getByRole("button", { name: "Revert model to profile defaults" })).toBeVisible();
   await expect(panel.getByRole("button", { name: "Revert temperature to profile defaults" })).toBeVisible();
   // The badge must not have been absorbed into the field's accessible name.
@@ -103,17 +104,21 @@ test("the collapsed panel reports what the run will send, and expanding reveals 
   const panel = page.locator('[aria-label="Run settings"]');
   const toggle = panel.locator(".inference-settings-toggle");
   await expect(toggle).toHaveAttribute("aria-expanded", "false");
-  // Every value is named while collapsed. These are exact so a
-  // formatting regression cannot hide behind a substring match.
+  // The summary names the protocol and whatever departs from the baseline: an
+  // explicit temperature here, with no parent scope to compare against. The
+  // model is its own always-visible field. Delivery appears because the seeded
+  // preference is buffered on a connection that could stream.
+  // These are exact so a formatting regression cannot hide behind a
+  // substring match.
   await expect(panel.locator(".inference-settings-fact")).toHaveText([
     "Chat Completions",
-    "buffered-test-model",
     "Temp 0.3",
     "Buffered",
   ]);
-  // Collapsed means the controls are absent, not merely hidden. Delivery is
-  // one of them now: it is summarised here rather than sitting outside.
-  await expect(panel.getByLabel("Model", { exact: true })).toHaveCount(0);
+  await expect(panel.getByLabel("Model", { exact: true })).toHaveValue(
+    "buffered-test-model",
+  );
+  // The remaining controls are absent while collapsed, not merely hidden.
   await expect(page.locator(".temperature-control")).toHaveCount(0);
   await expect(page.getByLabel("Stream response")).toHaveCount(0);
   // Connection settings is not here at all, collapsed or open. It configures
@@ -146,7 +151,6 @@ test("the collapsed panel reports what the run will send, and expanding reveals 
   await toggle.click();
   await expect(panel.locator(".inference-settings-fact")).toHaveText([
     "Chat Completions",
-    "buffered-test-model",
     "Temp 0.9",
     "Buffered",
   ]);
@@ -166,11 +170,9 @@ test("the tool line stays readable while the panel is collapsed", async ({ page 
   await page.goto("/");
   await waitForHydration(page);
 
-  // The tool line is a consequence of the settings rather than one of them, so
-  // collapsing the panel must not take it with them.
-  await expect(page.locator(".request-tool-line")).toContainText(
-    "No tools attached to this request.",
-  );
+  // Nothing is attached, so there is no line to keep; the Tools tab count
+  // says 0. A blocked attachment keeps its line in tool-attachment.spec.ts.
+  await expect(page.locator(".request-tool-line")).toHaveCount(0);
   await expect(
     page.locator('[aria-label="Run settings"] .inference-settings-toggle'),
   ).toHaveAttribute("aria-expanded", "false");

@@ -62,6 +62,7 @@ function historyState(overrides = {}) {
 
 function summary(overrides) {
   return {
+    kind: "chat",
     runId: "run_example",
     startedAt: "2026-07-25T12:00:00.000Z",
     endedAt: "2026-07-25T12:00:00.550Z",
@@ -119,6 +120,41 @@ test("names each saved run by its request, then its target, outcome, and measure
   assert.match(html, /Saved to folder/);
   // The file name is a detail for the hover title, not the row's text.
   assert.match(html, /title="run_alpha\.json"/);
+  assertNoBrokenNumbers(html);
+});
+
+test("lists a saved decision run by its questions and target, as inspectable evidence", async () => {
+  const html = await renderList({
+    history: historyState({
+      items: [
+        {
+          fileName: "run_decision.json",
+          summary: {
+            kind: "decision",
+            runId: "run_decision",
+            startedAt: "2026-10-24T12:00:00.000Z",
+            endedAt: "2026-10-24T12:00:01.250Z",
+            status: "completed",
+            model: "local-decision",
+            protocol: "systemone",
+            questionCount: 3,
+            attemptCount: 2,
+            durationMs: 1250,
+          },
+        },
+      ],
+    }),
+  });
+
+  assert.match(html, /<strong[^>]*>Decision · 3 questions<\/strong>/);
+  assert.match(html, /local-decision · System One/);
+  assert.match(html, /completed/);
+  assert.match(html, /1\.25 s · 2 attempts/);
+  // Chat-only numbers a decision summary does not have.
+  assert.doesNotMatch(html, /tokens|turns?\b/);
+  // A saved decision opens as read-only evidence in Runs, so its row is a live button.
+  assert.match(html, /<button[^>]*title="run_decision\.json · Inspect saved decision evidence"/);
+  assert.doesNotMatch(html, /<button[^>]*disabled=""[^>]*Decision · 3 questions/);
   assertNoBrokenNumbers(html);
 });
 
@@ -290,7 +326,8 @@ test("an evaluation row reports its strict pass rate, not its run status", async
     evaluation: {
       suiteId: "evaluation-suite_topics",
       suiteName: "Topics",
-      conversationRevisionId: "revision_one",
+      runKind: "chat",
+      inputRevisionId: "revision_one",
       variants: [{
         variantId: "evaluation-variant_default",
         name: "Default",
@@ -330,7 +367,8 @@ test("an evaluation that could not be scored says so rather than reporting zero 
         evaluation: {
           suiteId: "evaluation-suite_topics",
           suiteName: "Topics",
-          conversationRevisionId: "revision_one",
+          runKind: "chat",
+          inputRevisionId: "revision_one",
           variants: [],
         },
       }],

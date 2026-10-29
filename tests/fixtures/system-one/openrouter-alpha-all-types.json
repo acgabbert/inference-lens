@@ -1,0 +1,99 @@
+{
+  "provenance": {
+    "kind": "captured",
+    "implementation": "OpenRouter /api/alpha/decisions",
+    "server": "https://openrouter.ai",
+    "captured": "2026-10-24",
+    "note": "The same request on the alpha path. The response has the same shape."
+  },
+  "request": {
+    "model": "~typesafe/jev-latest",
+    "state": {
+      "ticket": "I was charged twice for October and the app crashes when I open invoices.",
+      "plan": "pro"
+    },
+    "questions": {
+      "intent": {
+        "type": "choice",
+        "instructions": "What is the customer mainly asking about?",
+        "criteria": {
+          "billing": "Charges, refunds, invoices, or plan changes.",
+          "bug": "Something in the product is broken.",
+          "other": null
+        }
+      },
+      "severity": {
+        "type": "score",
+        "instructions": [
+          "How urgent is this ticket?",
+          {
+            "consider": "customer impact"
+          }
+        ],
+        "criteria": [
+          "minor",
+          "major",
+          {
+            "label": "critical",
+            "note": "data loss or money lost"
+          }
+        ]
+      },
+      "is_spam": {
+        "type": "noul",
+        "instructions": "Is this ticket spam?",
+        "criteria": {
+          "true": "Unsolicited advertising.",
+          "false": "A real customer request."
+        }
+      }
+    }
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "model": "typesafe/jev-1.14-20261014",
+      "answers": {
+        "intent": {
+          "type": "choice",
+          "choice": "billing",
+          "probabilities": {
+            "billing": 0.93,
+            "bug": 0.06,
+            "other": 0.01
+          },
+          "confidence": 0.89
+        },
+        "severity": {
+          "type": "score",
+          "score": 1.81,
+          "legend": {
+            "0": "minor",
+            "1": "major",
+            "2": {
+              "label": "critical",
+              "note": "data loss or money lost"
+            }
+          },
+          "probabilities": {
+            "0": 0,
+            "1": 0.19,
+            "2": 0.81
+          },
+          "confidence": 0.71
+        },
+        "is_spam": {
+          "type": "noul",
+          "noul": 0.03
+        }
+      },
+      "usage": {
+        "input_tokens": 466,
+        "output_tokens": 70,
+        "cost": 1.9572e-05
+      },
+      "id": "gen-dec-1792812353-52LTkBCWfDlDFEsnwV2p",
+      "provider": "TypeSafe"
+    }
+  }
+}

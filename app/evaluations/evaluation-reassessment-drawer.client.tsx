@@ -2,6 +2,7 @@
 
 import { SAFE_REGEX_FLAGS } from "../../packages/core/src/safe-regex.ts";
 import { SideDrawer } from "../workbench-shell.client.tsx";
+import { StructuredCheckEditor } from "./structured-check-editor.client.tsx";
 import styles from "./evaluation-reassessment.module.css";
 import type { EvaluationReassessmentHandle } from "./use-evaluation-reassessment.client.ts";
 
@@ -23,23 +24,15 @@ function flip(from: string, to: string): string {
   return `${from} → ${to}`;
 }
 
-/**
- * Corrects the criteria a finished evaluation is read under.
- *
- * Regex only, deliberately. The corrections this exists for — a pattern written
- * against one sample's capitalization, an anchor that was never going to match
- * twice — are regex corrections, and every field here is one the Safe regex
- * engine already validates. Widening it to every check kind would rebuild the
- * suite editor's per-kind field logic over history, where a mistake is harder
- * to notice because there is no run to disagree with it.
- */
+/** Composes criteria editors over saved evidence. Structured drafts stay in
+ * their editor until validated; the handle owns preview and persistence. */
 export function EvaluationReassessmentDrawer({
   handle,
 }: {
   handle: EvaluationReassessmentHandle;
 }) {
   const { preview } = handle;
-  const blocked = handle.previewBlocked;
+  const blocked = handle.previewBlocked || Boolean(handle.previewError);
   const nothingToSave = Boolean(preview?.unchanged);
 
   return (
@@ -51,9 +44,9 @@ export function EvaluationReassessmentDrawer({
       onClose={handle.closeEditor}
     >
       <div className={styles.drawer}>
-        {handle.regexChecks.length === 0 && (
+        {handle.regexChecks.length === 0 && handle.structuredChecks.length === 0 && (
           <p className={styles.empty}>
-            This execution ran no regex checks, so there is nothing this editor can correct.
+            This execution has no regex or structured checks to correct.
           </p>
         )}
 
@@ -99,6 +92,20 @@ export function EvaluationReassessmentDrawer({
           </section>
         ))}
 
+        {handle.structuredChecks.map(({ caseId, caseName, check }) => (
+          <section
+            aria-label={`${caseName} · ${check.label ?? check.checkId}`}
+            className={styles.check}
+            key={`${caseId}:${check.checkId}`}
+          >
+            <header>
+              <strong>{check.label ?? (check.kind === "json-schema" ? "JSON Schema" : "Valid JSON")}</strong>
+              <small>{caseName}</small>
+            </header>
+            <StructuredCheckEditor check={check} onCommit={(next) => handle.commitStructuredCheck(caseId, next)} />
+          </section>
+        ))}
+
         {handle.carriedChecks.length > 0 && (
           <section aria-label="Checks carried through unchanged" className={styles.carried}>
             <h3>Carried through unchanged</h3>
@@ -115,7 +122,9 @@ export function EvaluationReassessmentDrawer({
 
         <section aria-label="What would change" className={styles.preview}>
           <h3>What would change</h3>
-          {blocked && (
+          {handle.previewLoading && <p role="status">Computing reassessment preview…</p>}
+          {handle.previewError && <p role="alert">Preview could not be computed: {handle.previewError}</p>}
+          {handle.previewBlocked && (
             <p className={styles.error} role="alert">
               Fix the pattern above to see what it would change.
             </p>
@@ -158,7 +167,7 @@ export function EvaluationReassessmentDrawer({
             Name
             <input
               value={handle.draftName}
-              placeholder="Corrected regex"
+              placeholder="Corrected criteria"
               onChange={(event) => handle.setDraftName(event.target.value)}
             />
           </label>
@@ -169,7 +178,7 @@ export function EvaluationReassessmentDrawer({
           <button
             className="button primary"
             type="button"
-            disabled={handle.saving || blocked || nothingToSave}
+            disabled={handle.saving || handle.previewLoading || !preview || blocked || nothingToSave}
             onClick={() => { void handle.save(); }}
           >
             {handle.saving ? "Saving…" : "Save reassessment"}

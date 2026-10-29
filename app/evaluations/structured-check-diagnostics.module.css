@@ -1,0 +1,24 @@
+.diagnostics {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.diagnostics summary {
+  cursor: pointer;
+}
+
+.content {
+  display: grid;
+  gap: var(--space-xs);
+  padding-block: var(--space-xs);
+}
+
+.content p {
+  margin: 0;
+}
+
+.content ol,
+.content ul {
+  margin: 0;
+  padding-left: var(--space-lg);
+}

@@ -3,7 +3,8 @@ import test from "node:test";
 
 import { createEvaluationExperimentPlan } from "../packages/core/src/evaluation-execution.ts";
 import { alignSuiteSnapshots } from "../packages/core/src/evaluation-suite-alignment.ts";
-import { compareEvaluationExecutions } from "../packages/core/src/evaluation-comparison.ts";
+import { compareEvaluationExecutions, EvaluationComparisonError } from "../packages/core/src/evaluation-comparison.ts";
+import { decisionPlan } from "./fixtures/decision-evaluation.ts";
 import type { EvaluationComparisonInput } from "../packages/core/src/evaluation-comparison.ts";
 import { headlessVerdict } from "../packages/cli/src/summary.ts";
 import {
@@ -296,8 +297,23 @@ test("a changed target model is drift context, not case incompatibility", () => 
     comparisonInput(baseline, baselineRun),
     comparisonInput(candidate, candidateRun),
   );
+  assert.equal(comparison.drift.kind, "chat");
   assert.deepEqual(comparison.drift.model, { baseline: "model-a", candidate: "model-b" });
   assert.equal(comparison.drift.any, true);
+  assert.equal(comparison.cases[0]?.alignment, "aligned");
+  assert.equal(comparison.cases[0]?.delta, "regressed");
+});
+
+test("a vocabulary 3 execution compares with a current-vocabulary one without drift", () => {
+  // Each version only adds constructs, so a check means the same in either plan.
+  const baseline = { ...planFixture([migrations]), checkSchemaVersion: 3 as const };
+  const candidate = planFixture([migrations]);
+  assert.equal(candidate.checkSchemaVersion, 5);
+  const comparison = compareEvaluationExecutions(
+    comparisonInput(baseline, execute(baseline, { [migrations.id]: "Plan the migration." })),
+    comparisonInput(candidate, execute(candidate, { [migrations.id]: "Nothing relevant." })),
+  );
+  assert.equal(comparison.drift.any, false);
   assert.equal(comparison.cases[0]?.alignment, "aligned");
   assert.equal(comparison.cases[0]?.delta, "regressed");
 });
@@ -581,4 +597,16 @@ test("a real failure beside a rate-limited repetition still reads as a regressio
   );
   assert.equal(comparison.counts.inconclusive, 0);
   assert.equal(comparison.counts.regressed, 1);
+});
+
+test("a chat execution and a decision execution are not compared", () => {
+  const chat = planFixture([migrations]);
+  const decision = decisionPlan();
+  assert.throws(
+    () => compareEvaluationExecutions(
+      comparisonInput(chat, execute(chat, { [migrations.id]: "Plan the migration." })),
+      { experimentId: decision.experimentId, plan: decision, variantId: decision.suite.variants[0]!.variantId },
+    ),
+    (error: unknown) => error instanceof EvaluationComparisonError && /chat evaluation with a decision evaluation/.test(error.message),
+  );
 });

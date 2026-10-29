@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { hasRunLinkFragment, RUN_LINK_CLEARED_EVENT } from "./run/run-link-url.client.ts";
 import type { ChangeEvent } from "react";
 import {
   parseProjectJson,
@@ -16,11 +17,16 @@ import {
   createProjectFolder,
   downloadProjectFile,
   openProjectFolder,
+  ProjectManifestConflictError,
   reconnectProjectWorkspace as reconnectStoredProjectWorkspace,
+  reopenProjectWorkspace,
   restoreProjectWorkspace,
   saveProjectWorkspace,
+  rememberAcceptedProjectWorkspace,
+  revalidateLinkedProjectWorkspace,
 } from "./project-workspace.client.ts";
 import type {
+  OpenedProjectWorkspace,
   ProjectCreationOptions,
   ProjectWorkspaceHandle,
   WorkspaceResumeOutcome,
@@ -35,6 +41,14 @@ import {
   writeProjectProfileMap,
 } from "./project-profile-map.client.ts";
 import type { ProfileIdentity } from "./project-profile-map.client.ts";
+import {
+  browserProjectTabHost,
+  coordinateProjectTab,
+} from "./project-tab-coordination.client.ts";
+import type {
+  LockAcquisition,
+  ProjectTabCoordinator,
+} from "./project-tab-coordination.client.ts";
 
 export type ProjectErrorKind =
   | "auto-save"
@@ -48,9 +62,39 @@ export type ProjectErrorKind =
  */
 export type ProjectStorageState =
   | { kind: "session" }
+  | { kind: "unsaved"; displayPath: string; reason: string }
   | { kind: "saving"; displayPath: string }
   | { kind: "saved"; displayPath: string }
-  | { kind: "error"; displayPath: string };
+  | { kind: "error"; displayPath: string }
+  /** Another tab of this app is the project's editor; this one does not save. */
+  | { kind: "secondary"; displayPath: string };
+
+/**
+ * Which tab may write `project.json`. Only the `editor` tab autosaves. Every
+ * tab composes, runs and records traces. `uncoordinated` covers the desktop
+ * app, browsers without Web Locks and projects without a folder, which behave
+ * as they did before tabs were coordinated.
+ */
+export type ProjectTabRole = "editor" | "secondary" | "uncoordinated";
+
+export interface ProjectTabState {
+  role: ProjectTabRole;
+  /** The editor tab saved after this tab loaded the project. */
+  behind: boolean;
+  /** Another tab took over editing before this tab's changes were saved. */
+  lostEdits: boolean;
+  /**
+   * Becoming editor reloads from disk, so a tab with edits is asked first:
+   * because the user asked, or because the editing tab closed.
+   */
+  confirmTakeover?: "requested" | "editor-closed";
+  switching: boolean;
+}
+
+const SECONDARY_SAVE_MESSAGE =
+  "Another tab is editing this project, so this tab does not save it. Choose Edit here to save from this tab.";
+const PEER_CONFLICT_MESSAGE =
+  "Another Inference Lens tab saved this project after this tab loaded it. Reopen the project before saving here.";
 
 const PROJECT_AUTO_SAVE_DELAY_MS = 800;
 const PROJECT_AUTO_SAVE_MAX_WAIT_MS = 5_000;
@@ -67,6 +111,21 @@ export interface ProjectWorkspaceHandleState {
   /** Device-local profile ids keyed by portable connection requirement id. */
   mappedProfileIds: Readonly<Record<string, string>>;
   pendingProjectReplacement?: PendingProjectReplacement;
+  /**
+   * Advances each time a document is adopted from outside the editors, even
+   * the same project reloaded from disk. Owners that keep local editing state
+   * key on it so a reload cannot leave a discarded draft on screen.
+   */
+  projectAdoption: number;
+  /** Absent without a project folder, and while the role is being settled. */
+  projectTab?: ProjectTabState;
+  /** Edit here: reloads from disk at once, or asks first when this tab has edits. */
+  becomeProjectEditor(): void;
+  confirmProjectEditorTakeover(): void;
+  cancelProjectEditorTakeover(): void;
+  holdsProjectEditorLock(): Promise<boolean>;
+  cancelLinkedProjectReplacement(intent: () => boolean): void;
+  adoptLinkedWorkspace(opened: OpenedProjectWorkspace, isCurrent: () => boolean, blockedReason: () => string | undefined, revalidateEvidence: () => Promise<void>): Promise<"adopted" | "cancelled" | "blocked">;
   markDirty(): void;
   setError(message: string | undefined, options?: { clearKind?: boolean }): void;
   clearErrorKind(): void;
@@ -77,7 +136,11 @@ export interface ProjectWorkspaceHandleState {
   currentProjectDocument(): ProjectFile;
   materializeProject(): ProjectFile;
   adoptProjectMutation(project: ProjectFile): void;
-  mapProfile(requirementId: string, profile: ProfileIdentity): void;
+  /**
+   * `inProject` is a document just handed to `adoptProjectMutation`, for a
+   * requirement that mutation added and this render does not hold yet.
+   */
+  mapProfile(requirementId: string, profile: ProfileIdentity, inProject?: ProjectFile): void;
   unmapProfile(profileId: string): void;
   newProjectFolder(options: ProjectCreationOptions): Promise<void>;
   openProjectWorkspace(): Promise<void>;
@@ -103,7 +166,12 @@ export interface PendingProjectReplacement {
 interface QueuedProjectReplacement {
   perform(): Promise<void>;
   fallbackError: string;
+  cancelled?(): void;
+  linkedIntent?: () => boolean;
 }
+
+/** A same-project refresh replaces persisted drafts, but preserves run sessions. */
+export type ProjectDocumentAdoption = "replace" | "refresh";
 
 /**
  * Owns the lifecycle of a portable project and its local workspace handle.
@@ -124,7 +192,16 @@ export function useProjectWorkspace(input: {
   createFreshProject(): ProjectFile;
   createProject(): ProjectFile;
   currentDraft(): UpdateProjectDraft;
-  onApplyDraft(draft: ProjectDraft, projectId: ProjectFile["projectId"]): void;
+  onApplyDraft(draft: ProjectDraft, projectId: ProjectFile["projectId"], adoption: ProjectDocumentAdoption): void;
+  /**
+   * Writes the decision editor's draft into a document being saved (D42). The
+   * decision feature owns its draft, as the chat request owns `currentDraft`.
+   */
+  withDecisionDraft(project: ProjectFile): ProjectFile;
+  /** Read from commands and saves, after the feature owners have rendered. */
+  getUnsavedDraftReason(): string | undefined;
+  /** Hands a newly applied document's active decision request to its owner. */
+  onApplyDecisionRequest(project: ProjectFile, adoption: ProjectDocumentAdoption): void;
   /**
    * A save the user asked for landed. Deliberately not called by the auto-save
    * loop below: auto-save is continuous and unremarkable, and confirming it
@@ -143,17 +220,26 @@ export function useProjectWorkspace(input: {
     createProject,
     currentDraft,
     onApplyDraft,
+    withDecisionDraft,
+    getUnsavedDraftReason,
+    onApplyDecisionRequest,
     onSaved,
   } = input;
   const [projectFile, setProjectFile] = useState<ProjectFile | null>(null);
   const [projectWorkspace, setProjectWorkspace] =
     useState<ProjectWorkspaceHandle | null>(null);
   const [projectDirty, setProjectDirty] = useState(false);
+  // A write of the last valid document does not persist an incomplete editor
+  // draft. Track that independently so autosave settles without looping and
+  // replacement/unload protection stays active.
+  const [unsavedDraftReason, setUnsavedDraftReason] = useState<string>();
+  const hasUnsavedChanges = projectDirty || Boolean(unsavedDraftReason);
   const [projectError, setProjectError] = useState<string>();
   const [projectErrorKind, setProjectErrorKind] = useState<ProjectErrorKind>();
   const projectErrorKindRef = useRef<ProjectErrorKind | undefined>(undefined);
   const [mappedProfileIds, setMappedProfileIds] = useState<Record<string, string>>({});
   const [projectChangeVersion, setProjectChangeVersion] = useState(0);
+  const [projectAdoption, setProjectAdoption] = useState(0);
   const [pendingProjectReplacement, setPendingProjectReplacement] =
     useState<PendingProjectReplacement>();
   const projectChangeVersionRef = useRef(0);
@@ -163,26 +249,55 @@ export function useProjectWorkspace(input: {
   const autoSaveFailureCountRef = useRef(0);
   const autoSaveRetryNotBeforeRef = useRef(0);
   const hasProjectRef = useRef(false);
+  const adoptedProjectIdRef = useRef<string | undefined>(undefined);
   const restoredRef = useRef(false);
   // Read inside asynchronous adoption paths, which must see the profiles the
   // device has now rather than the ones it had when the operation started.
   const profilesRef = useRef(profiles);
   const queuedProjectReplacementRef =
     useRef<QueuedProjectReplacement | null>(null);
+  const [tabRole, setTabRole] = useState<ProjectTabRole | "acquiring">("uncoordinated");
+  const tabRoleRef = useRef<ProjectTabRole | "acquiring">("uncoordinated");
+  const [tabBehind, setTabBehind] = useState(false);
+  const peerSavedRef = useRef(false);
+  const [tabLostEdits, setTabLostEdits] = useState(false);
+  const [confirmTakeover, setConfirmTakeover] =
+    useState<ProjectTabState["confirmTakeover"]>();
+  const [tabSwitching, setTabSwitching] = useState(false);
+  const tabCoordinatorRef = useRef<ProjectTabCoordinator | null>(null);
+  // A role loss or replacement invalidates every pending read from that hold.
+  const tabAcquisitionRef = useRef(0);
+  // Consent covers only the edits present when Edit here/Discard was clicked.
+  const requestedTakeoverVersionRef = useRef<number | undefined>(undefined);
+  // A reload to become editor replaces the handle but keeps the coordinator.
+  const workspaceCoordinatorsRef =
+    useRef(new WeakMap<ProjectWorkspaceHandle, ProjectTabCoordinator>());
+  const flushFailedRef = useRef(false);
+  // Coordinator events arrive outside React; they act through the latest
+  // render's functions and state rather than the ones they were created with.
+  const latestRef = useRef<{
+    hasUnsavedChanges(): boolean;
+    onTabAcquired(cause: LockAcquisition): void;
+    flushBeforeRelease(): Promise<void>;
+  }>({
+    hasUnsavedChanges: () => false,
+    onTabAcquired: () => undefined,
+    flushBeforeRelease: () => Promise.resolve(),
+  });
 
   useEffect(() => {
     profilesRef.current = profiles;
   }, [profiles]);
 
   useEffect(() => {
-    if (!projectDirty) return;
+    if (!hasUnsavedChanges) return;
     function warnBeforeUnload(event: BeforeUnloadEvent): void {
       event.preventDefault();
       event.returnValue = "";
     }
     window.addEventListener("beforeunload", warnBeforeUnload);
     return () => window.removeEventListener("beforeunload", warnBeforeUnload);
-  }, [projectDirty]);
+  }, [hasUnsavedChanges]);
 
   function advanceProjectChangeVersion(): number {
     autoSaveWindowStartedAtRef.current ??= Date.now();
@@ -196,7 +311,79 @@ export function useProjectWorkspace(input: {
     setProjectErrorKind(kind);
   }
 
-  function setCurrentWorkspace(workspace: ProjectWorkspaceHandle | null): void {
+  function updateTabRole(role: ProjectTabRole | "acquiring"): void {
+    tabRoleRef.current = role;
+    setTabRole(role);
+  }
+
+  /**
+   * Releases the previous project's role and starts settling this one's. A
+   * reload to become editor keeps the role: the tab already holds the lock.
+   */
+  function coordinateTabs(
+    workspace: ProjectWorkspaceHandle | null,
+    projectId: ProjectFile["projectId"] | undefined,
+  ): void {
+    tabAcquisitionRef.current += 1;
+    requestedTakeoverVersionRef.current = undefined;
+    tabCoordinatorRef.current?.close();
+    tabCoordinatorRef.current = null;
+    peerSavedRef.current = false;
+    flushFailedRef.current = false;
+    setTabBehind(false);
+    setTabLostEdits(false);
+    setConfirmTakeover(undefined);
+    setTabSwitching(false);
+    const host = browserProjectTabHost();
+    // A JSON import has no folder and does no folder saves, so it takes no lock.
+    if (!workspace || !projectId || workspace.kind !== "browser-directory" || !host) {
+      updateTabRole("uncoordinated");
+      return;
+    }
+    updateTabRole("acquiring");
+    const coordinator = coordinateProjectTab(projectId, {
+      acquired: (cause) => {
+        if (tabCoordinatorRef.current === coordinator) latestRef.current.onTabAcquired(cause);
+      },
+      secondary: (cause) => {
+        if (tabCoordinatorRef.current !== coordinator) return;
+        tabAcquisitionRef.current += 1;
+        requestedTakeoverVersionRef.current = undefined;
+        setTabSwitching(false);
+        updateTabRole("secondary");
+        // The lock this tab held after the editor closed has moved on.
+        setConfirmTakeover((current) => current === "editor-closed" ? undefined : current);
+        if (
+          (cause === "stolen" && latestRef.current.hasUnsavedChanges()) ||
+          (cause === "handed-over" && flushFailedRef.current)
+        ) {
+          setTabLostEdits(true);
+        }
+      },
+      peerSaved: () => {
+        if (tabCoordinatorRef.current !== coordinator) return;
+        peerSavedRef.current = true;
+        setTabBehind(true);
+      },
+      flushBeforeRelease: () => latestRef.current.flushBeforeRelease(),
+    }, host);
+    tabCoordinatorRef.current = coordinator;
+  }
+
+  useEffect(() => () => {
+    tabAcquisitionRef.current += 1;
+    tabCoordinatorRef.current?.close();
+  }, []);
+
+  function setCurrentWorkspace(
+    workspace: ProjectWorkspaceHandle | null,
+    projectId?: ProjectFile["projectId"],
+    options?: { keepTabRole: true },
+  ): void {
+    if (!options?.keepTabRole) coordinateTabs(workspace, projectId);
+    if (workspace && tabCoordinatorRef.current) {
+      workspaceCoordinatorsRef.current.set(workspace, tabCoordinatorRef.current);
+    }
     if (projectWorkspaceRef.current !== workspace) {
       autoSaveWindowStartedAtRef.current = null;
       autoSaveFailureCountRef.current = 0;
@@ -217,9 +404,155 @@ export function useProjectWorkspace(input: {
   ): Promise<void> {
     const write = workspaceSaveTailRef.current
       .catch(() => undefined)
-      .then(() => saveProjectWorkspace(workspace, project));
+      .then(async () => {
+        // Checked when the write runs, not when it was queued: the role can
+        // pass to another tab while a save waits its turn.
+        const coordinator = workspaceCoordinatorsRef.current.get(workspace);
+        if (
+          coordinator &&
+          projectWorkspaceRef.current === workspace &&
+          tabRoleRef.current !== "editor"
+        ) {
+          throw new Error(SECONDARY_SAVE_MESSAGE);
+        }
+        const fence = coordinator
+          ? async () => {
+              if (!(await coordinator.holdsEditorLock())) throw new Error(SECONDARY_SAVE_MESSAGE);
+            }
+          : undefined;
+        try {
+          await saveProjectWorkspace(workspace, project, fence);
+        } catch (error) {
+          throw error instanceof ProjectManifestConflictError && peerSavedRef.current
+            ? new Error(PEER_CONFLICT_MESSAGE)
+            : error;
+        }
+        if (projectWorkspaceRef.current === workspace) tabCoordinatorRef.current?.announceSaved();
+      });
     workspaceSaveTailRef.current = write;
     return write;
+  }
+
+  /**
+   * Becoming editor never adopts this tab's in-memory document as the base for
+   * writing: the editor saved continuously, so it reloads from disk through the
+   * adoption path, preserving sessions and checking that the acquisition and
+   * consent still cover the document when the asynchronous read completes.
+   */
+  async function adoptEditorRoleFromDisk(
+    acquisition: number,
+    version: number,
+    confirmation: NonNullable<ProjectTabState["confirmTakeover"]>,
+  ): Promise<void> {
+    const workspace = projectWorkspaceRef.current;
+    const coordinator = tabCoordinatorRef.current;
+    const projectId = projectFile?.projectId;
+    if (!workspace || !projectId || !coordinator) return;
+    const isCurrent = () =>
+      tabAcquisitionRef.current === acquisition &&
+      tabCoordinatorRef.current === coordinator &&
+      projectWorkspaceRef.current === workspace;
+    setConfirmTakeover(undefined);
+    setTabSwitching(true);
+    try {
+      const opened = await reopenProjectWorkspace(workspace, projectId);
+      if (!isCurrent()) return;
+      const holdsLock = await coordinator.holdsEditorLock();
+      if (!isCurrent() || !holdsLock) return;
+      if (projectChangeVersionRef.current !== version) {
+        setConfirmTakeover(confirmation);
+        return;
+      }
+      applyProjectDocument(opened.project, opened.handle, undefined, { keepTabRole: true });
+      updateTabRole("editor");
+      peerSavedRef.current = false;
+      setTabBehind(false);
+      setTabLostEdits(false);
+    } catch (error) {
+      if (isCurrent()) projectFailure(error, "Could not reload the project to edit it in this tab.");
+    } finally {
+      // Adoption replaces the handle, so only the acquisition guards cleanup.
+      if (tabAcquisitionRef.current === acquisition) setTabSwitching(false);
+    }
+  }
+
+  function onTabAcquired(cause: LockAcquisition): void {
+    const acquisition = ++tabAcquisitionRef.current;
+    const version = cause === "requested"
+      ? requestedTakeoverVersionRef.current
+      : projectChangeVersion;
+    requestedTakeoverVersionRef.current = undefined;
+    const confirmation = cause === "vacated" ? "editor-closed" : "requested";
+    if (cause === "initial") {
+      updateTabRole("editor");
+    } else if (
+      (cause === "vacated" && hasUnsavedChanges) ||
+      version === undefined || version !== projectChangeVersionRef.current
+    ) {
+      setTabSwitching(false);
+      setConfirmTakeover(confirmation);
+    } else {
+      void adoptEditorRoleFromDisk(acquisition, version, confirmation);
+    }
+  }
+
+  /** Writes the pending change now rather than after the debounce, for a handover. */
+  async function flushBeforeRelease(): Promise<void> {
+    flushFailedRef.current = false;
+    // A tab holding the lock without having adopted it has nothing to flush.
+    if (tabRoleRef.current !== "editor") return;
+    const workspace = projectWorkspaceRef.current;
+    if (!workspace || !projectDirty) return;
+    const version = projectChangeVersionRef.current;
+    const project = currentProjectDocument();
+    const unsavedReason = getUnsavedDraftReason();
+    try {
+      await writeProjectWorkspace(workspace, project);
+    } catch (error) {
+      flushFailedRef.current = true;
+      throw error;
+    }
+    if (
+      projectWorkspaceRef.current === workspace &&
+      projectChangeVersionRef.current === version
+    ) {
+      setProjectFile(project);
+      setProjectDirty(false);
+      setUnsavedDraftReason(unsavedReason);
+    }
+  }
+
+  useEffect(() => {
+    latestRef.current = {
+      hasUnsavedChanges: () => hasUnsavedChanges,
+      onTabAcquired,
+      flushBeforeRelease,
+    };
+  });
+
+  function becomeProjectEditor(): void {
+    if (tabRoleRef.current !== "secondary" || tabSwitching) return;
+    if (hasUnsavedChanges) {
+      setConfirmTakeover("requested");
+      return;
+    }
+    confirmProjectEditorTakeover();
+  }
+
+  function confirmProjectEditorTakeover(): void {
+    const coordinator = tabCoordinatorRef.current;
+    if (!coordinator) return;
+    requestedTakeoverVersionRef.current = projectChangeVersionRef.current;
+    setConfirmTakeover(undefined);
+    setTabSwitching(true);
+    // The role arrives as an `acquired` event, which reloads from disk.
+    void coordinator.requestEditor();
+  }
+
+  function cancelProjectEditorTakeover(): void {
+    setConfirmTakeover(undefined);
+    // A hold this tab declines to adopt would otherwise leave no tab saving.
+    if (tabRoleRef.current !== "editor") void tabCoordinatorRef.current?.declineEditor();
   }
 
   function markDirty(): void {
@@ -271,7 +604,7 @@ export function useProjectWorkspace(input: {
     const project = currentProjectDocument();
     advanceProjectChangeVersion();
     setProjectFile(project);
-    setCurrentWorkspace(null);
+    setCurrentWorkspace(null, project.projectId);
     const requirementId = project.defaults.target.connectionRequirementId;
     setMappedProfileIds({ [requirementId]: activeProfile.id });
     rememberMappedProfile(project.projectId, requirementId, activeProfile);
@@ -334,11 +667,12 @@ export function useProjectWorkspace(input: {
     );
   }
 
-  function mapProfile(requirementId: string, profile: ProfileIdentity): void {
-    if (!projectFile) return;
-    if (!projectFile.connectionRequirements.some(({ id }) => id === requirementId)) return;
+  function mapProfile(requirementId: string, profile: ProfileIdentity, inProject?: ProjectFile): void {
+    const target = inProject ?? projectFile;
+    if (!target) return;
+    if (!target.connectionRequirements.some(({ id }) => id === requirementId)) return;
     setMappedProfileIds((current) => ({ ...current, [requirementId]: profile.id }));
-    rememberMappedProfile(projectFile.projectId, requirementId, profile);
+    rememberMappedProfile(target.projectId, requirementId, profile);
     setProjectError(undefined);
   }
 
@@ -359,7 +693,12 @@ export function useProjectWorkspace(input: {
   }
 
   function currentProjectDocument(): ProjectFile {
-    return updateProjectDraft(projectFile ?? createProject(), currentDraft());
+    return withDecisionDraft(updateProjectDraft(projectFile ?? createProject(), currentDraft()));
+  }
+
+  function requireSavableDraft(): void {
+    const reason = getUnsavedDraftReason();
+    if (reason) throw new Error(reason);
   }
 
   /**
@@ -373,6 +712,7 @@ export function useProjectWorkspace(input: {
     project: ProjectFile,
     workspace: ProjectWorkspaceHandle | null,
     profileId?: string,
+    options?: { keepTabRole: true },
   ): void {
     const draft = projectDraft(project);
     const baseRequirementId = project.defaults.target.connectionRequirementId;
@@ -386,15 +726,21 @@ export function useProjectWorkspace(input: {
     // React batches the two state owners into the same committed render.
     if (resolvedProfile) onActivateProfile(resolvedProfile.id);
     hasProjectRef.current = true;
+    adoptedProjectIdRef.current = project.projectId;
+    if (workspace && !options?.keepTabRole) void rememberAcceptedProjectWorkspace({ project, handle: workspace });
     advanceProjectChangeVersion();
+    setProjectAdoption((current) => current + 1);
     setProjectFile(project);
-    setCurrentWorkspace(workspace);
-    onApplyDraft(draft, project.projectId);
+    setCurrentWorkspace(workspace, project.projectId, options);
+    const adoption = options?.keepTabRole ? "refresh" : "replace";
+    onApplyDraft(draft, project.projectId, adoption);
+    onApplyDecisionRequest(project, adoption);
     if (profileId && resolvedProfile) {
       rememberMappedProfile(project.projectId, baseRequirementId, resolvedProfile);
     }
     setMappedProfileIds(resolvedMappings);
     setProjectDirty(false);
+    setUnsavedDraftReason(undefined);
     dismissError();
   }
 
@@ -421,30 +767,45 @@ export function useProjectWorkspace(input: {
   useEffect(() => {
     if (!profilesLoaded || restoredRef.current) return;
     let cancelled = false;
-    const timer = window.setTimeout(() => {
-      if (restoredRef.current) return;
+    function restoreWhenUnlinked() {
+      if (cancelled || restoredRef.current || hasRunLinkFragment()) return;
       restoredRef.current = true;
+      if (hasProjectRef.current) return;
       void restoreProjectWorkspace()
         .then((outcome) => {
-          if (!cancelled) applyResumeOutcome(outcome);
+          if (cancelled) return;
+          // A link arriving during the read takes precedence, but dismissal
+          // must still be able to resume the last project later.
+          if (hasRunLinkFragment()) restoredRef.current = false;
+          else applyResumeOutcome(outcome);
         })
         .catch((error: unknown) => {
-          if (!cancelled && !hasProjectRef.current) {
+          if (cancelled) return;
+          if (hasRunLinkFragment()) restoredRef.current = false;
+          else if (!hasProjectRef.current) {
             projectFailure(error, "Could not restore the remembered project.");
           }
         });
-    }, 0);
+    }
+    const timer = window.setTimeout(restoreWhenUnlinked, 0);
+    window.addEventListener("hashchange", restoreWhenUnlinked);
+    window.addEventListener("popstate", restoreWhenUnlinked);
+    window.addEventListener(RUN_LINK_CLEARED_EVENT, restoreWhenUnlinked);
     return () => {
       cancelled = true;
       window.clearTimeout(timer);
+      window.removeEventListener("hashchange", restoreWhenUnlinked);
+      window.removeEventListener("popstate", restoreWhenUnlinked);
+      window.removeEventListener(RUN_LINK_CLEARED_EVENT, restoreWhenUnlinked);
     };
-    // Restoration runs once after hydration. Its state adoption uses the same
-    // mutation funnel as an explicit open.
+    // Restore once after hydration, deferring while link ingress owns startup.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profilesLoaded]);
 
   useEffect(() => {
     if (!projectWorkspace || !projectFile || !projectDirty) return;
+    // Only the editor tab schedules writes; a secondary tab's would all fail.
+    if (tabRole !== "editor" && tabRole !== "uncoordinated") return;
 
     const workspace = projectWorkspace;
     const version = projectChangeVersion;
@@ -463,6 +824,7 @@ export function useProjectWorkspace(input: {
       // edits arriving after the first deadline would each queue another save.
       autoSaveWindowStartedAtRef.current = Date.now();
       const project = currentProjectDocument();
+      const unsavedReason = getUnsavedDraftReason();
 
       void writeProjectWorkspace(workspace, project)
         .then(() => {
@@ -478,6 +840,7 @@ export function useProjectWorkspace(input: {
           }
           setProjectFile(project);
           setProjectDirty(false);
+          setUnsavedDraftReason(unsavedReason);
           if (projectErrorKindRef.current === "auto-save") {
             setProjectError(undefined);
             updateProjectErrorKind(undefined);
@@ -505,7 +868,7 @@ export function useProjectWorkspace(input: {
     // Each dirtying mutation advances the version. Depending on the render-local
     // function would restart the debounce for unrelated parent renders.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectChangeVersion, projectDirty, projectFile, projectWorkspace]);
+  }, [projectChangeVersion, projectDirty, projectFile, projectWorkspace, tabRole]);
 
   function projectFailure(error: unknown, fallback: string): void {
     updateProjectErrorKind(undefined);
@@ -518,7 +881,7 @@ export function useProjectWorkspace(input: {
     try {
       await replacement.perform();
     } catch (error) {
-      projectFailure(error, replacement.fallbackError);
+      if (!replacement.linkedIntent || replacement.linkedIntent()) projectFailure(error, replacement.fallbackError);
     }
   }
 
@@ -526,20 +889,23 @@ export function useProjectWorkspace(input: {
     nextProjectName: string,
     replacement: QueuedProjectReplacement,
   ): void {
-    if (!projectFile || !projectDirty) {
+    const hasRisk = replacement.linkedIntent ? latestRef.current.hasUnsavedChanges() : projectDirty || Boolean(getUnsavedDraftReason());
+    if (!projectFile || !hasRisk) {
       void performProjectReplacement(replacement);
       return;
     }
+    queuedProjectReplacementRef.current?.cancelled?.();
     queuedProjectReplacementRef.current = replacement;
     setPendingProjectReplacement({
       currentProjectName: projectFile.name,
       nextProjectName,
-      saveNeedsLocation: folderAccessAvailable && !projectWorkspace,
+      saveNeedsLocation: folderAccessAvailable && !projectWorkspace && !getUnsavedDraftReason(),
       saving: false,
     });
   }
 
   function cancelProjectReplacement(): void {
+    queuedProjectReplacementRef.current?.cancelled?.();
     queuedProjectReplacementRef.current = null;
     setPendingProjectReplacement(undefined);
   }
@@ -561,12 +927,13 @@ export function useProjectWorkspace(input: {
   ): Promise<void> {
     const replacement = queuedProjectReplacementRef.current;
     if (!replacement || !projectFile) return;
-    if (folderAccessAvailable && !projectWorkspace && !options) return;
+    if (folderAccessAvailable && !projectWorkspace && !options && !getUnsavedDraftReason()) return;
 
     setPendingProjectReplacement((current) =>
       current ? { ...current, saving: true, error: undefined } : current,
     );
     try {
+      requireSavableDraft();
       const project = currentProjectDocument();
       if (projectWorkspace) {
         const workspace = projectWorkspace;
@@ -585,6 +952,7 @@ export function useProjectWorkspace(input: {
         autoSaveRetryNotBeforeRef.current = 0;
         setProjectFile(project);
         setProjectDirty(false);
+        setUnsavedDraftReason(undefined);
         setProjectError(undefined);
         updateProjectErrorKind(undefined);
         onSaved?.({ name: project.name, destination: "folder" });
@@ -608,6 +976,7 @@ export function useProjectWorkspace(input: {
         downloadProjectFile(project);
         setProjectFile(project);
         setProjectDirty(false);
+        setUnsavedDraftReason(undefined);
         setProjectError(undefined);
         updateProjectErrorKind(undefined);
         onSaved?.({ name: project.name, destination: "download" });
@@ -633,7 +1002,53 @@ export function useProjectWorkspace(input: {
     };
   }
 
+  /** The sole adoption funnel for preflighted run links, with live blockers and
+   * cancellation checked again after Save/Discard and any in-flight autosave. */
+  function adoptLinkedWorkspace(
+    opened: OpenedProjectWorkspace,
+    isCurrent: () => boolean,
+    blockedReason: () => string | undefined,
+    revalidateEvidence: () => Promise<void>,
+  ): Promise<"adopted" | "cancelled" | "blocked"> {
+    if (!isCurrent()) return Promise.resolve("cancelled");
+    if (blockedReason()) return Promise.resolve("blocked");
+    const originalProjectId = adoptedProjectIdRef.current;
+    return new Promise((resolve, reject) => {
+      const replacement: QueuedProjectReplacement = {
+        fallbackError: "Could not open the linked project.",
+        linkedIntent: isCurrent,
+        cancelled: () => resolve("cancelled"),
+        async perform() {
+          try {
+            const editVersion = projectChangeVersionRef.current;
+            await workspaceSaveTailRef.current.catch(() => undefined);
+            await revalidateLinkedProjectWorkspace(opened);
+            await revalidateEvidence();
+            if (!isCurrent() || adoptedProjectIdRef.current !== originalProjectId) { resolve("cancelled"); return; }
+            if (blockedReason()) { resolve("blocked"); return; }
+            // Edits made while an older save drains need their own decision.
+            if (editVersion !== projectChangeVersionRef.current) {
+              requestProjectReplacement(opened.project.name, replacement);
+              return;
+            }
+            applyProjectDocument(opened.project, opened.handle);
+            resolve("adopted");
+          } catch (error) { reject(error); throw error; }
+        },
+      };
+      requestProjectReplacement(opened.project.name, replacement);
+    });
+  }
+
+  function cancelLinkedProjectReplacement(intent: () => boolean): void {
+    if (queuedProjectReplacementRef.current?.linkedIntent === intent) cancelProjectReplacement();
+  }
+
   async function newProjectFolder(options: ProjectCreationOptions): Promise<void> {
+    if (!projectFile) {
+      try { requireSavableDraft(); }
+      catch (error) { projectFailure(error, "Could not create the project folder."); return; }
+    }
     const project = namedProject(
       projectFile ? createFreshProject() : currentProjectDocument(),
       options,
@@ -674,6 +1089,7 @@ export function useProjectWorkspace(input: {
 
   async function saveProject(options?: ProjectCreationOptions): Promise<void> {
     try {
+      requireSavableDraft();
       const project = currentProjectDocument();
       if (projectWorkspace) {
         const workspace = projectWorkspace;
@@ -688,6 +1104,7 @@ export function useProjectWorkspace(input: {
           autoSaveRetryNotBeforeRef.current = 0;
           setProjectFile(project);
           setProjectDirty(false);
+          setUnsavedDraftReason(undefined);
           setProjectError(undefined);
           updateProjectErrorKind(undefined);
           onSaved?.({ name: project.name, destination: "folder" });
@@ -713,6 +1130,7 @@ export function useProjectWorkspace(input: {
       downloadProjectFile(project);
       setProjectFile(project);
       setProjectDirty(false);
+      setUnsavedDraftReason(undefined);
       setProjectError(undefined);
       onSaved?.({ name: project.name, destination: "download" });
     } catch (error) {
@@ -722,6 +1140,7 @@ export function useProjectWorkspace(input: {
 
   function exportProject(): void {
     try {
+      requireSavableDraft();
       downloadProjectFile(currentProjectDocument());
       setProjectError(undefined);
     } catch (error) {
@@ -750,20 +1169,42 @@ export function useProjectWorkspace(input: {
   return {
     projectFile,
     projectWorkspace,
-    projectDirty,
+    projectDirty: hasUnsavedChanges,
     projectStorageState: projectFile
       ? !projectWorkspace
         ? { kind: "session" }
-        : projectErrorKind === "auto-save"
-          ? { kind: "error", displayPath: projectWorkspace.displayPath }
-          : projectDirty
-            ? { kind: "saving", displayPath: projectWorkspace.displayPath }
-            : { kind: "saved", displayPath: projectWorkspace.displayPath }
+        : tabRole === "secondary"
+          ? { kind: "secondary", displayPath: projectWorkspace.displayPath }
+          : projectErrorKind === "auto-save"
+            ? { kind: "error", displayPath: projectWorkspace.displayPath }
+            : projectDirty
+              ? { kind: "saving", displayPath: projectWorkspace.displayPath }
+              : unsavedDraftReason
+                ? { kind: "unsaved", displayPath: projectWorkspace.displayPath, reason: unsavedDraftReason }
+                : { kind: "saved", displayPath: projectWorkspace.displayPath }
       : undefined,
     projectError,
     projectErrorKind,
     mappedProfileIds,
     pendingProjectReplacement,
+    projectAdoption,
+    ...(projectWorkspace && tabRole !== "acquiring"
+      ? {
+          projectTab: {
+            role: tabRole,
+            behind: tabBehind,
+            lostEdits: tabLostEdits,
+            ...(confirmTakeover ? { confirmTakeover } : {}),
+            switching: tabSwitching,
+          },
+        }
+      : {}),
+    cancelLinkedProjectReplacement,
+    holdsProjectEditorLock: () => tabCoordinatorRef.current?.holdsEditorLock() ?? Promise.resolve(false),
+    adoptLinkedWorkspace,
+    becomeProjectEditor,
+    confirmProjectEditorTakeover,
+    cancelProjectEditorTakeover,
     markDirty,
     setError,
     clearErrorKind,

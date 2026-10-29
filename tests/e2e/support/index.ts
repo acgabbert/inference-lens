@@ -7,7 +7,7 @@
  * every one of them has silently produced a passing test that proved nothing.
  */
 import { expect } from "@playwright/test";
-import type { Locator, Page } from "@playwright/test";
+import type { BrowserContext, Locator, Page } from "@playwright/test";
 
 import { serializeProjectFile } from "../../../packages/core/src/project";
 import type { ProjectFile } from "../../../packages/core/src/project";
@@ -25,6 +25,11 @@ export const BUFFERED_FIXTURE_ENDPOINT = "http://127.0.0.1:44014/v1";
 export const RESPONSES_FIXTURE_ENDPOINT = "http://127.0.0.1:44026/v1";
 /** The Anthropic Messages fixture (`scripts/anthropic-provider.mjs`). */
 export const ANTHROPIC_FIXTURE_ENDPOINT = "http://127.0.0.1:44027/v1";
+/**
+ * The System One capture replay (`scripts/system-one-provider.mjs`). Append a
+ * runtime and `/v1`: `llamacpp`, `ollama`, `ollama-proxied`, or `openrouter`.
+ */
+export const SYSTEM_ONE_FIXTURE_ORIGIN = "http://127.0.0.1:44028";
 
 export interface SeedProfileOptions {
   endpoint?: string;
@@ -44,6 +49,8 @@ export interface SeedProfileOptions {
    * them and the assertion passes against an empty manifest.
    */
   capabilityOverrides?: Record<string, boolean>;
+  /** The device-local System One declaration (D9-B). */
+  systemOne?: true;
 }
 
 export interface SeededProfile extends SeedProfileOptions {
@@ -70,6 +77,7 @@ export async function seedProfiles(
         ...(profile.temperature === undefined ? {} : { temperature: profile.temperature }),
         ...(profile.favoriteModels ? { favoriteModels: profile.favoriteModels } : {}),
         ...(profile.capabilityOverrides ? { capabilityOverrides: profile.capabilityOverrides } : {}),
+        ...(profile.systemOne ? { systemOne: true } : {}),
       })),
       activeProfileId,
     }));
@@ -154,12 +162,17 @@ export async function seedProfile(
  * localStorage, so it cannot be in the server-rendered HTML. Waiting on an
  * element that is server-rendered — the streaming checkbox, say — proves
  * nothing, since it is visible before hydration.
+ *
+ * The timeout is a readiness bound, not an assertion about the app. The first
+ * pages a cold dev server serves compile client code, which takes 2–4 s on an
+ * idle four-core machine and passed the 5 s default under load, failing the
+ * first specs of a run before hydration rather than on anything they test.
  */
 export async function waitForHydration(
   page: Page,
   profileName = "Buffered fixture",
 ): Promise<void> {
-  await expect(page.locator(".topbar")).toContainText(profileName);
+  await expect(page.locator(".topbar")).toContainText(profileName, { timeout: 30_000 });
 }
 
 /**
@@ -216,6 +229,49 @@ export async function openMode(
  * Specs ask for it by mode rather than by label so that a spec reads as "the
  * primary action is refused" rather than restating which button that is.
  */
+/**
+ * Every tool reaches a request through the attached list's one "Attach tool"
+ * menu. With a destination, picks it before returning the open menu; without
+ * one, leaves the default ("This tab only") untouched. Expects the Tools tab
+ * to be open already.
+ */
+export async function openAttachToolMenu(
+  page: Page,
+  destination?: "This tab only" | "Project",
+): Promise<Locator> {
+  await page.getByRole("button", { name: "Attach tool", exact: true }).click();
+  const menu = page.getByRole("group", { name: "Attach a tool" });
+  if (destination) await menu.getByRole("radio", { name: destination }).check();
+  return menu;
+}
+
+/** Adds a blank project tool (attached) and returns its project card. */
+export async function addProjectTool(page: Page): Promise<Locator> {
+  const menu = await openAttachToolMenu(page, "Project");
+  await menu.getByRole("button", { name: "New definition" }).click();
+  return page.locator(".tool-list > .tool-editor").last();
+}
+
+/** The MCP discovery panel is closed until the menu opens it. */
+export async function openMcpServers(
+  page: Page,
+  destination?: "This tab only" | "Project",
+): Promise<Locator> {
+  const menu = await openAttachToolMenu(page, destination);
+  await menu.getByRole("button", { name: "From MCP server…" }).click();
+  return page.getByRole("region", { name: "MCP servers" });
+}
+
+/** Opens the local library, attaching to the menu's destination. */
+export async function openToolLibrary(
+  page: Page,
+  destination?: "This tab only" | "Project",
+): Promise<Locator> {
+  const menu = await openAttachToolMenu(page, destination);
+  await menu.getByRole("button", { name: "From local library…" }).click();
+  return page.getByRole("dialog", { name: "Local tool library" });
+}
+
 export function primaryAction(page: Page, mode: "compose" | "evaluations"): Locator {
   return page.getByRole("button", {
     name: mode === "compose" ? /^Run current conversation/ : /^Start evaluation…/,
@@ -441,4 +497,209 @@ export async function stubProjectDirectory(
       value: async () => root,
     });
   }, fixture);
+}
+
+export interface SharedProjectDirectory {
+  /** Completed writes in commit order, with the page that made each one. */
+  readonly writes: ReadonlyArray<{ page: Page; path: string; contents: string }>;
+  read(path: string): string | undefined;
+}
+
+/**
+ * One directory that every page of a browser context sees, for proving how
+ * tabs coordinate. `stubProjectDirectory` gives each page its own copy, which
+ * cannot show one tab's write reaching another.
+ *
+ * The files live in the test process behind a binding, so `writes` records
+ * which page committed each file. A writable commits on `close`, as the real
+ * API does; an abandoned writable leaves the file unchanged.
+ */
+export async function stubSharedProjectDirectory(
+  context: BrowserContext,
+  fixture: Omit<ProjectDirectoryFixture, "writeError">,
+): Promise<SharedProjectDirectory> {
+  const files = new Map(Object.entries(fixture.files).map(([path, contents]) => [path.split("/").filter(Boolean).join("/"), contents]));
+  const directories = new Set<string>([""]);
+  const parentsOf = (path: string) => {
+    const segments = path.split("/");
+    for (let index = 0; index < segments.length; index += 1) directories.add(segments.slice(0, index).join("/"));
+  };
+  for (const path of files.keys()) parentsOf(path);
+  for (const path of fixture.directories ?? []) parentsOf(`${path.split("/").filter(Boolean).join("/")}/`);
+  const writes: Array<{ page: Page; path: string; contents: string }> = [];
+
+  await context.exposeBinding(
+    "__inferenceLensSharedDirectory",
+    ({ page }, operation: string, path: string, contents?: string) => {
+      switch (operation) {
+        case "kind":
+          return files.has(path) ? "file" : directories.has(path) ? "directory" : null;
+        case "read":
+          return files.get(path) ?? null;
+        case "write":
+          parentsOf(path);
+          files.set(path, contents ?? "");
+          if (contents !== undefined) writes.push({ page, path, contents });
+          return null;
+        case "mkdir":
+          parentsOf(`${path}/`);
+          return null;
+        case "list": {
+          const prefix = path ? `${path}/` : "";
+          const children = new Map<string, "file" | "directory">();
+          for (const candidate of [...files.keys(), ...directories]) {
+            if (!candidate.startsWith(prefix) || candidate === path) continue;
+            const [name, ...rest] = candidate.slice(prefix.length).split("/");
+            if (name) children.set(name, rest.length > 0 || directories.has(prefix + name) ? "directory" : "file");
+          }
+          return [...children].map(([name, kind]) => ({ name, kind }));
+        }
+        case "remove":
+          files.delete(path);
+          for (const candidate of [...files.keys()]) if (candidate.startsWith(`${path}/`)) files.delete(candidate);
+          for (const candidate of [...directories]) if (candidate === path || candidate.startsWith(`${path}/`)) directories.delete(candidate);
+          return null;
+        default:
+          throw new Error(`Unknown shared directory operation ${operation}`);
+      }
+    },
+  );
+
+  await context.addInitScript((name) => {
+    type Call = (operation: string, path: string, contents?: string) => Promise<unknown>;
+    const call = (globalThis as unknown as { __inferenceLensSharedDirectory: Call }).__inferenceLensSharedDirectory;
+    const join = (parent: string, child: string) => (parent ? `${parent}/${child}` : child);
+    const missing = () => new DOMException("Not found", "NotFoundError");
+
+    class SharedFileHandle {
+      readonly kind = "file";
+      constructor(readonly name: string, readonly path: string) {}
+      async getFile() {
+        const contents = await call("read", this.path);
+        if (contents === null) throw missing();
+        return new File([contents as string], this.name, { type: "application/json" });
+      }
+      async createWritable() {
+        let pending = "";
+        return {
+          write: async (value: string) => { pending += value; },
+          close: async () => { await call("write", this.path, pending); },
+        };
+      }
+    }
+    class SharedDirectoryHandle {
+      readonly kind = "directory";
+      constructor(readonly name: string, readonly path: string) {}
+      async queryPermission() { return "granted" as const; }
+      async requestPermission() { return "granted" as const; }
+      async *values() {
+        const children = await call("list", this.path) as Array<{ name: string; kind: string }>;
+        for (const child of children) {
+          const path = join(this.path, child.name);
+          yield child.kind === "file" ? new SharedFileHandle(child.name, path) : new SharedDirectoryHandle(child.name, path);
+        }
+      }
+      async getFileHandle(childName: string, options?: { create?: boolean }) {
+        const path = join(this.path, childName);
+        const kind = await call("kind", path);
+        if (kind === "file") return new SharedFileHandle(childName, path);
+        if (kind === null && options?.create) {
+          await call("write", path);
+          return new SharedFileHandle(childName, path);
+        }
+        throw missing();
+      }
+      async getDirectoryHandle(childName: string, options?: { create?: boolean }) {
+        const path = join(this.path, childName);
+        const kind = await call("kind", path);
+        if (kind === "directory") return new SharedDirectoryHandle(childName, path);
+        if (kind === null && options?.create) {
+          await call("mkdir", path);
+          return new SharedDirectoryHandle(childName, path);
+        }
+        throw missing();
+      }
+      async removeEntry(childName: string) { await call("remove", join(this.path, childName)); }
+    }
+
+    const root = new SharedDirectoryHandle(name, "");
+    Object.defineProperty(window, "showDirectoryPicker", {
+      configurable: true,
+      value: async () => root,
+    });
+  }, fixture.name);
+
+  return { writes, read: (path) => files.get(path) };
+}
+
+// Hold the real browser task boundary so loading/cancellation assertions do not
+// depend on schema cost or machine speed. Checks and the provider remain real.
+export async function holdDerivations(page: Page) {
+  await page.evaluate(() => {
+    const browser = globalThis as typeof globalThis & {
+      scheduler: { yield(): Promise<void> };
+      checkGate?: { hold: boolean; waiting: Array<() => void> };
+    };
+    if (browser.checkGate) { browser.checkGate.hold = true; return; }
+    const gate = { hold: true, waiting: [] as Array<() => void> };
+    browser.checkGate = gate;
+    const original = browser.scheduler.yield.bind(browser.scheduler);
+    browser.scheduler.yield = () => gate.hold
+      ? new Promise<void>((resolve) => gate.waiting.push(resolve))
+      : original();
+  });
+}
+
+export async function releaseDerivations(page: Page) {
+  await page.evaluate(() => {
+    const gate = (globalThis as typeof globalThis & {
+      checkGate?: { hold: boolean; waiting: Array<() => void> };
+    }).checkGate!;
+    gate.hold = false;
+    gate.waiting.splice(0).forEach((resume) => resume());
+  });
+}
+
+/** Real origin-private directory handles, so IndexedDB and reloads use browser
+ * structured cloning. This does not simulate permission prompts for host folders.
+ * The picker sequence is consumed across reloads and tabs through a binding.
+ */
+export async function stubPersistentProjectDirectories(
+  context: BrowserContext,
+  fixtures: ProjectDirectoryFixture[],
+  picks = fixtures.map((_, index) => index),
+): Promise<void> {
+  let next = 0;
+  await context.exposeBinding("__inferenceLensDirectoryPick", () => picks[Math.min(next++, picks.length - 1)]);
+  await context.addInitScript((trees) => {
+    Object.defineProperty(window, "showDirectoryPicker", {
+      configurable: true,
+      value: async () => {
+        const index = await (globalThis as unknown as { __inferenceLensDirectoryPick(): Promise<number> }).__inferenceLensDirectoryPick();
+        const root = await navigator.storage.getDirectory();
+        const selected = trees[index]!;
+        const directory = await root.getDirectoryHandle(selected.name, { create: true });
+        // Seed once; later opens must see actual writes and persisted evidence.
+        try { await directory.getFileHandle(".fixture-seeded"); }
+        catch {
+          for (const [path, contents] of Object.entries(selected.files)) {
+            const segments = path.split("/");
+            const name = segments.pop()!;
+            let parent = directory;
+            for (const segment of segments) parent = await parent.getDirectoryHandle(segment, { create: true });
+            const file = await parent.getFileHandle(name, { create: true });
+            const writable = await file.createWritable();
+            await writable.write(contents);
+            await writable.close();
+          }
+          for (const path of selected.directories ?? []) {
+            let parent = directory;
+            for (const segment of path.split("/")) parent = await parent.getDirectoryHandle(segment, { create: true });
+          }
+          await directory.getFileHandle(".fixture-seeded", { create: true });
+        }
+        return directory;
+      },
+    });
+  }, fixtures);
 }

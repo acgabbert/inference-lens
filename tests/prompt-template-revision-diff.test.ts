@@ -2,9 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { diffPromptTemplateRevisions } from "../packages/core/src/prompt-template-revision-diff.ts";
-import type { PromptTemplateRevision } from "../packages/core/src/project.ts";
+import type { ChatPromptTemplateRevision } from "../packages/core/src/project.ts";
 
-const revision = (overrides: Partial<PromptTemplateRevision> = {}): PromptTemplateRevision => ({
+const revision = (overrides: Partial<ChatPromptTemplateRevision> = {}): ChatPromptTemplateRevision => ({
   id: "template-revision_test-1",
   createdAt: "2026-08-06T12:00:00.000Z",
   messages: [{ role: "user", content: "Ask {{topic}}." }],

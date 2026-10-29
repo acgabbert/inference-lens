@@ -15,6 +15,7 @@ import {
   openMode,
   primaryAction,
 } from "./support";
+import { expectModalContract } from "./support/modal";
 
 const PROJECT_NAME = "Saved prompt preflight fixture";
 
@@ -290,4 +291,13 @@ test("the resolved-input regions stay inside a phone viewport", async ({ page })
     viewportWidth: document.documentElement.clientWidth,
   }));
   expect(layout.bodyWidth).toBeLessThanOrEqual(layout.viewportWidth);
+});
+
+test("the saved-prompt dialog follows the modal contract", async ({ page }) => {
+  await openEvaluations(page, projectWithUnusedPrompt());
+  await page.getByRole("button", { name: "Create evaluation suite" }).click();
+  await expectModalContract(page, {
+    open: page.getByRole("button", { name: "Start from prompt…" }),
+    dialog: page.getByRole("dialog", { name: "Start from prompt" }),
+  });
 });

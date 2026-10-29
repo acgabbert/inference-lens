@@ -1,6 +1,11 @@
 "use client";
 
+import type { DecisionWireProtocol } from "../../packages/core/src/decision.ts";
 import type { ExperimentId, ProviderProtocol, RunId, RunState } from "../../packages/core/src/run-kernel";
+import type {
+  DecisionRunHistorySummary,
+  RunHistorySummary,
+} from "../../packages/core/src/run-history.ts";
 import type { ProjectHistoryEntry } from "../../packages/core/src/experiment-history";
 import type {
   ProjectExperimentHistoryItem,
@@ -77,8 +82,7 @@ function formatDate(value: string): string {
   }).format(new Date(value));
 }
 
-function runMeta(item: ProjectRunHistoryItem): string {
-  const { summary } = item;
+function runMeta(summary: RunHistorySummary): string {
   return [
     formatDuration(summary.durationMs),
     `${formatTokens(summary.usage.totalTokens)} tokens`,
@@ -89,7 +93,19 @@ function runMeta(item: ProjectRunHistoryItem): string {
   ].join(" · ");
 }
 
-function runTarget(model: string, protocol: ProviderProtocol | undefined): string {
+function decisionMeta(summary: DecisionRunHistorySummary): string {
+  return [
+    formatDuration(summary.durationMs),
+    `${summary.attemptCount} ${summary.attemptCount === 1 ? "attempt" : "attempts"}`,
+  ].join(" · ");
+}
+
+const DECISION_EVIDENCE = "Inspect saved decision evidence";
+
+function runTarget(
+  model: string,
+  protocol: ProviderProtocol | DecisionWireProtocol | undefined,
+): string {
   const name = protocolName(protocol);
   return name ? `${model} · ${name}` : model;
 }
@@ -282,7 +298,29 @@ export function RunsEvidenceList({
         {entries.map((entry) => {
           if (entry.kind === "run") {
             const item = entry.item;
-            const selected = selectedRunId === item.summary.runId;
+            const summary = item.summary;
+            if (summary.kind === "decision") return (
+              <button
+                aria-current={selectedRunId === summary.runId ? "true" : undefined}
+                className={itemClass(selectedRunId === summary.runId)}
+                key={item.fileName}
+                title={`${item.fileName} · ${DECISION_EVIDENCE}`}
+                type="button"
+                onClick={() => onSelectRun(item)}
+              >
+                <span className="runs-evidence-item-heading">
+                  <strong className="runs-evidence-excerpt">
+                    Decision · {summary.questionCount} {summary.questionCount === 1 ? "question" : "questions"}
+                  </strong>
+                  <span className={`run-history-status ${summary.status}`}>{summary.status}</span>
+                </span>
+                <span>{runTarget(summary.model, summary.protocol)}</span>
+                <time dateTime={summary.startedAt}>{formatDate(summary.startedAt)}</time>
+                <span>{decisionMeta(summary)}</span>
+                <span className="runs-evidence-storage">Saved to folder</span>
+              </button>
+            );
+            const selected = selectedRunId === summary.runId;
             return (
               <button
                 aria-current={selected ? "true" : undefined}
@@ -293,12 +331,12 @@ export function RunsEvidenceList({
                 onClick={() => onSelectRun(item)}
               >
                 <span className="runs-evidence-item-heading">
-                  <strong className="runs-evidence-excerpt">{item.summary.requestExcerpt ?? item.summary.model}</strong>
-                  <span className={`run-history-status ${item.summary.status}`}>{item.summary.status}</span>
+                  <strong className="runs-evidence-excerpt">{summary.requestExcerpt ?? summary.model}</strong>
+                  <span className={`run-history-status ${summary.status}`}>{summary.status}</span>
                 </span>
-                <span>{runTarget(item.summary.model, item.summary.protocol)}</span>
-                <time dateTime={item.summary.startedAt}>{formatDate(item.summary.startedAt)}</time>
-                <span>{runMeta(item)}</span>
+                <span>{runTarget(summary.model, summary.protocol)}</span>
+                <time dateTime={summary.startedAt}>{formatDate(summary.startedAt)}</time>
+                <span>{runMeta(summary)}</span>
                 <span className="runs-evidence-storage">Saved to folder</span>
               </button>
             );

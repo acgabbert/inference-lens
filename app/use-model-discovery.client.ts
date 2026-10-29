@@ -6,7 +6,7 @@ import type {
   ProviderTurnTransport,
 } from "../packages/contracts/src/index.ts";
 import type { ProviderCapabilities } from "../packages/core/src/types.ts";
-import type { ProviderWireProtocol } from "../packages/core/src/run-kernel/types.ts";
+import type { ConnectionProtocol } from "../packages/core/src/provider-protocols.ts";
 
 export type ModelDiscoveryStatus = "idle" | "loading" | "loaded" | "failed";
 
@@ -14,6 +14,8 @@ export type ModelDiscoveryState = {
   profileKey: string;
   status: ModelDiscoveryStatus;
   models: string[];
+  /** A decision listing in which nothing marked decision models apart (D10). */
+  unfiltered?: true;
   error?: string;
 };
 
@@ -38,8 +40,11 @@ export type ModelDiscoveryInput = {
   endpoint: string;
   /** Resolved by the caller; discovery is refused when unsupported. */
   capabilities: ProviderCapabilities;
-  /** Decides how the credential is presented to the listing. */
-  protocol: ProviderWireProtocol;
+  /**
+   * Decides how the credential is presented to the listing; `systemone` asks
+   * for decision models (D10, D19).
+   */
+  protocol: ConnectionProtocol;
   transport: ProviderTurnTransport;
   prepareCredential: () => Promise<CredentialSelection>;
 };
@@ -61,7 +66,7 @@ export function useModelDiscovery(
   const { profileId, endpoint, capabilities, protocol, transport, prepareCredential } =
     input;
   const [discovery, setDiscovery] = useState<ModelDiscoveryState | null>(null);
-  const cacheRef = useRef(new Map<string, string[]>());
+  const cacheRef = useRef(new Map<string, { models: string[]; unfiltered?: true }>());
   const requestRef = useRef(0);
   // The protocol joins the key because it changes the credential header: a
   // listing refused under one protocol may succeed under another.
@@ -78,9 +83,9 @@ export function useModelDiscovery(
       });
       return;
     }
-    const cachedModels = cacheRef.current.get(profileKey);
-    if (cachedModels && !force) {
-      setDiscovery({ profileKey, status: "loaded", models: cachedModels });
+    const cached = cacheRef.current.get(profileKey);
+    if (cached && !force) {
+      setDiscovery({ profileKey, status: "loaded", ...cached });
       return;
     }
 
@@ -88,15 +93,16 @@ export function useModelDiscovery(
     setDiscovery({ profileKey, status: "loading", models: [] });
     try {
       const credential = await prepareCredential();
-      const { models } = await transport.discoverModels({
+      const { models, unfiltered } = await transport.discoverModels({
         endpoint,
         protocol,
         capabilities,
         credential,
       });
-      cacheRef.current.set(profileKey, models);
+      const listing = { models, ...(unfiltered ? { unfiltered } : {}) };
+      cacheRef.current.set(profileKey, listing);
       if (requestId === requestRef.current) {
-        setDiscovery({ profileKey, status: "loaded", models });
+        setDiscovery({ profileKey, status: "loaded", ...listing });
       }
     } catch (error) {
       if (requestId === requestRef.current) {

@@ -1,4 +1,5 @@
-import type { EvaluationCase, EvaluationSuite } from "./evaluation-suites.ts";
+import type { ChatEvaluationSuite, EvaluationCase } from "./evaluation-suites.ts";
+import { isChatEvaluationSuite } from "./evaluation-suites.ts";
 import { parseProjectFile, ProjectValidationError } from "./project.ts";
 import type { ProjectFile } from "./project.ts";
 import { randomUUID } from "./random-id.ts";
@@ -26,7 +27,7 @@ export type EvaluationCasePromotionCompatibility =
  * use occurrence and the variable that supplied each value.
  */
 export function evaluationCasePromotionCompatibility(
-  suite: Pick<EvaluationSuite, "input" | "inputBindings">,
+  suite: Pick<ChatEvaluationSuite, "input" | "inputBindings">,
   trace: Pick<RunTrace, "input">,
 ): EvaluationCasePromotionCompatibility {
   if (suite.input.conversationRevisionId !== trace.input.conversationRevisionId) {
@@ -91,6 +92,8 @@ export function promoteTraceToEvaluationCase(
 ): { project: ProjectFile; caseId: EvaluationCaseId; values: EvaluationCase["values"] } {
   const suite = project.evaluationSuites.find(({ id }) => id === suiteId);
   if (!suite) throw new ProjectValidationError([{ code: "custom", path: ["evaluationSuites", suiteId], message: "The selected evaluation suite no longer exists." }]);
+  // Promoting a decision trace waits for later (D51).
+  if (!isChatEvaluationSuite(suite)) throw new ProjectValidationError([{ code: "custom", path: ["evaluationSuites", suiteId], message: "Only chat traces can be promoted, and only into a chat suite." }]);
   const compatible = evaluationCasePromotionCompatibility(suite, trace);
   if (!compatible.ok) {
     throw new ProjectValidationError([{ code: "custom", path: ["evaluationSuites", suiteId], message: "This trace is not compatible with the selected evaluation suite." }]);

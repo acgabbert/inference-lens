@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { constants as fsConstants } from "node:fs";
-import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 export const RAW_CAPTURE_SCHEMA_VERSION = 1;
@@ -13,6 +13,17 @@ export const PROVIDER_CAPTURE_FILES = [
   "provider-request-continuation.json",
   "provider-response-final.json",
 ];
+
+export const TERMINAL_PROVIDER_CAPTURE_FILES = [
+  "provider-request-initial.json",
+  "provider-response-final.json",
+];
+
+function providerCaptureFiles(kind = "ordinary") {
+  if (kind === "ordinary") return PROVIDER_CAPTURE_FILES;
+  if (kind === "terminal") return TERMINAL_PROVIDER_CAPTURE_FILES;
+  throw new N8nContractError("Provider capture kind must be ordinary or terminal.");
+}
 
 export class N8nContractError extends Error {
   constructor(message, options) {
@@ -223,7 +234,9 @@ export async function captureN8nContract({
   capturedAt = new Date().toISOString(),
   responseLimitBytes = DEFAULT_RESPONSE_LIMIT_BYTES,
   providerCaptureDirectory,
+  providerCaptureKind = "ordinary",
 }) {
+  const expectedProviderFiles = providerCaptureFiles(providerCaptureKind);
   validateOpaqueId(workflowId, "workflow ID");
   if (subworkflowId !== undefined) {
     validateOpaqueId(subworkflowId, "sub-workflow ID");
@@ -289,7 +302,14 @@ export async function captureN8nContract({
     const providerFiles = [];
     if (providerCaptureDirectory !== undefined) {
       const providerRoot = path.resolve(providerCaptureDirectory);
-      for (const filename of PROVIDER_CAPTURE_FILES) {
+      if (providerCaptureKind === "terminal") {
+        const filenames = await readdir(providerRoot);
+        if (PROVIDER_CAPTURE_FILES.some((name) =>
+          !expectedProviderFiles.includes(name) && filenames.includes(name))) {
+          throw new N8nContractError("Terminal capture contains ordinary continuation artifacts.");
+        }
+      }
+      for (const filename of expectedProviderFiles) {
         const source = path.join(providerRoot, filename);
         JSON.parse(await readFile(source, "utf8"));
         await copyFile(
@@ -304,6 +324,8 @@ export async function captureN8nContract({
     await writeJson(path.join(captureDirectory, "capture-manifest.json"), {
       rawCaptureSchemaVersion: RAW_CAPTURE_SCHEMA_VERSION,
       capturedAt,
+      ...(providerFiles.length === 0 || providerCaptureKind === "ordinary"
+        ? {} : { providerCaptureKind }),
       workflowId,
       ...(subworkflowId === undefined ? {} : { subworkflowId }),
       executionIds,
@@ -609,11 +631,12 @@ export async function redactN8nCapture({
   if (!Array.isArray(providerFilenames)) {
     throw new N8nContractError("Provider capture file list must be an array.");
   }
+  const expectedProviderFiles = providerCaptureFiles(rawManifest.providerCaptureKind);
   if (
     providerFilenames.length !== 0 &&
-    (providerFilenames.length !== PROVIDER_CAPTURE_FILES.length ||
+    (providerFilenames.length !== expectedProviderFiles.length ||
       providerFilenames.some(
-        (filename, index) => filename !== PROVIDER_CAPTURE_FILES[index],
+        (filename, index) => filename !== expectedProviderFiles[index],
       ))
   ) {
     throw new N8nContractError("Provider capture file list is not supported.");

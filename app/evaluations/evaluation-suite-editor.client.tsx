@@ -1,34 +1,28 @@
 "use client";
 
 import { useState } from "react";
-import { CHECK_KINDS } from "../../packages/core/src/checks";
-import type { CheckDefinition, CheckKind, ToolCallCountComparator } from "../../packages/core/src/checks";
+import { StructuredCheckEditor } from "./structured-check-editor.client";
+import { CHECK_KINDS, DECISION_CHECK_KINDS, SHARED_CHECK_KINDS, isDecisionCheckKind } from "../../packages/core/src/checks";
+import type { CheckDefinition, CheckKind, DecisionBoundComparator, DecisionCheckDefinition, DecisionScoreRangeCheck, ToolCallCountComparator } from "../../packages/core/src/checks";
+import type { DecisionInput } from "../../packages/core/src/decision";
+import { resolveProjectDecisionRequestRevision } from "../../packages/core/src/decision-request";
 import type { JsonObject } from "../../packages/core/src/run-kernel";
-import type { EvaluationCase } from "../../packages/core/src/project";
+import type { EvaluationCase, EvaluationInputBinding } from "../../packages/core/src/project";
+import { decisionCheckQuestionTypes, decisionOptions, isChatEvaluationSuite, isDecisionEvaluationSuite } from "../../packages/core/src/evaluation-suites";
 import type { EvaluationCaseSource } from "../../packages/core/src/evaluation-case-sources";
-import { resolveEvaluationVariant } from "../../packages/core/src/evaluation-suites";
-import type { EvaluationInputBinding, EvaluationVariant } from "../../packages/core/src/evaluation-suites";
-import type { ConversationRevisionDescriptor } from "../../packages/core/src/conversation-revision-description";
-import type { InferenceOptions, ProviderProtocol, ProviderWireProtocol } from "../../packages/core/src/run-kernel";
-import { PROVIDER_WIRE_PROTOCOLS } from "../../packages/core/src/run-kernel/types";
-import { protocolLabel } from "../../packages/core/src/provider-protocols";
-import {
-  DEFAULT_EXPERIMENT_TURN_CEILING,
-  MAX_EXPERIMENT_TURN_CEILING,
-  MIN_EXPERIMENT_TURN_CEILING,
-} from "../../packages/core/src/experiment";
-import { InferenceSettingsPanel } from "../inference-settings-panel.client";
+import type { InferenceOptions, ProviderProtocol } from "../../packages/core/src/run-kernel";
+import { DEFAULT_EXPERIMENT_TURN_CEILING } from "../../packages/core/src/experiment";
 import { DisclosureChevron } from "../disclosure-chevron.client";
 import { EditableTitle } from "../editable-title.client";
-import { experimentToolBindingLabel } from "../run/experiment-tool-bindings.client";
 import type { ExperimentToolBinding } from "../../packages/core/src/tool-binding-resolution";
 import { PaneEmptyState } from "../pane-empty-state.client";
-import { groupRevisionChoices, revisionChoice } from "./revision-choice.client";
 import { SavedPromptDialog } from "./saved-prompt-dialog.client";
 import type { EvaluationSuiteAuthoringHandle } from "./use-evaluation-suite-authoring.client";
 import type { EvaluationCheckAuthoringField } from "./use-evaluation-suite-authoring.client";
 import { evaluationBatchGuardrail } from "./evaluation-batch.client";
-import { MAX_EVALUATION_REPETITIONS } from "../../packages/runner/src/evaluation-batch-limits";
+import { availableBindingCandidates, ChatSuiteSetup, chatSuiteSetupFacts, evaluationInputLabel } from "./chat-suite-setup.client";
+import { DecisionSuiteSetup, decisionSuiteSetupFacts } from "./decision-suite-setup.client";
+import type { DecisionSuiteSettingsHandle } from "./use-decision-suite-settings.client";
 import {
   EvaluationSuiteHistory,
   type EvaluationSuiteHistoryHandle,
@@ -48,6 +42,7 @@ const checkKindLabels: Record<CheckKind, string> = {
   contains: "Contains text",
   regex: "Regex",
   "valid-json": "Valid JSON",
+  "json-schema": "JSON Schema",
   "max-output-characters": "Maximum characters",
   "max-duration-ms": "Maximum duration",
   "max-total-tokens": "Maximum tokens",
@@ -55,242 +50,121 @@ const checkKindLabels: Record<CheckKind, string> = {
   "did-not-call-tool": "Did not call tool",
   "tool-call-count": "Tool call count",
   "tool-call-arguments": "Tool call arguments",
+  "decision-choice": "Choice is",
+  "decision-option-probability": "Option probability",
+  "decision-score-range": "Score range",
+  "decision-noul": "Noul probability",
+  "decision-confidence": "Confidence",
 };
 
-// Ordered by the vocabulary itself, so a new kind cannot be offered without a
-// label or silently left out of the picker.
 const checkKinds = CHECK_KINDS.map((kind) => ({ kind, label: checkKindLabels[kind] }));
+// Each suite is offered only the kinds that read its run kind (D34, D51);
+// the project refuses the others anyway.
+const offeredCheckKinds = {
+  chat: checkKinds.filter(({ kind }) => !isDecisionCheckKind(kind)),
+  decision: checkKinds.filter(({ kind }) =>
+    (DECISION_CHECK_KINDS as readonly CheckKind[]).includes(kind) || (SHARED_CHECK_KINDS as readonly CheckKind[]).includes(kind)),
+};
 
-function evaluationInputLabel(
-  project: NonNullable<EvaluationSuiteAuthoringHandle["project"]>,
-  revisionId: EvaluationSuiteAuthoringHandle["revisionId"],
-  binding: EvaluationInputBinding,
-): { templateName: string; variableName: string; label: string } {
-  const revision = project.conversationRevisions.find(({ id }) => id === revisionId);
-  const templateUse = revision?.items.find((item) =>
-    item.kind === "template-use" && item.use.id === binding.target.templateUseId
-  );
-  const templateName = templateUse?.kind === "template-use"
-    ? project.promptTemplates.find(({ id }) => id === templateUse.use.templateId)?.name ?? "Prompt"
-    : "Prompt";
-  return {
-    templateName,
-    variableName: binding.target.variableName,
-    label: `${templateName} · ${binding.target.variableName}`,
-  };
+/** An empty bound is absent, not zero. */
+function withBound(check: DecisionScoreRangeCheck, field: "min" | "max", value: number | undefined): DecisionScoreRangeCheck {
+  const next = { ...check };
+  if (value === undefined) delete next[field];
+  else next[field] = value;
+  return next;
 }
 
-function revisionOption(descriptor: ConversationRevisionDescriptor) {
-  const choice = revisionChoice(descriptor);
-  return (
-    <option
-      key={descriptor.revisionId}
-      title={`${descriptor.revisionId} · ${descriptor.messageCount} ${descriptor.messageCount === 1 ? "message" : "messages"}`}
-      value={descriptor.revisionId}
-    >
-      {choice.label}
-    </option>
-  );
+function numberOrUndefined(text: string): number | undefined {
+  if (text.trim() === "") return undefined;
+  const value = Number(text);
+  return Number.isFinite(value) ? value : undefined;
 }
 
 /**
- * Every protocol, not only what some local profile has enabled: a suite is
- * portable, and whether this device can serve its choice is the start gate's
- * question, answered per configuration against the profile it maps to.
+ * The question and option fields of a decision check (D51), listing only the
+ * pinned revision's questions of a type the kind reads and that question's
+ * options. A value the revision no longer has stays selected and labelled as
+ * missing, so preflight's message has something on screen to point at.
  */
-function ProtocolOptions() {
-  return <>{PROVIDER_WIRE_PROTOCOLS.map((protocol) => <option key={protocol} value={protocol}>{protocolLabel(protocol)}</option>)}</>;
-}
-
-function hasVariantOverride(overrides: EvaluationVariant["overrides"]): boolean {
-  return (
-    overrides.target?.connectionRequirementId !== undefined ||
-    overrides.target?.model !== undefined ||
-    overrides.target?.protocol !== undefined ||
-    overrides.responseMode !== undefined ||
-    Object.keys(overrides.options ?? {}).length > 0
-  );
-}
-
-function configurationsSummary(variants: readonly EvaluationVariant[]): string {
-  if (variants.length === 1) {
-    const only = variants[0]!;
-    return `1 configuration (${only.name}${hasVariantOverride(only.overrides) ? "" : ", inherits everything"})`;
-  }
-  return `${variants.length} configurations: ${variants.map(({ name }) => name).join(", ")}`;
-}
-
-/**
- * Collapsed unless there is more than one configuration or any of them
- * overrides the suite's shared execution — the one case where the concept
- * can stay out of the way of a first suite's setup.
- */
-function ConfigurationsSection({
-  suite,
-  project,
-  authoring,
-  preview,
-}: {
-  suite: NonNullable<EvaluationSuiteAuthoringHandle["project"]>["evaluationSuites"][number];
-  project: NonNullable<EvaluationSuiteAuthoringHandle["project"]>;
-  authoring: EvaluationSuiteAuthoringHandle;
-  preview?: EvaluationSuiteExecutionActions["preview"];
+function DecisionCheckFields({ check, questions, onCommit, error }: {
+  check: DecisionCheckDefinition;
+  questions?: DecisionInput["questions"];
+  onCommit(check: CheckDefinition, field: EvaluationCheckAuthoringField): boolean;
+  error?: { field: EvaluationCheckAuthoringField; message: string };
 }) {
-  const [open, setOpen] = useState(
-    suite.variants.length > 1 || suite.variants.some(({ overrides }) => hasVariantOverride(overrides)),
+  const types = decisionCheckQuestionTypes[check.kind];
+  const eligible = Object.entries(questions ?? {}).filter(([, question]) => types.includes(question.type));
+  const question = questions && Object.hasOwn(questions, check.questionId) ? questions[check.questionId] : undefined;
+  const options = question ? decisionOptions(question) : [];
+  const optionLabel = (option: string) => question?.type === "score"
+    ? `${option} · ${String(question.criteria[Number(option)] ?? "")}`
+    : option;
+  const bound = (field: "value" | "min" | "max" | "at-least", label: string, value: number | undefined, apply: (next: number | undefined) => CheckDefinition) => (
+    <label>{label}
+      <input key={`${check.checkId}:${field}:${value}`} type="number" step="0.05" defaultValue={value ?? ""} onBlur={(event) => {
+        const next = numberOrUndefined(event.target.value);
+        if (next === value) return;
+        if (!onCommit(apply(next), field)) event.currentTarget.value = value === undefined ? "" : String(value);
+      }} />
+    </label>
+  );
+  const comparator = (current: DecisionBoundComparator, apply: (next: DecisionBoundComparator) => CheckDefinition) => (
+    <label>Comparator <select value={current} onChange={(event) => onCommit(apply(event.target.value as DecisionBoundComparator), "comparator")}>
+      <option value="at-least">At least</option><option value="at-most">At most</option>
+    </select></label>
   );
   return (
-    <section className="evaluation-configurations" aria-label="Configurations">
-      <div className="evaluation-section-heading">
-        <button
-          aria-expanded={open}
-          className="evaluation-section-toggle"
-          type="button"
-          onClick={() => setOpen(!open)}
-        >
-          <DisclosureChevron className="evaluation-section-chevron" />
-          <span className="eyebrow">Configurations</span>
-          <span className="evaluation-section-facts">{configurationsSummary(suite.variants)}</span>
-        </button>
-        {/* Opens the disclosure along with adding the row: a row an author
-            just asked for is never left hidden behind the summary they were
-            trying to get past. */}
-        <button className="button secondary" type="button" onClick={() => { authoring.addVariant(); setOpen(true); }}>+ Add configuration</button>
-      </div>
-      {open && <>
-        {suite.variants.map((variant, index) => <ConfigurationRow key={variant.id} variant={variant} suite={suite} project={project} authoring={authoring} index={index} />)}
-        {preview && <ul className="evaluation-configuration-targets" aria-label="Resolved local configuration targets">
-          {preview.targets.map((target) => <li key={target.variantId}>
-            <strong>{target.variantName}</strong>: {target.targetName
-              ? <>{target.targetName} · <code>{target.endpoint}</code> · {target.model} · {target.responseMode}</>
-              : <>Map {target.requirementName} to a local profile</>}
-          </li>)}
-        </ul>}
-      </>}
-    </section>
-  );
-}
-
-/**
- * Collapsed unless the suite already exposes a tool — an evaluation that
- * exists to test tool use should not have to open a disclosure to see that
- * about itself.
- */
-function ToolsSection({
-  project,
-  authoring,
-  exposedToolIds,
-  turnCeiling,
-  toolBindings,
-}: {
-  project: NonNullable<EvaluationSuiteAuthoringHandle["project"]>;
-  authoring: EvaluationSuiteAuthoringHandle;
-  exposedToolIds: readonly string[];
-  turnCeiling: number;
-  toolBindings?: EvaluationSuiteExecutionActions["toolBindings"];
-}) {
-  const [open, setOpen] = useState(exposedToolIds.length > 0);
-  return (
-    <div className="evaluation-tools">
-      <button
-        aria-expanded={open}
-        className="evaluation-section-toggle"
-        type="button"
-        onClick={() => setOpen(!open)}
-      >
-        <DisclosureChevron className="evaluation-section-chevron" />
-        <strong>Tools</strong>
-        <span className="evaluation-section-facts">{exposedToolIds.length === 0 ? "None exposed" : `${exposedToolIds.length} exposed`}</span>
-      </button>
-      {open && <>
-        {project.tools.length === 0
-          ? <small>This project defines no tools. Add one in the request composer’s Tools pane to expose it here.</small>
-          : <ul className="evaluation-tool-list">
-              {project.tools.map((tool) => {
-                const exposed = exposedToolIds.includes(tool.id);
-                const entry = toolBindings?.find(({ tool: candidate }) => candidate.id === tool.id);
-                return (
-                  <li key={tool.id} className={exposed && entry && !entry.binding ? "evaluation-tool-unbound" : undefined}>
-                    <label>
-                      <input
-                        type="checkbox"
-                        checked={exposed}
-                        onChange={(event) => authoring.setToolExposed(tool.id, event.target.checked)}
-                      />
-                      <code>{tool.name}</code>
-                    </label>
-                    {exposed && entry && <span> → {experimentToolBindingLabel(entry)}</span>}
-                  </li>
-                );
-              })}
-            </ul>}
-        {exposedToolIds.length > 0 && (
-          <label className="inference-settings-count">Turn ceiling
-            <input
-              type="number"
-              min={MIN_EXPERIMENT_TURN_CEILING}
-              max={MAX_EXPERIMENT_TURN_CEILING}
-              step="1"
-              value={turnCeiling}
-              onChange={(event) => authoring.setTurnCeiling(Number(event.target.value))}
-            />
+    <>
+      <div className="evaluation-check-options">
+        <label>Question
+          <select aria-label="Decision question" value={check.questionId} onChange={(event) => {
+            // A new question invalidates the old option: it named the previous question's criteria.
+            const next = "option" in check ? { ...check, questionId: event.target.value, option: "" } : { ...check, questionId: event.target.value };
+            onCommit(next as CheckDefinition, "question");
+          }}>
+            {check.questionId === "" && <option value="">Choose a question</option>}
+            {check.questionId !== "" && !eligible.some(([id]) => id === check.questionId) && <option value={check.questionId}>{check.questionId} (not in this revision)</option>}
+            {eligible.map(([id, candidate]) => <option key={id} value={id}>{id} · {candidate.type}</option>)}
+          </select>
+        </label>
+        {"option" in check && (
+          <label>{question?.type === "score" ? "Level" : "Option"}
+            <select aria-label="Decision option" value={check.option} onChange={(event) => onCommit({ ...check, option: event.target.value }, "option")}>
+              {check.option === "" && <option value="">Choose {question?.type === "score" ? "a level" : "an option"}</option>}
+              {check.option !== "" && !options.includes(check.option) && <option value={check.option}>{check.option} (not offered)</option>}
+              {options.map((option) => <option key={option} value={option}>{optionLabel(option)}</option>)}
+            </select>
           </label>
         )}
-        {exposedToolIds.length > 0 && <small>Each repetition answers its own tool calls and is failed if it reaches {turnCeiling} provider turns with calls outstanding.</small>}
-      </>}
-    </div>
+        {check.kind === "decision-choice" && (
+          <label><input type="checkbox" checked={check.negate ?? false} onChange={(event) => onCommit({ ...check, negate: event.target.checked }, "negate")} /> Negate</label>
+        )}
+      </div>
+      <div className="evaluation-check-options">
+        {check.kind === "decision-option-probability" && <>
+          {comparator(check.comparator, (next) => ({ ...check, comparator: next }))}
+          {bound("value", "Probability", check.value, (next) => ({ ...check, value: next ?? 0 }))}
+        </>}
+        {check.kind === "decision-noul" && <>
+          {comparator(check.comparator, (next) => ({ ...check, comparator: next }))}
+          {bound("value", "P(true)", check.value, (next) => ({ ...check, value: next ?? 0 }))}
+        </>}
+        {check.kind === "decision-score-range" && <>
+          {bound("min", "Minimum score", check.min, (next) => withBound(check, "min", next))}
+          {bound("max", "Maximum score", check.max, (next) => withBound(check, "max", next))}
+        </>}
+        {check.kind === "decision-confidence" && bound("at-least", "At least", check.atLeast, (next) => ({ ...check, atLeast: next ?? 0 }))}
+      </div>
+      {error && (["question", "option", "value", "min", "max", "at-least", "comparator", "negate"] as EvaluationCheckAuthoringField[]).includes(error.field) && <p className="evaluation-field-error" role="alert">{error.message}</p>}
+    </>
   );
 }
 
-function ConfigurationRow({
-  variant,
-  suite,
-  project,
-  authoring,
-  index,
-}: {
-  variant: EvaluationVariant;
-  suite: NonNullable<EvaluationSuiteAuthoringHandle["project"]>["evaluationSuites"][number];
-  project: NonNullable<EvaluationSuiteAuthoringHandle["project"]>;
-  authoring: EvaluationSuiteAuthoringHandle;
-  index: number;
-}) {
-  const effective = resolveEvaluationVariant(suite, variant);
-  const inherited = (field: "connection" | "model" | "protocol" | "delivery" | "temperature") => field === "connection"
-    ? variant.overrides.target?.connectionRequirementId === undefined
-    : field === "model"
-      ? variant.overrides.target?.model === undefined
-      : field === "protocol"
-        ? variant.overrides.target?.protocol === undefined
-      : field === "delivery"
-        ? variant.overrides.responseMode === undefined
-        : variant.overrides.options?.temperature === undefined;
-  const update = (patch: EvaluationVariant["overrides"]) => authoring.updateVariant(variant.id, { name: variant.name, overrides: patch });
-  return <article className="evaluation-configuration-card" aria-label={`Configuration ${variant.name}`}>
-    <div className="evaluation-check-heading"><strong>Configuration {index + 1}</strong><div>
-      <label title={`Include ${variant.name} in this evaluation`}><input aria-label={`Include configuration ${variant.name}`} type="checkbox" checked={authoring.selectedVariantIds.has(variant.id)} onChange={(event) => authoring.setVariantSelected(variant.id, event.target.checked)} /> Include</label>
-      {index > 0 && <button className="text-button" type="button" onClick={() => authoring.moveVariant(variant.id, index - 1)}>Move up</button>}
-      {index < suite.variants.length - 1 && <button className="text-button" type="button" onClick={() => authoring.moveVariant(variant.id, index + 1)}>Move down</button>}
-      <button className="remove-button" type="button" onClick={() => authoring.deleteVariant(variant.id)}>Delete</button>
-    </div></div>
-    <label>Name <input aria-label={`Configuration name ${index + 1}`} value={variant.name} onChange={(event) => authoring.updateVariant(variant.id, { name: event.target.value, overrides: variant.overrides })} /></label>
-    <div className="evaluation-settings-grid">
-      <label>Connection <select aria-label={`Configuration connection ${variant.name}`} value={effective.target.connectionRequirementId} onChange={(event) => update({ ...variant.overrides, target: { ...variant.overrides.target, connectionRequirementId: event.target.value as typeof effective.target.connectionRequirementId } })}>{project.connectionRequirements.map(({ id, name }) => <option key={id} value={id}>{name}</option>)}</select><small>{inherited("connection") ? "Inherits suite connection" : "Overrides suite connection"}</small></label>
-      <label>Model <input aria-label={`Configuration model ${variant.name}`} value={effective.target.model} onChange={(event) => update({ ...variant.overrides, target: { ...variant.overrides.target, model: event.target.value } })} /><small>{inherited("model") ? "Inherits suite model" : "Overrides suite model"}</small></label>
-      <label>Protocol <select aria-label={`Configuration protocol ${variant.name}`} value={effective.target.protocol} onChange={(event) => update({ ...variant.overrides, target: { ...variant.overrides.target, protocol: event.target.value as ProviderWireProtocol } })}><ProtocolOptions /></select><small>{inherited("protocol") ? "Inherits suite protocol" : "Overrides suite protocol"}</small></label>
-      <label>Delivery <select aria-label={`Configuration delivery ${variant.name}`} value={effective.responseMode} onChange={(event) => update({ ...variant.overrides, responseMode: event.target.value as typeof effective.responseMode })}><option value="buffered">Buffered</option><option value="streaming">Streaming</option></select><small>{inherited("delivery") ? "Inherits suite delivery" : "Overrides suite delivery"}</small></label>
-      <label>Temperature <input aria-label={`Configuration temperature ${variant.name}`} type="number" step="0.1" value={effective.options.temperature ?? ""} onChange={(event) => update({ ...variant.overrides, options: { ...variant.overrides.options, temperature: event.target.value === "" ? null : Number(event.target.value) } })} /><small>{inherited("temperature") ? "Inherits suite option" : variant.overrides.options?.temperature === null ? "Uses provider default" : "Overrides suite option"}</small></label>
-    </div>
-    {/* The per-field captions above already say what is inherited versus
-        overridden; this line only earns its place once an override exists,
-        because before that it restates the captions in one denser sentence. */}
-    {hasVariantOverride(variant.overrides) && <p className="evaluation-portable-warning">Effective: {project.connectionRequirements.find(({ id }) => id === effective.target.connectionRequirementId)?.name ?? effective.target.connectionRequirementId} · {effective.target.model} · {protocolLabel(effective.target.protocol)} · {effective.responseMode} · temperature {effective.options.temperature ?? "provider default"} · max output {effective.options.maxOutputTokens ?? "provider default"} · seed {effective.options.seed ?? "provider default"} · stop {effective.options.stop?.join(", ") || "provider default"} · provider options {effective.options.providerOptions ? "set" : "provider default"}</p>}
-  </article>;
-}
-
-function CheckEditor({ check, error, onCommit, onRemove }: {
+function CheckEditor({ check, error, questions, onCommit, onRemove }: {
   check: CheckDefinition;
   error?: { field: EvaluationCheckAuthoringField; message: string };
+  /** The pinned revision's questions, for a decision suite's checks. */
+  questions?: DecisionInput["questions"];
   onCommit(check: CheckDefinition, field: EvaluationCheckAuthoringField): boolean;
   onRemove(): void;
 }) {
@@ -350,6 +224,7 @@ function CheckEditor({ check, error, onCommit, onRemove }: {
           <label><input type="checkbox" defaultChecked={check.negate ?? false} onChange={(event) => { if (!onCommit({ ...check, negate: event.target.checked }, "negate")) event.currentTarget.checked = check.negate ?? false; }} /> Negate</label>
         </div>
       )}
+      {(check.kind === "valid-json" || check.kind === "json-schema") && <StructuredCheckEditor check={check} onCommit={(next) => onCommit(next, "structured-check")} />}
       {(error?.field === "top-level" || (check.kind === "valid-json" && error?.field === "negate")) && <p className="evaluation-field-error" role="alert">{error.message}</p>}
       {(check.kind === "max-output-characters" || check.kind === "max-duration-ms" || check.kind === "max-total-tokens") && (
         <label>Limit <input type="number" min="0" step="1" defaultValue={check.limit} onBlur={(event) => { if (!onCommit({ ...check, limit: Math.max(0, Math.floor(Number(event.target.value) || 0)) }, "limit")) event.currentTarget.value = String(check.limit); }} /></label>
@@ -390,6 +265,7 @@ function CheckEditor({ check, error, onCommit, onRemove }: {
         </label>
       )}
       {error?.field === "arguments-subset" && <p className="evaluation-field-error" role="alert">{error.message}</p>}
+      {isDecisionCheckKind(check.kind) && <DecisionCheckFields check={check as DecisionCheckDefinition} {...(questions ? { questions } : {})} onCommit={onCommit} {...(error ? { error } : {})} />}
     </article>
   );
 }
@@ -400,14 +276,19 @@ function CaseEditor({ evaluationCase, authoring, source, onOpenSourceTrace }: {
   source?: EvaluationCaseSource;
   onOpenSourceTrace?(source: EvaluationCaseSource): void;
 }) {
-  const [newKind, setNewKind] = useState<CheckKind>("contains");
+  const project = authoring.project;
+  const suite = project?.evaluationSuites.find(({ id }) => id === authoring.suiteId);
+  const decisionSuite = suite && isDecisionEvaluationSuite(suite) ? suite : undefined;
+  const kinds = offeredCheckKinds[decisionSuite ? "decision" : "chat"];
+  const questions = decisionSuite && project
+    ? resolveProjectDecisionRequestRevision(project, decisionSuite.input.decisionRequestRevisionId)?.decision.questions
+    : undefined;
+  const [newKind, setNewKind] = useState<CheckKind>(kinds[0]!.kind);
   // Seeded from the case rather than driven by it: a controlled `open` would
   // snap the disclosure shut under the author whenever an unrelated edit
   // re-rendered. The editor is keyed by case id, so focusing another case
   // remounts and re-seeds this.
   const [referenceOpen, setReferenceOpen] = useState(Boolean(evaluationCase.referenceAnswer));
-  const project = authoring.project;
-  const suite = project?.evaluationSuites.find(({ id }) => id === authoring.suiteId);
   const checkError = authoring.error?.target.kind === "check" && authoring.error.target.caseId === evaluationCase.id
     ? authoring.error
     : undefined;
@@ -421,11 +302,19 @@ function CaseEditor({ evaluationCase, authoring, source, onOpenSourceTrace }: {
       {source && onOpenSourceTrace && <button className="text-button" type="button" onClick={() => onOpenSourceTrace(source)}>Open source trace</button>}
       {suite && suite.inputBindings.length > 0 && (
         <div className="evaluation-case-values">
-          <div><span className="eyebrow">Case inputs</span><p>Values inserted into this case’s prompt variables.</p></div>
+          <div><span className="eyebrow">Case inputs</span><p>{decisionSuite ? "Values inserted into this case’s request variables." : "Values inserted into this case’s prompt variables."}</p></div>
           {suite.inputBindings.map((binding) => {
-            const input = evaluationInputLabel(project!, authoring.revisionId, binding);
+            const input = binding.target.kind === "template-variable"
+              ? evaluationInputLabel(project!, authoring.revisionId, binding as EvaluationInputBinding)
+              : { variableName: binding.target.variableName, label: binding.target.variableName };
             return <label key={binding.id}>{input.label}
-              <textarea aria-label={`${evaluationCase.name} ${input.variableName}`} rows={3} value={evaluationCase.values[binding.id] ?? ""} onChange={(event) => authoring.updateCase(evaluationCase.id, { values: { ...evaluationCase.values, [binding.id]: event.target.value } })} />
+              <textarea aria-label={`${evaluationCase.name} ${input.variableName}`} rows={3} value={evaluationCase.values[binding.id] ?? ""} onChange={(event) => {
+                const values: Record<string, string> = { ...evaluationCase.values, [binding.id]: event.target.value };
+                // A cleared decision field is unfilled, not a supplied `""`, so
+                // preflight blocks the case instead of sending an empty value.
+                if (decisionSuite && event.target.value === "") delete values[binding.id];
+                authoring.updateCase(evaluationCase.id, { values });
+              }} />
             </label>;
           })}
         </div>
@@ -436,10 +325,10 @@ function CaseEditor({ evaluationCase, authoring, source, onOpenSourceTrace }: {
           space directly under the inputs. */}
       <div className="evaluation-check-list">
         {evaluationCase.checks.length === 0 && <p className="evaluation-empty-inline">No deterministic checks yet.</p>}
-        {evaluationCase.checks.map((check) => <CheckEditor key={check.checkId} check={check} error={checkError?.target.kind === "check" && checkError.target.checkId === check.checkId ? { field: checkError.target.field, message: checkError.message } : undefined} onCommit={(next, field) => authoring.updateCheck(evaluationCase.id, next, field)} onRemove={() => authoring.deleteCheck(evaluationCase.id, check.checkId)} />)}
+        {evaluationCase.checks.map((check) => <CheckEditor key={check.checkId} check={check} error={checkError?.target.kind === "check" && checkError.target.checkId === check.checkId ? { field: checkError.target.field, message: checkError.message } : undefined} {...(questions ? { questions } : {})} onCommit={(next, field) => authoring.updateCheck(evaluationCase.id, next, field)} onRemove={() => authoring.deleteCheck(evaluationCase.id, check.checkId)} />)}
       </div>
       <div className="evaluation-add-row">
-        <select aria-label="New check kind" value={newKind} onChange={(event) => setNewKind(event.target.value as CheckKind)}>{checkKinds.map(({ kind, label }) => <option key={kind} value={kind}>{label}</option>)}</select>
+        <select aria-label="New check kind" value={newKind} onChange={(event) => setNewKind(event.target.value as CheckKind)}>{kinds.map(({ kind, label }) => <option key={kind} value={kind}>{label}</option>)}</select>
         <button className="button secondary" type="button" onClick={() => {
           authoring.addCheck(evaluationCase.id, { kind: newKind });
         }}>+ Add check</button>
@@ -493,6 +382,11 @@ export interface EvaluationSuiteExecutionActions {
   toolBindings?: readonly ExperimentToolBinding[];
   /** Why command tools cannot run in this shell, when that is the case. */
   commandToolsUnavailableReason?: string;
+  /**
+   * Device-local reasons a decision suite's configurations cannot be served,
+   * such as a mapped profile that does not declare System One.
+   */
+  decisionTargetIssues?: readonly string[];
 }
 
 /**
@@ -527,9 +421,12 @@ export function EvaluationSuiteEditor({
   onOpenTemplates,
   caseSource,
   onOpenSourceTrace,
+  decisionSettings,
 }: {
   authoring: EvaluationSuiteAuthoringHandle;
   execution?: EvaluationSuiteExecutionActions;
+  /** The selected decision suite's setup owner; absent for a chat suite. */
+  decisionSettings?: DecisionSuiteSettingsHandle;
   /** Saved executions of the selected suite, listed by the route. */
   history?: EvaluationSuiteHistoryHandle;
   modelFavorites?: ModelFavoritesHandle;
@@ -539,8 +436,6 @@ export function EvaluationSuiteEditor({
   caseSource?: EvaluationCaseSource;
   onOpenSourceTrace?(source: EvaluationCaseSource): void;
 }) {
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [candidateIndex, setCandidateIndex] = useState(0);
   // Falls back to local state so the editor stays renderable on its own; the
   // mode supplies the durable one.
   const [localSetupOpen, setLocalSetupOpen] = useState(true);
@@ -548,59 +443,29 @@ export function EvaluationSuiteEditor({
   const setSetupOpen = setup ? setup.onOpenChange : setLocalSetupOpen;
   const project = authoring.project;
   const suite = project?.evaluationSuites.find(({ id }) => id === authoring.suiteId);
-  const selectedInputRevision = project?.conversationRevisions.find(({ id }) => id === authoring.revisionId);
-  const stalePromptUses = selectedInputRevision?.items.flatMap((item) => {
-    if (item.kind !== "template-use") return [];
-    const template = project?.promptTemplates.find(({ id }) => id === item.use.templateId);
-    return template && template.currentRevisionId !== item.use.templateRevisionId
-      ? [{ templateUseId: item.use.id, templateName: template.name }]
-      : [];
-  }) ?? [];
   const focusedCase = suite?.cases.find(({ id }) => id === authoring.focusedCaseId);
   const selectedCount = authoring.selectedCaseIds.size;
   const selectedVariantCount = authoring.selectedVariantIds.size;
-  const exposedToolIds = suite?.execution.toolIds ?? [];
-  const turnCeiling = suite?.execution.turnCeiling ?? DEFAULT_EXPERIMENT_TURN_CEILING;
+  // Each kind owns what goes in the band and the facts it would hide (D51).
+  const chatSuite = suite && isChatEvaluationSuite(suite) ? suite : undefined;
+  const decisionSuite = suite && isDecisionEvaluationSuite(suite) ? suite : undefined;
+  const setupFacts = project && chatSuite
+    ? chatSuiteSetupFacts(project, chatSuite, execution)
+    : project && decisionSuite
+      ? decisionSuiteSetupFacts(project, decisionSuite, execution)
+      : undefined;
+  const exposedToolCount = setupFacts?.batchShape.exposedToolCount ?? 0;
   const batch = evaluationBatchGuardrail(selectedCount, selectedVariantCount, authoring.repetitions, {
-    exposedToolCount: exposedToolIds.length,
-    turnCeiling,
+    exposedToolCount,
+    turnCeiling: setupFacts?.batchShape.turnCeiling ?? DEFAULT_EXPERIMENT_TURN_CEILING,
   });
-  // A tool this suite exposes that nothing here can serve stops every
-  // repetition, so it is named while the suite is being authored rather than
-  // only at the moment someone tries to start it.
-  const unboundExposedTools = (execution?.toolBindings ?? []).filter(
-    ({ tool, binding }) => exposedToolIds.includes(tool.id) && !binding,
-  );
-  const availableCandidates = authoring.candidates.filter((candidate) => !suite?.inputBindings.some((binding) => binding.target.templateUseId === candidate.templateUseId && binding.target.variableName === candidate.variableName));
-  const revisionGroups = groupRevisionChoices(authoring.revisionChoices);
+  const availableCandidates = availableBindingCandidates(authoring, chatSuite);
   const resolvableMissingInput = authoring.diagnostics.find(
     (diagnostic) => diagnostic.code === "unresolved-template-variable" &&
       availableCandidates.some((candidate) => candidate.templateUseId === diagnostic.templateUseId && candidate.variableName === diagnostic.variableName),
   );
   const suggestedCandidate = resolvableMissingInput?.code === "unresolved-template-variable"
     ? availableCandidates.find((candidate) => candidate.templateUseId === resolvableMissingInput.templateUseId && candidate.variableName === resolvableMissingInput.variableName)
-    : undefined;
-  // The suite owns its delivery mode, but whether that mode can be served is a
-  // property of the connection this device resolves. Preflight is where the two
-  // meet, so it must not report "Ready to run" for a mode that cannot execute.
-  const unavailableStreamingTarget = execution?.preview?.targets.find(
-    ({ responseMode, streamingAvailable }) => responseMode === "streaming" && !streamingAvailable,
-  );
-  const deliveryIssue = unavailableStreamingTarget
-    ? `Configuration “${unavailableStreamingTarget.variantName}” is set to Streaming, but ${unavailableStreamingTarget.targetName ?? "its mapped profile"} cannot stream. Choose Buffered delivery.`
-    : undefined;
-  // Device-local, like the delivery issue above and unlike a preflight
-  // diagnostic: the suite is authored correctly, and this machine cannot run
-  // it. Counted as a setup issue so the preflight badge cannot read "Ready to
-  // run" beside a Start button that refuses.
-  const bindingIssue = unboundExposedTools.length > 0
-    ? `Nothing on this device serves ${unboundExposedTools.map(({ tool }) => tool.name).join(", ")}. Enable a mock or grant a command tool before starting.${execution?.commandToolsUnavailableReason ? ` ${execution.commandToolsUnavailableReason}` : ""}`
-    : undefined;
-  // Named in the collapsed summary, so which connection a suite targets stays
-  // readable without expanding the panel that chooses it.
-  const connectionName = suite
-    ? project?.connectionRequirements.find(({ id }) => id === suite.execution.target.connectionRequirementId)?.name
-      ?? suite.execution.target.connectionRequirementId
     : undefined;
 
   // Everything that blocks a start, in one list. It renders in the suite
@@ -614,8 +479,7 @@ export function EvaluationSuiteEditor({
   const authoredBlockers = [
     ...authoring.diagnostics.map(({ message }) => message),
     ...(batch.error ? [batch.error] : []),
-    ...(deliveryIssue ? [deliveryIssue] : []),
-    ...(bindingIssue ? [bindingIssue] : []),
+    ...(setupFacts?.issues ?? []),
   ];
   const blockers = authoredBlockers.length > 0
     ? authoredBlockers
@@ -624,11 +488,9 @@ export function EvaluationSuiteEditor({
       : [];
   // What the band is hiding while it is shut. Every fact here changes what a
   // start would do, so none of them may need an expansion to be read.
-  const setupSummary = suite
+  const setupSummary = setupFacts
     ? [
-        connectionName,
-        suite.execution.target.model || "No model",
-        exposedToolIds.length === 0 ? "No tools" : `${exposedToolIds.length} exposed`,
+        ...setupFacts.summary,
         `${authoring.repetitions} ${authoring.repetitions === 1 ? "rep" : "reps"}`,
       ].filter(Boolean).join(" · ")
     : "";
@@ -647,7 +509,7 @@ export function EvaluationSuiteEditor({
         <>
           <header className={styles.header}>
             <div className={styles.identity}>
-              <span className="eyebrow">Evaluation suite</span>
+              <span className="eyebrow">{decisionSuite ? "Decision suite" : "Evaluation suite"}</span>
               {/* Keyed by the suite: the rail switches which suite this header
                   describes without remounting, and a draft must not follow. */}
               <EditableTitle key={suite.id} heading="h2" label="Suite name" value={suite.name} onCommit={authoring.renameSuite} />
@@ -679,7 +541,7 @@ export function EvaluationSuiteEditor({
                 {/* Outside the setup band deliberately: how many provider calls
                     the suite is about to make is the consequence of settings
                     the band hides, and it must stay readable while it is shut. */}
-                <output><span>{selectedCount} {selectedCount === 1 ? "case" : "cases"}</span> × <span>{selectedVariantCount} {selectedVariantCount === 1 ? "configuration" : "configurations"}</span> × <span>{authoring.repetitions} {authoring.repetitions === 1 ? "rep" : "reps"}</span> → <strong>{Number.isFinite(batch.plannedCalls) ? batch.plannedCalls.toLocaleString() : "Invalid"} runs</strong>{exposedToolIds.length > 0 && Number.isFinite(batch.worstCaseCalls) && <span>, up to {batch.worstCaseCalls.toLocaleString()} provider calls</span>}</output>
+                <output><span>{selectedCount} {selectedCount === 1 ? "case" : "cases"}</span> × <span>{selectedVariantCount} {selectedVariantCount === 1 ? "configuration" : "configurations"}</span> × <span>{authoring.repetitions} {authoring.repetitions === 1 ? "rep" : "reps"}</span> → <strong>{Number.isFinite(batch.plannedCalls) ? batch.plannedCalls.toLocaleString() : "Invalid"} runs</strong>{exposedToolCount > 0 && Number.isFinite(batch.worstCaseCalls) && <span>, up to {batch.worstCaseCalls.toLocaleString()} provider calls</span>}</output>
               </BlockerChip>
               {execution && <small className="evaluation-storage-note">{execution.storage === "durable" ? "The plan, traces, and result will be saved in this project folder." : "Session evaluation: results will be lost when this session closes."}</small>}
             </section>
@@ -694,171 +556,24 @@ export function EvaluationSuiteEditor({
               <DisclosureChevron className={styles.setupChevron} />
               <strong>Setup</strong>
               <span className={styles.setupFacts}>{setupSummary}</span>
-              <span className={styles.setupHint}>{setupOpen ? "Hide" : "Show input, settings, and tools"}</span>
+              <span className={styles.setupHint}>{setupOpen ? "Hide" : decisionSuite ? "Show request, target, and configurations" : "Show input, settings, and tools"}</span>
             </button>
-            {setupOpen && <div className={`evaluation-setup ${styles.setupBody}`}>
-              <div className="evaluation-input-summary">
-                <span>Evaluation input</span>
-                {authoring.promptPinNotice && <div className="evaluation-resolution-action" role="status">
-                  <div><strong>Input pinned to {authoring.promptPinNotice.promptName} · {authoring.promptPinNotice.revisionLabel}</strong></div>
-                  <button className="button secondary" type="button" onClick={authoring.dismissPromptPinNotice} aria-label="Dismiss">Dismiss</button>
-                </div>}
-                <div className="evaluation-input-actions">
-                  <button className="button secondary" type="button" onClick={authoring.openSavedPromptPicker}>Start from prompt…</button>
-                  {/* Flat, not a disclosure: at full width the revision picker
-                      costs one row, and hiding it behind a summary made an
-                      author open something to discover the choice existed.
-                      The selected option is the fact; no separate label or
-                      bold restatement duplicates it. */}
-                  <select className="evaluation-input-picker" aria-label="Existing project revision" value={authoring.revisionId} onChange={(event) => authoring.selectRevision(event.target.value as NonNullable<typeof authoring.revisionId>)}>
-                  {revisionGroups.grouped ? (
-                    <>
-                      {/* Incompatible revisions stay selectable: choosing one is how an
-                          author sees and repairs a historical incompatibility. */}
-                      {revisionGroups.compatible.length > 0 && <optgroup label="Compatible revisions">{revisionGroups.compatible.map(revisionOption)}</optgroup>}
-                      {revisionGroups.other.length > 0 && <optgroup label="Other revisions">{revisionGroups.other.map(revisionOption)}</optgroup>}
-                    </>
-                  ) : authoring.revisionChoices.map(revisionOption)}
-                  </select>
-                </div>
-                {stalePromptUses.length > 0 && <div className="evaluation-resolution-action evaluation-resolution-action-compact" role="status">
-                  <span>{stalePromptUses.length === 1 ? `Newer revision of “${stalePromptUses[0]!.templateName}” exists` : `${stalePromptUses.length} pinned prompts have newer revisions`}</span>
-                  {stalePromptUses.map((use) => <button className="text-button" key={use.templateUseId} type="button" onClick={() => authoring.useCurrentPromptRevision(use.templateUseId)}>Use current {use.templateName} revision</button>)}
-                </div>}
-              </div>
-              <ConfigurationsSection
-                key={`${suite.id}:configurations`}
-                suite={suite}
-                project={project}
-                authoring={authoring}
-                {...(execution?.preview ? { preview: execution.preview } : {})}
-              />
-              {/* Each edit commits, which the project's debounced auto-save
-                  absorbs into one write. */}
-              <InferenceSettingsPanel
-                idPrefix="evaluation"
-                label="Evaluation execution settings"
-                heading="Execution settings"
-                scopeLabel="Saved with this suite"
-                inherited={{
-                  label: "project defaults",
-                  value: {
-                    model: project.defaults.target.model,
-                    // Isolated render fixtures may provide only the defaults
-                    // fields this editor used before inheritance markers. A
-                    // missing parent option means "provider default", exactly
-                    // the portable schema's meaning for absent temperature.
-                    temperature: project.defaults.options?.temperature,
-                    responseMode: "buffered",
-                  },
-                }}
-                open={settingsOpen}
-                onOpenChange={setSettingsOpen}
-                value={{
-                  model: suite.execution.target.model,
-                  temperature: suite.execution.options.temperature,
-                  responseMode: suite.execution.responseMode,
-                }}
-                onChange={(next) => authoring.updateExecution({
-                  ...suite.execution,
-                  target: { ...suite.execution.target, model: next.model },
-                  responseMode: next.responseMode,
-                  options: { ...suite.execution.options, temperature: next.temperature },
-                })}
-                // Discovery is deliberately absent here; see ModelFavoritesHandle.
-                streamingAvailable={execution
-                  ? execution.preview?.targets.every(({ streamingAvailable }) => streamingAvailable) ?? true
-                  : true}
-                favoriteModels={modelFavorites?.models ?? []}
-                onToggleFavoriteModel={(model) => modelFavorites?.onToggle(model)}
-                connection={{
-                  summary: connectionName,
-                  control: (
-                    <label>Connection
-                      <select value={suite.execution.target.connectionRequirementId} onChange={(event) => authoring.updateExecution({ ...suite.execution, target: { ...suite.execution.target, connectionRequirementId: event.target.value as typeof suite.execution.target.connectionRequirementId } })}>
-                        {project.connectionRequirements.map(({ id, name }) => <option key={id} value={id}>{name}</option>)}
-                      </select>
-                    </label>
-                  ),
-                  ...(suite.execution.target.connectionRequirementId !== project.defaults.target.connectionRequirementId
-                    ? {
-                        override: {
-                          inheritedFrom: "project defaults",
-                          onRevert: () => authoring.updateExecution({
-                            ...suite.execution,
-                            target: {
-                              ...suite.execution.target,
-                              connectionRequirementId: project.defaults.target.connectionRequirementId,
-                            },
-                          }),
-                        },
-                      }
-                    : {}),
-                }}
-                protocol={{
-                  summary: protocolLabel(suite.execution.target.protocol),
-                  control: (
-                    <label>Protocol
-                      <select value={suite.execution.target.protocol} onChange={(event) => authoring.updateExecution({ ...suite.execution, target: { ...suite.execution.target, protocol: event.target.value as ProviderWireProtocol } })}>
-                        <ProtocolOptions />
-                      </select>
-                    </label>
-                  ),
-                  ...(suite.execution.target.protocol !== project.defaults.target.protocol
-                    ? {
-                        override: {
-                          inheritedFrom: "project defaults",
-                          onRevert: () => authoring.updateExecution({
-                            ...suite.execution,
-                            target: { ...suite.execution.target, protocol: project.defaults.target.protocol },
-                          }),
-                        },
-                      }
-                    : {}),
-                }}
-                repetitions={{
-                  summary: `${authoring.repetitions} ${authoring.repetitions === 1 ? "rep" : "reps"}`,
-                  control: <label className="inference-settings-count">Repetitions <input type="number" min="1" max={MAX_EVALUATION_REPETITIONS} step="1" value={authoring.repetitions} onChange={(event) => authoring.setRepetitions(Number(event.target.value))} /></label>,
-                  ...(authoring.repetitions !== 1
-                    ? {
-                        override: {
-                          inheritedFrom: "suite default",
-                          onRevert: () => authoring.setRepetitions(1),
-                        },
-                      }
-                    : {}),
-                }}
-              />
-              {/* Exposure is portable suite content and what serves it is not,
-                  so the two are rendered together and stored apart. Outside the
-                  settings disclosure because a suite that runs tools is a
-                  different kind of evaluation, not a tweak to this one. */}
-              <ToolsSection
-                key={`${suite.id}:tools`}
-                project={project}
-                authoring={authoring}
-                exposedToolIds={exposedToolIds}
-                turnCeiling={turnCeiling}
-                {...(execution?.toolBindings ? { toolBindings: execution.toolBindings } : {})}
-              />
-              {/* Suite-level, not per-case: binding a template variable changes
-                  what every case can vary, so it belongs with the rest of the
-                  suite's setup rather than above the dataset it applies to.
-                  "Prompt variables" so this stays distinct from the case
-                  editor's "Case inputs", which supplies the values these
-                  bindings only name. One compact row per binding, no
-                  surrounding card. */}
-              {(suite.inputBindings.length > 0 || availableCandidates.length > 0) && (
-                <div className="evaluation-input-bindings">
-                  <span className="eyebrow">Prompt variables</span>
-                  {suite.inputBindings.map((binding) => {
-                    const input = evaluationInputLabel(project, authoring.revisionId, binding);
-                    return <div className="evaluation-binding-row" key={binding.id}><div className="evaluation-binding-identity"><strong>{input.templateName}</strong><span><code>{input.variableName}</code> prompt variable</span></div><button className="remove-button" type="button" onClick={() => authoring.deleteInput(binding.id)}>Remove</button></div>;
-                  })}
-                  {availableCandidates.length > 0 && <div className="evaluation-add-row"><select aria-label="Prompt variable to map" value={candidateIndex} onChange={(event) => setCandidateIndex(Number(event.target.value))}>{availableCandidates.map((candidate, index) => <option key={`${candidate.templateUseId}-${candidate.variableName}`} value={index}>{candidate.templateName} · {candidate.variableName}</option>)}</select><button className="button secondary" type="button" onClick={() => { const candidate = availableCandidates[candidateIndex]; if (candidate) authoring.addInput(candidate); setCandidateIndex(0); }}>+ Add case input</button></div>}
-                </div>
-              )}
-            </div>}
+            {chatSuite && <ChatSuiteSetup
+              open={setupOpen}
+              className={`evaluation-setup ${styles.setupBody}`}
+              suite={chatSuite}
+              project={project}
+              authoring={authoring}
+              {...(execution ? { execution } : {})}
+              {...(modelFavorites ? { modelFavorites } : {})}
+            />}
+            {decisionSuite && decisionSettings && <DecisionSuiteSetup
+              open={setupOpen}
+              className={`evaluation-setup ${styles.setupBody}`}
+              project={project}
+              authoring={authoring}
+              settings={decisionSettings}
+            />}
           </div>
 
           <section className={`evaluation-cases ${styles.cases}`}>

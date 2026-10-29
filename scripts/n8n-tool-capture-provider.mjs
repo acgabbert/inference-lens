@@ -5,9 +5,11 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { isDeepStrictEqual } from "node:util";
 
+import { FINAL_OUTPUT_SCENARIOS, formatterCalls } from "./n8n-final-output-scenarios.mjs";
 import { stopOnSignal } from "./fixture-shutdown.mjs";
 
 const SCENARIOS = {
+  ...FINAL_OUTPUT_SCENARIOS,
   "string-input": {
     sentinel: "IL_N0_STRING_INPUT",
     model: "template-echo-model",
@@ -104,7 +106,7 @@ const SCENARIOS = {
   },
 };
 
-const CAPTURE_FILES = [
+const ORDINARY_CAPTURE_FILES = [
   "provider-request-initial.json",
   "provider-response-tool-call.json",
   "provider-request-continuation.json",
@@ -134,6 +136,10 @@ if (!scenario) {
       `Choose one of: ${Object.keys(SCENARIOS).join(", ")}.`,
   );
 }
+const CAPTURE_FILES = scenario.terminal
+  ? ["provider-request-initial.json", "provider-response-final.json"]
+  : ORDINARY_CAPTURE_FILES;
+
 const outputDirectory = path.resolve(
   process.env.INFERENCE_LENS_N8N_TOOL_CAPTURE_OUTPUT ??
     `.n8n-contract-staging/tool-provider-${scenarioId}`,
@@ -147,6 +153,7 @@ const maxRequestBytes = positiveInteger(
 const state = {
   phase: "awaiting-initial-request",
   requestCount: 0,
+  receivedRequestCount: 0,
   problem: null,
   processing: false,
   rejectedRequestSaved: false,
@@ -229,7 +236,7 @@ function toolCallCompletion(body) {
         message: {
           role: "assistant",
           content: null,
-          tool_calls: [toolCall()],
+          tool_calls: scenario.duplicate || scenario.mixed ? formatterCalls(scenario) : [toolCall()],
         },
         finish_reason: "tool_calls",
       },
@@ -239,6 +246,11 @@ function toolCallCompletion(body) {
 }
 
 function finalCompletion(body) {
+  if (scenario.finalTool) {
+    const completion = toolCallCompletion(body);
+    completion.choices[0].message.tool_calls = formatterCalls(scenario);
+    return completion;
+  }
   return {
     id: "chatcmpl-inference-lens-n8n-final",
     object: "chat.completion",
@@ -267,6 +279,26 @@ function initialProblem(body) {
     return `Initial request does not contain scenario sentinel ${scenario.sentinel}.`;
   }
   const tools = Array.isArray(body.tools) ? body.tools : [];
+  if (scenario.sentinel === "IL_F0_CAPTURE") {
+    const formatter = tools.find((tool) => tool?.function?.name === "format_final_json_response")?.function;
+    const output = formatter?.parameters?.properties?.output;
+    if (output?.properties?.answer?.type !== "string" || output?.properties?.count?.type !== "integer") {
+      return "Formatter must expose the fixture output object with answer:string and count:integer.";
+    }
+    if (scenarioId.startsWith("formatter-nested-output") &&
+      (output.properties.output?.properties?.label?.type !== "string" ||
+       !output.required?.includes("output"))) {
+      return "Nested-output scenario requires an authored output object with label:string.";
+    }
+    if (!body.messages.some((message) => message.role === "system" &&
+      JSON.stringify(message.content ?? null).includes("format_final_json_response"))) {
+      return "System instruction must reference the formatter.";
+    }
+    if ((scenario.mixed || scenario.finalTool) &&
+      !tools.some((tool) => tool?.function?.name === "il_echo_string")) {
+      return "Scenario requires ordinary tool il_echo_string.";
+    }
+  }
   const names = tools.map((tool) => tool?.function?.name).filter(Boolean);
   if (!names.includes(scenario.toolName)) {
     return `Initial request does not expose tool ${scenario.toolName}.`;
@@ -379,7 +411,7 @@ function streamToolCall(response, completion) {
             index: 0,
             delta: {
               role: "assistant",
-              tool_calls: [{ index: 0, ...toolCall() }],
+              tool_calls: completion.choices[0].message.tool_calls.map((call, index) => ({ index, ...call })),
             },
             finish_reason: null,
           },
@@ -397,6 +429,10 @@ function streamToolCall(response, completion) {
 }
 
 function streamFinal(response, completion) {
+  if (completion.choices[0].message.tool_calls) {
+    streamToolCall(response, completion);
+    return;
+  }
   const common = {
     id: completion.id,
     object: "chat.completion.chunk",
@@ -426,6 +462,7 @@ function streamFinal(response, completion) {
 }
 
 async function handleCompletion(request, response) {
+  state.receivedRequestCount += 1;
   if (state.processing) {
     sendProblem(response, 409, "Another capture request is already being processed.");
     return;
@@ -455,13 +492,13 @@ async function handleCompletion(request, response) {
         sendProblem(response, 422, problem);
         return;
       }
-      const completion = toolCallCompletion(body);
+      const completion = scenario.responseKind === "text" ? finalCompletion(body) : toolCallCompletion(body);
       await writeRequestCapture("provider-request-initial.json", rawBody);
-      await writeCapture("provider-response-tool-call.json", completion);
-      state.phase = "awaiting-continuation-request";
+      await writeCapture(scenario.terminal ? "provider-response-final.json" : "provider-response-tool-call.json", completion);
+      state.phase = scenario.terminal ? "complete" : "awaiting-continuation-request";
       state.requestCount = 1;
       state.problem = null;
-      if (body.stream === true) streamToolCall(response, completion);
+      if (body.stream === true) streamFinal(response, completion);
       else sendJson(response, 200, completion);
       return;
     }
@@ -492,6 +529,12 @@ async function handleCompletion(request, response) {
       return;
     }
 
+    try {
+      await writeRequestCapture("provider-request-rejected.json", rawBody);
+    } catch (error) {
+      if (error.code !== "EEXIST") throw error;
+    }
+    state.rejectedRequestSaved = true;
     sendProblem(response, 409, "This capture is already complete.");
   } catch (error) {
     state.problem = "Capture artifact write failed; inspect the provider stderr.";
@@ -523,6 +566,7 @@ const server = createServer(async (request, response) => {
   if (request.method === "GET" && url.pathname === "/status") {
     sendJson(response, 200, {
       scenario: scenarioId,
+      ...(scenario.sentinel === "IL_F0_CAPTURE" ? { receivedRequestCount: state.receivedRequestCount } : {}),
       phase: state.phase,
       requestCount: state.requestCount,
       complete: state.phase === "complete",

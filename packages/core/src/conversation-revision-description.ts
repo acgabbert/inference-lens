@@ -1,4 +1,5 @@
 import type { EvaluationSuite } from "./evaluation-suites.ts";
+import { isChatEvaluationSuite } from "./evaluation-suites.ts";
 import { resolveProjectRevision } from "./project.ts";
 import type { ProjectConversationRevision, ProjectFile } from "./project.ts";
 import { templateUseVariableIndex } from "./template-use-variable-index.ts";
@@ -62,11 +63,27 @@ export interface ConversationRevisionDescriptor {
   compatibility: RevisionSuiteCompatibility;
 }
 
+/**
+ * Collapses whitespace and shortens, reading only as much of the text as the
+ * summary can show. Every revision is described on every project edit, and a
+ * pasted prompt can be hundreds of kilobytes, so collapsing the whole text
+ * first made each keystroke pay for all of it.
+ */
 function shorten(text: string): string {
-  const collapsed = text.replace(/\s+/gu, " ").trim();
-  return collapsed.length > REVISION_SUMMARY_LENGTH
-    ? `${collapsed.slice(0, REVISION_SUMMARY_LENGTH - 1).trimEnd()}…`
-    : collapsed;
+  let collapsed = "";
+  // A bounded word length keeps one enormous unbroken token from being sliced
+  // out whole; the loop stops as soon as the summary is known to overflow.
+  for (const [run] of text.matchAll(/\s+|\S{1,128}/gu)) {
+    if (/^\s/u.test(run)) {
+      if (collapsed) collapsed += " ";
+    } else {
+      collapsed += run;
+      if (collapsed.length > REVISION_SUMMARY_LENGTH) {
+        return `${collapsed.slice(0, REVISION_SUMMARY_LENGTH - 1).trimEnd()}…`;
+      }
+    }
+  }
+  return collapsed.trimEnd();
 }
 
 function revisionCompatibility(
@@ -74,7 +91,8 @@ function revisionCompatibility(
   project: Pick<ProjectFile, "promptTemplates">,
   suite: EvaluationSuite | undefined,
 ): RevisionSuiteCompatibility {
-  if (!suite || suite.inputBindings.length === 0) return { kind: "unbound" };
+  // A decision suite pins no conversation revision, so none binds to it.
+  if (!suite || !isChatEvaluationSuite(suite) || suite.inputBindings.length === 0) return { kind: "unbound" };
   const uses = templateUseVariableIndex([revision], project.promptTemplates);
   const mismatches = suite.inputBindings.flatMap((binding): RevisionBindingMismatch[] => {
     const occurrence = uses.get(binding.target.templateUseId)?.[0];

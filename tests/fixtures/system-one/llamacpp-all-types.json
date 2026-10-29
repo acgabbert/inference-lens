@@ -1,0 +1,97 @@
+{
+  "provenance": {
+    "kind": "captured",
+    "implementation": "llama.cpp llama-server /v1/systemone",
+    "server": "llama-server b11669-620d2225c behind Caddy, --api-key set",
+    "model": "Laya BF16 GGUF, served as \"local-decision\"",
+    "captured": "2026-10-24",
+    "note": "The doc-derived all-types request with model set to the served alias."
+  },
+  "request": {
+    "model": "local-decision",
+    "state": {
+      "ticket": "I was charged twice for October and the app crashes when I open invoices.",
+      "plan": "pro"
+    },
+    "questions": {
+      "intent": {
+        "type": "choice",
+        "instructions": "What is the customer mainly asking about?",
+        "criteria": {
+          "billing": "Charges, refunds, invoices, or plan changes.",
+          "bug": "Something in the product is broken.",
+          "other": null
+        }
+      },
+      "severity": {
+        "type": "score",
+        "instructions": [
+          "How urgent is this ticket?",
+          {
+            "consider": "customer impact"
+          }
+        ],
+        "criteria": [
+          "minor",
+          "major",
+          {
+            "label": "critical",
+            "note": "data loss or money lost"
+          }
+        ]
+      },
+      "is_spam": {
+        "type": "noul",
+        "instructions": "Is this ticket spam?",
+        "criteria": {
+          "true": "Unsolicited advertising.",
+          "false": "A real customer request."
+        }
+      }
+    }
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "model": "local-decision",
+      "answers": {
+        "intent": {
+          "type": "choice",
+          "choice": "billing",
+          "probabilities": {
+            "billing": 0.9282073370713441,
+            "bug": 0.05861868866168816,
+            "other": 0.013173974266967876
+          },
+          "confidence": 0.8923110056070159
+        },
+        "severity": {
+          "type": "score",
+          "score": 1.0871479652612954,
+          "legend": {
+            "0": "minor",
+            "1": "major",
+            "2": {
+              "label": "critical",
+              "note": "data loss or money lost"
+            }
+          },
+          "probabilities": {
+            "0": 0.07519514273998514,
+            "1": 0.7624617492587342,
+            "2": 0.1623431080012806
+          },
+          "confidence": 0.6436926238881013
+        },
+        "is_spam": {
+          "type": "noul",
+          "noul": 0.07768066663542304
+        }
+      },
+      "usage": {
+        "input_tokens": 203,
+        "output_tokens": 0
+      }
+    }
+  }
+}

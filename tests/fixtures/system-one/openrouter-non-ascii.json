@@ -1,0 +1,49 @@
+{
+  "provenance": {
+    "kind": "captured",
+    "implementation": "OpenRouter /api/v1/systemone",
+    "server": "https://openrouter.ai",
+    "captured": "2026-10-24",
+    "note": "Non-ASCII and emoji labels round-trip as keys and as the choice."
+  },
+  "request": {
+    "model": "~typesafe/jev-latest",
+    "state": "Ich liebe dieses Café, der Kaffee ist großartig.",
+    "questions": {
+      "sentiment": {
+        "type": "choice",
+        "instructions": "Stimmung?",
+        "criteria": {
+          "positiv 😀": "gut",
+          "négatif": "schlecht",
+          "中性": null
+        }
+      }
+    }
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "model": "typesafe/jev-1.14-20261014",
+      "answers": {
+        "sentiment": {
+          "type": "choice",
+          "choice": "positiv 😀",
+          "probabilities": {
+            "positiv 😀": 1,
+            "négatif": 0,
+            "中性": 0
+          },
+          "confidence": 1
+        }
+      },
+      "usage": {
+        "input_tokens": 331,
+        "output_tokens": 48,
+        "cost": 1.3902e-05
+      },
+      "id": "gen-dec-1792812353-sb05lS9ej8DWbxmzKxaP",
+      "provider": "TypeSafe"
+    }
+  }
+}

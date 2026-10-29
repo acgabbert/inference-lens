@@ -143,7 +143,7 @@ export function RunsMode({
   ) : null;
 
   const browserDetail = browser.selectedEvidence ? (
-    <section aria-label="Selected run evidence" className={styles.results}>
+    <section tabIndex={-1} aria-label="Selected run evidence" className={styles.results}>
       {browser.selectedEvidence}
     </section>
   ) : browser.loading ? (

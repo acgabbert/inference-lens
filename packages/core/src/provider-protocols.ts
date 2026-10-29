@@ -1,13 +1,28 @@
 import type { ProviderCapabilities } from "./types.ts";
 import { PROVIDER_WIRE_PROTOCOLS } from "./run-kernel/types.ts";
 import type { ProviderWireProtocol } from "./run-kernel/types.ts";
+import { DECISION_WIRE_PROTOCOLS } from "./decision.ts";
+import type { DecisionWireProtocol } from "./decision.ts";
 
 /**
  * Wire-protocol facts every host needs before any adapter is involved: which
  * capability declares a protocol, which path it is served at, and how its
  * credential is presented. Protocol choice is per run; a connection only says
  * which protocols it supports.
+ *
+ * Path, label, and credential facts cover every connection protocol, decision
+ * protocols included. Run-protocol selection (`supportedProtocols`,
+ * `effectiveProtocol`) and the chat adapter registry stay typed to the chat
+ * protocols, so a conversation cannot be routed to a decision endpoint.
  */
+
+/** Any protocol a connection can be reached with: chat or decision. */
+export type ConnectionProtocol = ProviderWireProtocol | DecisionWireProtocol;
+
+const CONNECTION_PROTOCOLS: readonly ConnectionProtocol[] = [
+  ...PROVIDER_WIRE_PROTOCOLS,
+  ...DECISION_WIRE_PROTOCOLS,
+];
 
 /** The Anthropic API version every Messages request and model listing pins. */
 export const ANTHROPIC_VERSION = "2023-06-01";
@@ -47,13 +62,15 @@ const pathByProtocol = {
   "openai-compatible-chat-completions": "/chat/completions",
   "openai-responses": "/responses",
   "anthropic-messages": "/messages",
-} as const satisfies Record<ProviderWireProtocol, string>;
+  systemone: "/systemone",
+} as const satisfies Record<ConnectionProtocol, string>;
 
 const labelByProtocol = {
   "openai-compatible-chat-completions": "Chat Completions",
   "openai-responses": "Responses",
   "anthropic-messages": "Anthropic Messages",
-} as const satisfies Record<ProviderWireProtocol, string>;
+  systemone: "System One",
+} as const satisfies Record<ConnectionProtocol, string>;
 
 /**
  * The short names an operator writes in `INFERENCE_LENS_API_PROTOCOLS`. Owned
@@ -65,8 +82,24 @@ export const PROTOCOL_CONFIGURATION_NAMES = {
   "anthropic-messages": "anthropic-messages",
 } as const satisfies Record<string, ProviderWireProtocol>;
 
+/**
+ * The name that declares System One in `INFERENCE_LENS_API_PROTOCOLS` (D9a).
+ * It matches the path and the protocol id; OpenRouter's `decisions` is not an
+ * alias, since D1 decided that path is not a separate protocol.
+ */
+export const SYSTEM_ONE_CONFIGURATION_NAME = "systemone" satisfies DecisionWireProtocol;
+
+/** Every short name `INFERENCE_LENS_API_PROTOCOLS` accepts, for messages. */
+export function protocolConfigurationNames(): string[] {
+  return [...Object.keys(PROTOCOL_CONFIGURATION_NAMES), SYSTEM_ONE_CONFIGURATION_NAME];
+}
+
 export function isProviderWireProtocol(value: unknown): value is ProviderWireProtocol {
   return (PROVIDER_WIRE_PROTOCOLS as readonly unknown[]).includes(value);
+}
+
+export function isConnectionProtocol(value: unknown): value is ConnectionProtocol {
+  return (CONNECTION_PROTOCOLS as readonly unknown[]).includes(value);
 }
 
 export function protocolCapabilityKey(
@@ -76,12 +109,12 @@ export function protocolCapabilityKey(
 }
 
 /** A short human name, for settings, readiness, and evidence. */
-export function protocolLabel(protocol: ProviderWireProtocol): string {
+export function protocolLabel(protocol: ConnectionProtocol): string {
   return labelByProtocol[protocol];
 }
 
 /** The path a protocol appends to a connection's base endpoint. */
-export function protocolPath(protocol: ProviderWireProtocol): string {
+export function protocolPath(protocol: ConnectionProtocol): string {
   return pathByProtocol[protocol];
 }
 
@@ -151,9 +184,54 @@ export function providerBaseEndpoint(endpoint: string): string {
 
 export function providerRequestUrl(
   endpoint: string,
-  protocol: ProviderWireProtocol,
+  protocol: ConnectionProtocol,
 ): string {
   return endpointWithPath(endpoint, pathByProtocol[protocol]);
+}
+
+/**
+ * Statuses a wrong path can produce: no route there at all, or a route that
+ * takes no POST.
+ */
+const PATH_MISMATCH_STATUSES: ReadonlySet<number> = new Set([404, 405]);
+
+/** `v1`, `v2`, and preview spellings such as Gemini's `v1beta`. */
+const VERSION_SEGMENT = /^v\d+(?:[a-z]+\d*)?$/i;
+
+/**
+ * Adds the likely cause to a provider's 404 or 405 when the base URL has no
+ * version segment. Every protocol appends its path straight onto the base, so
+ * `http://host:8000` dials `http://host:8000/chat/completions` where the
+ * server is listening on `/v1/chat/completions`, and the provider's own
+ * `404 page not found` points nowhere near the fix.
+ *
+ * Only a hint, never a rewrite: some gateways are correctly versionless, and
+ * some servers answer 404 for an unknown model. The provider's message is
+ * kept.
+ */
+export function explainProviderStatusError(
+  message: string,
+  status: number,
+  endpoint: string,
+): string {
+  if (!PATH_MISMATCH_STATUSES.has(status)) return message;
+
+  let base: string;
+  try {
+    base = providerBaseEndpoint(endpoint);
+  } catch {
+    return message;
+  }
+  const suggested = new URL(base);
+  const segments = suggested.pathname.split("/").filter(Boolean);
+  if (segments.some((segment) => VERSION_SEGMENT.test(segment))) return message;
+  suggested.pathname = `/${[...segments, "v1"].join("/")}`;
+
+  return (
+    `${base} has no version segment, and most providers expect one in the ` +
+    `base URL. If this server lives under a versioned path, try ` +
+    `${suggested.toString()}. (${message})`
+  );
 }
 
 /**
@@ -186,7 +264,7 @@ export function sameProviderTarget(a: string, b: string): boolean {
  * evidence as-is.
  */
 export function protocolHeaders(
-  protocol: ProviderWireProtocol,
+  protocol: ConnectionProtocol,
 ): Record<string, string> {
   return protocol === "anthropic-messages"
     ? { "anthropic-version": ANTHROPIC_VERSION }
@@ -195,7 +273,7 @@ export function protocolHeaders(
 
 /** How a protocol presents an API key. An empty key sends nothing. */
 export function credentialHeaders(
-  protocol: ProviderWireProtocol,
+  protocol: ConnectionProtocol,
   apiKey: string,
 ): Record<string, string> {
   if (!apiKey) return {};
@@ -206,7 +284,7 @@ export function credentialHeaders(
 
 /** The credential headers as they appear in recorded evidence. */
 export function redactedCredentialHeaders(
-  protocol: ProviderWireProtocol,
+  protocol: ConnectionProtocol,
   hasCredential: boolean,
 ): Record<string, string> {
   const name = protocol === "anthropic-messages" ? "x-api-key" : "authorization";

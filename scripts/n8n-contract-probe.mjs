@@ -17,7 +17,7 @@ const usage = `Usage:
     [--subworkflow-id ID] \\
     --execution-id ID [--execution-id ID ...] \\
     --capture-name NAME \\
-    [--provider-capture DIRECTORY]
+    [--provider-capture DIRECTORY] [--provider-capture-kind ordinary|terminal]
 
 Required environment:
   INFERENCE_LENS_N8N_BASE_URL  Instance root, excluding /api/v1
@@ -44,6 +44,9 @@ export async function main({
       "--provider-capture",
       { required: false },
     );
+    const providerCaptureKind = oneArgument(argumentsMap, "--provider-capture-kind", {
+      required: false,
+    });
     const baseUrl = normalizeN8nBaseUrl(
       env.INFERENCE_LENS_N8N_BASE_URL,
     );
@@ -56,6 +59,7 @@ export async function main({
       ...(subworkflowId === undefined ? {} : { subworkflowId }),
       executionIds,
       captureName,
+      ...(providerCaptureKind === undefined ? {} : { providerCaptureKind }),
       ...(providerCaptureDirectory === undefined
         ? {}
         : { providerCaptureDirectory }),

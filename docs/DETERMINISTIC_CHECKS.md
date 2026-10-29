@@ -68,20 +68,22 @@ JSON" (failed) and "the pattern was invalid" (not-evaluated).
 
 ## Vocabulary
 
-Eleven kinds ship in v3. Four make a statement about the shape of the answer
-and accept `negate`, which asserts the opposite — "does not contain", "does
-not match", "is not JSON". Three are thresholds; their bound direction is
-already in the kind name, so they reject `negate` at parse time. Four assert
-on tool calls (see below); none of them accept `negate` — `called-tool` and
-`did-not-call-tool` already state both directions as separate kinds, and a
-negated count or argument match is not an assertion anyone means to write.
+Twelve kinds ship in v4 (eleven in v3). Five check the shape of the answer.
+Four of those accept `negate`, which asserts the opposite — "does not contain",
+"does not match", "is not JSON"; `json-schema` rejects `negate`. Three kinds
+are thresholds; their bound direction is already in the kind name, so they
+reject `negate` at parse time. Four assert on tool calls (see below); none of
+them accept `negate` — `called-tool` and `did-not-call-tool` already state both
+directions as separate kinds, and a negated count or argument match is not an
+assertion anyone means to write.
 
 | Kind | Parameters | Passes when |
 | --- | --- | --- |
 | `exact-match` | `value`, text options | The answer equals `value` |
 | `contains` | `value`, text options | The answer contains `value` |
 | `regex` | `syntax: "re2"`, `pattern`, `flags?` | The Safe regex pattern matches somewhere in the answer |
-| `valid-json` | `topLevel?` | The whole answer parses as JSON of that shape |
+| `valid-json` | `topLevel?`, `inputPolicy?` | The answer's JSON, located by the input policy, parses with that shape |
+| `json-schema` | `dialect: "draft-07"`, `schema`, `inputPolicy?` | The answer's JSON, located by the input policy, satisfies `schema` |
 | `max-output-characters` | `limit` | Character count ≤ `limit` |
 | `max-duration-ms` | `limit` | Total run duration ≤ `limit` |
 | `max-total-tokens` | `limit` | Reported total tokens ≤ `limit` |
@@ -162,17 +164,57 @@ pattern matches.
 
 ### JSON
 
-`valid-json` requires the **whole** answer to parse under `JSON.parse`.
-Markdown code fences are not stripped, and no substring is extracted; a fenced
-JSON block therefore fails. Unwrapping is a product decision that has not been
-made, and guessing at it would silently pass answers that a strict consumer
-would reject.
+`valid-json` and `json-schema` both read the answer through an explicit
+`inputPolicy`. Every policy first tries the whole answer under `JSON.parse`:
 
-`topLevel` narrows the accepted shape to `object` or `array`, and defaults to
-`any`, which accepts any JSON value including scalars and `null`.
+- `strict` (the default) stops there. A fenced JSON block fails.
+- `surrounding-fence` also accepts one complete fence that is the whole answer
+  apart from surrounding whitespace.
+- `first-json-fence` parses the first complete fence anywhere in the answer,
+  skipping fences in other languages, and never tries a later fence when the
+  first one holds invalid JSON. An unlabelled fence is also a JSON candidate:
+  a bare block containing `print(2)` fails even if a valid labelled JSON block
+  follows. Only a block labelled with another language is skipped. The policy
+  can ignore the rest of the answer.
 
-JSON Schema is deliberately absent. It waits on choosing a real implementation
-and a supported draft rather than shipping an undocumented home-grown subset.
+A recognized fence opens with exactly three backticks, optionally followed by
+`json` in any case, and closes with exactly three backticks. Nothing is
+repaired: no trailing commas, single quotes, or extraction of unfenced JSON
+from prose. Evidence records the selected policy and the path that actually
+parsed. A definition without a policy produces exactly the evidence it did in
+vocabulary 3. Surrounding JSON whitespace, including a trailing newline,
+is accepted under strict parsing. Four-backtick and tilde fences are unsupported.
+
+`topLevel` narrows `valid-json` to `object` or `array`, and defaults to `any`,
+which accepts any JSON value including scalars and `null`.
+
+`json-schema` validates the parsed payload against `schema` in IF's draft-07
+profile ([JSON Schema preflight](JSON_SCHEMA_PREFLIGHT.md)) with the metered
+evaluator ([calibration](JSON_SCHEMA_CALIBRATION.md)). It is not negatable.
+A runnable definition must pass preflight; a project may keep an unsupported
+draft, which preflight then blocks. An answer over 150,000 UTF-16 code units,
+invalid JSON under the policy, or a schema mismatch is `failed`. Exhausting an
+evaluation budget is `not-evaluated`. Failure evidence lists typed issue
+locations — authored property names, array indices, and redacted additional
+properties — with the expected type or missing property name where known. It
+never contains answer values or unexpected keys. Unchecked `format` annotations
+are listed in the evidence.
+
+Evaluation results expose this evidence in an expandable **Structured check
+diagnostics** disclosure, shared by As run and saved reassessment readings.
+Routine passing whole-answer checks omit the disclosure. A passing check still
+shows diagnostics when it records fence extraction or unchecked formats;
+extraction paths are never inferred when absent from the outcome.
+It shows the input policy, successful extraction path, original output size,
+observed JSON type, and any bounded issue list or unchecked format annotations
+present in the outcome. Locations use quoted authored property segments and
+array indices; additional properties appear as `<additional property>` without
+their names. Core's exported `formatSchemaIssue` formats both summary and expanded
+issues from sanitized portable evidence, using the same quoted bracket notation
+(for example `["a.b"][0]` for the first element of the literal `a.b` property).
+A truncation notice means more issues may exist; it does not weaken
+the failed verdict. The existing **Open Response & Inspect** action opens the
+original evidence. Diagnostics do not include a parsed copy of the answer.
 
 ### Tool calls
 
@@ -202,6 +244,28 @@ matching inside an array is ambiguous (which element? which order?), so it is
 not attempted. A call whose arguments never resolved to a JSON object (`parsed`
 is absent) cannot satisfy an arguments check.
 
+### Decision checks
+
+Vocabulary 5 adds five kinds that read a decision run's normalized answers.
+Each names one `questionId`. Probability and confidence values are in [0, 1].
+
+| Kind | Parameters | Passes when |
+| --- | --- | --- |
+| `decision-choice` | `questionId`, `option`, optional `negate` | The choice question selected `option` |
+| `decision-option-probability` | `questionId`, `option`, `comparator` (`at-least` or `at-most`), `value` | The answer's probability for `option` meets the bound. For a score question, `option` is the level number as a string |
+| `decision-score-range` | `questionId`, `min` and/or `max` | The fractional score is within the inclusive bounds |
+| `decision-noul` | `questionId`, `comparator`, `value` | P(true) meets the bound |
+| `decision-confidence` | `questionId`, `atLeast` | The reported confidence is at least `atLeast` (choice and score only) |
+
+A decision run is checked through its own subject: the completed attempt's
+answers, wall time from start to end with retries included, and that attempt's
+reported usage. `max-duration-ms` and `max-total-tokens` read either kind of
+run; every other kind belongs to one. A check evaluated against the other kind
+of run is `not-evaluated`, as are a missing answer, an answer of the wrong
+type, an option the answer reports no probability for, and a confidence the
+provider did not report. A question or option the pinned revision does not
+have is caught earlier, as a suite preflight diagnostic.
+
 ## Evidence
 
 A `passed` or `failed` outcome may carry `evidence`, and a `failed` outcome
@@ -223,9 +287,17 @@ Check definitions carry no `schemaVersion` of their own. They are always
 embedded in a versioned container — the project document, or an evaluation
 execution artifact — and that container's version is what a parser negotiates.
 `CHECK_SCHEMA_VERSION` records the vocabulary's version. Safe regex was version
-2; the four tool-call kinds are version 3. Adding, removing, or changing the
-meaning of a kind requires bumping it and the version of every container that
-stores checks.
+2; the four tool-call kinds are version 3; JSON Schema checks and JSON input
+policies are version 4; the five decision kinds are version 5. Adding, removing, or changing the meaning of a kind
+requires bumping it and the version of every container that stores checks.
+
+Evaluation plans and reassessments record `checkSchemaVersion` and accept 3, 4,
+or 5; new ones always record 5. One parser serves every version:
+`checkVocabularyIssue` rejects a construct newer than the version a container
+declares, so an older file never acquires a newer meaning. A reassessment's vocabulary is independent of its
+execution's, because it is saved separately and never changes how the
+execution was scored as run. Projects carry no vocabulary field; project v14
+means vocabulary 5, v12–v13 mean vocabulary 4, and v10–v11 mean vocabulary 3.
 
 Parsers reject unknown fields, unknown kinds, unsafe identifiers, `negate` on a
 threshold kind, unusable Safe regex definitions, and repeated check identities

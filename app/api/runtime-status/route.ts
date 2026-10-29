@@ -7,13 +7,21 @@ import {
   runtimeCredentialStore,
   runtimeRequestPolicy,
 } from "../credential-store";
-import { PROTOCOL_CONFIGURATION_NAMES } from "../../../packages/core/src/provider-protocols";
+import { protocolConfigurationNames } from "../../../packages/core/src/provider-protocols";
+import { DEFAULT_SERVER_CONNECTION_ID } from "../../../packages/core/src/server-connection-catalog";
 
 export const runtime = "nodejs";
 
-// Logged once per process: the probe runs on every page load, and an operator
-// reading the container's log needs the line once, not on every visit.
-let reportedUnrecognizedProtocols = false;
+// Each line is logged once per process: the probe runs on every page load, and
+// an operator reading the container's log needs the line once, not on every
+// visit.
+const reportedProblems = new Set<string>();
+
+function warnOnce(line: string): void {
+  if (reportedProblems.has(line)) return;
+  reportedProblems.add(line);
+  console.warn(line);
+}
 
 /**
  * Describes how this service is deployed and what it is already configured to
@@ -31,27 +39,30 @@ export function GET(incoming: Request): Response {
     );
   }
 
-  const store = runtimeCredentialStore();
-  // Independent facts: an endpoint may be configured for a provider that needs
-  // no key at all, which is the normal shape of a local llama.cpp server.
-  const connection = store.connectionConfiguration();
-  if (connection?.unrecognizedProtocols && !reportedUnrecognizedProtocols) {
-    reportedUnrecognizedProtocols = true;
-    console.warn(
-      `INFERENCE_LENS_API_PROTOCOLS names ${connection.unrecognizedProtocols
+  const report = runtimeCredentialStore().report();
+  for (const { id, unrecognizedProtocols } of report.connections) {
+    if (!unrecognizedProtocols) continue;
+    const source =
+      id === DEFAULT_SERVER_CONNECTION_ID
+        ? "INFERENCE_LENS_API_PROTOCOLS"
+        : `Server connection "${id}"'s protocols`;
+    warnOnce(
+      `${source} names ${unrecognizedProtocols
         .map((name) => `"${name}"`)
         .join(", ")}, which ${
-        connection.unrecognizedProtocols.length === 1 ? "is" : "are"
-      } not a recognized API. The whole list is ignored; accepted names are ${Object.keys(
-        PROTOCOL_CONFIGURATION_NAMES,
-      ).join(", ")}.`,
+        unrecognizedProtocols.length === 1 ? "is" : "are"
+      } not a recognized API. The whole list is ignored; accepted names are ${protocolConfigurationNames().join(", ")}.`,
     );
   }
+  for (const line of report.diagnostics) warnOnce(line);
   return Response.json(
     {
       containerized: isContainerizedRuntime(),
-      serverDefaultCredentialConfigured: store.isConfigured(),
-      ...(connection ?? {}),
+      // Each entry states its endpoint and whether it holds a key as
+      // independent facts: an endpoint may be configured for a provider that
+      // needs no key at all, the normal shape of a local llama.cpp server.
+      connections: report.connections,
+      ...(report.catalogProblem ? { catalogProblem: report.catalogProblem } : {}),
     },
     { headers: { "cache-control": "no-store" } },
   );

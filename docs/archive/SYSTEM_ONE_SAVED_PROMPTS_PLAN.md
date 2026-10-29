@@ -1,0 +1,607 @@
+# System One requests in Saved Prompts
+
+**Archive note (October 27, 2026):** Completed implementation or investigation
+record. The dated decisions and verification below are historical; see the
+[archive index](README.md) for scope, superseding contracts and follow-up work.
+
+Status: recommendations accepted by the user on 2026-10-25; slices 1–4
+(contracts, compatibility preparation, schema v15, core lifecycle, and Library
+and Compose, and evaluation workflows) implemented. Slice 4 verification is
+recorded below. See the [authoring guide](../SYSTEM_ONE_SAVED_PROMPTS.md).
+
+## Outcome
+
+The existing Prompts library can author, save, revise, find, and reuse both chat
+prompts and System One decision requests. A user can save a decision request
+from Compose, reopen it from the library, fill its variables, run it, and create
+an evaluation suite against an exact saved revision.
+
+This is a project-owned library, matching current Saved Prompts persistence.
+Creating a device-wide library or synchronizing prompts across projects is a
+separate feature.
+
+## Accepted decisions
+
+| Decision | Options and tradeoffs | Recommendation |
+| --- | --- | --- |
+| Reusable unit | A whole request includes state and questions and has unambiguous execution semantics. Question fragments allow composition but require merge rules for question IDs, ordering, variables, and state. | Whole requests first. Use `state: "{{state}}"` or variables inside structured state when questions stay fixed across inputs. |
+| Use semantics | Copy-on-use is smaller and leaves Compose freely editable, but loses the library's pinned-source, update, and usage workflows. A pinned revision adds resolution and editing contracts but matches existing chat template behavior. | Pin a saved revision; support explicit update and detach. |
+| Library model | Separate decision-template storage limits changes to chat code but duplicates lifecycle and navigation. A typed union in `promptTemplates` shares those concepts while requiring existing consumers to handle kind explicitly. | One collection with `kind: "chat" \| "decision"`, with separate content editors and resolvers. |
+
+The user explicitly accepted all three recommendations on 2026-10-25: whole
+requests as the reusable unit, pinned revisions with explicit update and detach,
+and one typed library with separate content editors and resolvers. These choices
+are settled and do not require reconfirmation before implementation. The
+contracts below describe the planned implementation; any new material contract
+decision still follows `AGENTS.md`.
+
+## Existing boundaries
+
+- `packages/core/src/project.ts` owns project schema 14, chat template drafts,
+  immutable template revisions, conversation template uses, and decision request
+  revisions. Templates currently require `messages`.
+- `packages/core/src/decision-request.ts` owns decision draft revision updates
+  and run preparation. `decision-variables.ts` already resolves variables in
+  string values within state and question instructions.
+- `app/templates/use-project-templates.client.ts` owns template mutations and
+  session templates. `project-templates-pane.client.tsx` combines the library
+  with a chat editor and chat-specific actions.
+- `app/decisions/use-decision-compose.client.tsx` owns the decision draft,
+  target, session, and project integration. The route composes this owner.
+- Decision suites already pin a `decisionRequestRevisionId`; experiment plans
+  snapshot resolved input. Library support should feed those boundaries.
+
+## Proposed data and behavior contracts
+
+### Saved templates
+
+Make `PromptTemplate` a discriminated union of chat and decision templates.
+Keep shared metadata: ID, name, current revision ID, archive state, and optional
+target recommendation. Each arm has its own draft and revision content type:
+
+- Chat: the existing message set and variable defaults.
+- Decision: a `DecisionInput` under `decision`, plus variable defaults.
+
+A template's kind is fixed for its lifetime; drafts and revisions cannot mix
+kinds. Use typed arms rather than a structure with optional `messages` and
+`decision` fields. Existing template and revision ID namespaces can remain
+shared, with reference validation enforcing kind.
+
+Decision content uses the existing authored `DecisionInput` representation,
+without provider credentials, endpoint URLs, wire envelopes, or runtime model
+metadata. Its vocabulary is the application's existing decision contract;
+serialization to a particular provider remains the adapter's responsibility.
+
+Keep target recommendations advisory. Resolve a recommendation through a
+portable connection requirement and the local System One capability check;
+never change the active connection or model merely by opening a template.
+Authoring and saving must work without a configured decision provider.
+
+### Decision request uses
+
+Extend decision request revisions with explicit inline and template-use arms:
+
+- Inline: existing authored `decision` and request `values`.
+- Template use: a `templateId`, a `templateRevisionId`, and request
+  `overrides` of that revision's defaults (see
+  [item 3](#3-values-and-overrides-on-the-two-arms-accepted) below).
+
+Keep request identity, parent revision, timestamp, and the active project
+pointer in their current roles. A template-backed revision has one source of
+content: its pinned template revision. Do not persist both a reference and a
+second authoritative copy of the decision input.
+
+Introduce one core resolver for project decision revisions. It returns authored
+decision content, effective values, source metadata, and diagnostics. Compose,
+suite authoring, suite preflight, and experiment execution use it instead of
+reading `revision.decision` directly. Rendering variables stays at the existing
+execution boundary.
+
+Value precedence is pinned template defaults, then request overrides, then
+evaluation case values. Empty strings count as supplied values. Preserve the
+existing variable locations, literal-brace escaping, and secret-name rules.
+Unfilled variables may be saved; unresolved or malformed variables block runs.
+
+### Lifecycle
+
+- **Save from Compose:** create a decision template from valid authored content,
+  retaining variable tokens. Show current values in the defaults editor so the
+  user chooses what belongs in the reusable prompt. Saving a template alone
+  does not change the current request into a template use.
+- **Use revision:** create a new project decision request pinned to the selected
+  revision, make it active, and open Decision Compose. Preserve previous saved
+  requests. A valid current draft is folded into the project first; an invalid
+  unsaved draft requires an explicit discard choice before navigation.
+- **Edit a use:** values remain editable in Compose. Content is read-only while
+  pinned, with `Edit source` and `Detach` actions. Editing the library source
+  creates a new template revision and leaves existing uses pinned.
+- **Update:** explicitly choose the latest revision, review the content/default
+  diff, retain overrides for surviving variables, discard obsolete overrides,
+  and expose any newly required values. Create a child request revision so
+  existing suites and runs retain their input.
+- **Detach:** copy the authored input and effective values into a new inline
+  request revision. Preserve tokens and ordering; do not substitute variables
+  into permanent content during detachment.
+- **Archive/restore:** hide archived entries from new-use pickers; existing pins
+  continue resolving. Usage reporting includes decision request revisions and
+  suites. No deletion of referenced revisions is introduced.
+
+### Library and editor ownership
+
+Keep one Prompts workspace, with Chat/Decision badges and an All/Chat/Decision
+filter. Creation offers both kinds. Decision entries show question and variable
+counts, revision history, defaults, archive/restore, `Use revision`, and
+`Evaluate revision` actions.
+
+Split the library shell from the content editors before adding decision editing:
+
+- The library owner handles selection, lifecycle, persistence, and shared
+  revision navigation.
+- The chat editor retains message-set authoring and insertion.
+- A decision template editor reuses an extracted decision input editor for the
+  existing form/JSON views and validation. It does not include Compose's run,
+  connection, or session state.
+- `useDecisionCompose` exposes commands to capture a valid authored request and
+  adopt a template use. It owns draft preservation and session invalidation.
+- Prompt navigation gains a decision-request return target alongside the
+  existing conversation template-use target.
+- `app/page.tsx` only connects owner commands and switches modes. Template
+  mutation, resolution, and draft workflows remain outside the route.
+
+Retain in-progress edits when switching template kind, revision, or app mode.
+Define and display the difference between session-only edits, persisted valid
+drafts, and invalid JSON that has not been saved. Never label the last valid
+snapshot as if it included an invalid edit. Match existing unsaved-project
+template behavior when a decision template is created before a project exists.
+
+Decision revision diffs must show state, questions, instruction changes,
+criteria, ordering changes, and variable defaults. Reordering score criteria
+changes meaning and must never appear as an identical revision.
+
+### Evaluation integration
+
+`Evaluate revision` creates a template-backed decision request revision and a
+decision suite pinned to it, without replacing Compose's active draft. Reuse
+existing decision target setup, variable bindings, checks, and execution.
+
+List compatible suites by the decision template their input references. Moving
+an existing suite to a different template revision creates a new request
+revision and explicitly retargets the suite. Report removed variables, changed
+question IDs/types, and incompatible checks; do not silently discard checks or
+case data. Existing experiment snapshots and results retain their original
+input. Filter chat-only saved-prompt pickers by template kind.
+
+## Persistence and compatibility
+
+Use project schema version 15.
+Migrate legacy templates to `kind: "chat"` and existing decision request
+revisions to the inline arm. Preserve IDs, revision relationships, defaults,
+archive state, external import receipts, and evaluation references.
+
+Refactor the migration chain deliberately: slice 1 changes the v13 migration
+from assigning the current schema version to literal v14 and guards its
+dispatch. Slice 2 adds an explicit v14-to-v15 transformation;
+incrementing the version constant alone is insufficient. Test every supported
+starting version through the full chain. This plan owns v15; Shared Assets
+Level 2 takes the following version (see
+[Relationship to Shared Assets Level 2](#relationship-to-shared-assets-level-2)).
+Older applications should reject the new schema with
+their existing newer-version diagnostic.
+
+Extend reference validation to reject missing revisions, cross-kind uses, mixed
+revision kinds, and invalid default/override names. Keep `decision` subtrees
+order-preserving through parsing, migration, serialization, hashing, and diffs.
+The existing stable JSON helper treats that key as order-sensitive; verify new
+paths preserve the same guarantee.
+
+Audit project-backed CLI and workspace consumers along with browser callers.
+Experiment plans and traces should continue receiving resolved decision input;
+avoid changing their formats unless an actual new persisted field requires it.
+n8n imports continue creating chat templates and retain their provenance.
+
+## Relationship to Shared Assets Level 2
+
+Status: the user accepted the ordering in item 1 and the `overrides` field in
+item 3 on 2026-10-25. Item 2 makes explicit what the contracts above already
+say.
+
+[Shared Assets Level 2](../SHARED_ASSETS_PERSONAL_WORKBENCH_PLAN.md) was approved
+on the same day as this plan. It moves template drafts, trial values and local
+overrides out of the shared project into a checkout-local `.workbench/` store,
+through its own versioned schema transition. This plan adds decision template
+drafts and request value overrides to the project. Both plans change the same
+fields, so their order is fixed here.
+
+### 1. Ordering and schema ownership (accepted)
+
+This plan lands first and takes project schema v15. Level 2 takes the next
+version after it.
+
+Level 2 had not started when this was decided; its next deliverable is the slice
+2a field inventory. Going first lets decision templates ship without waiting for
+slices 2a–2c. The cost is that decision drafts start out project-resident, like
+chat drafts today, and move again when Level 2 lands. These constraints keep
+that second move mechanical:
+
+- A decision template draft uses the same draft envelope as a chat draft
+  (`sourceRevisionId`, `revisionName`, kind-specific content, `variableDefaults`).
+  Whatever Level 2 decides about chat drafts then applies to both kinds in one
+  migration step.
+- Level 2's slice 2a field inventory includes decision template arms, decision
+  drafts and template-use overrides, so Level 2 classifies them rather than
+  finding them later.
+- If Level 2 implementation starts before this plan's step 2, stop and revisit
+  this order with the user rather than racing for the version number.
+
+Alternatives considered: Level 2 first would avoid migrating decision drafts
+twice but would block this feature behind three slices that still need their
+own contract reviews. Landing schema and resolution and then pausing for 2c
+would leave the feature half-delivered for an open-ended period.
+
+Expected classification under Level 2's ownership table, for slice 2a to
+confirm: template
+revisions, names, archive state and `variableDefaults` are shared assets. Values
+on a saved decision request revision are shared, because saving the request is
+the deliberate act. Values typed into Compose for a trial run and not yet saved,
+and in-progress decision template edits, belong to the workbench once 2c lands;
+until then they follow the existing chat template behavior.
+
+### 2. Detach intentionally differs from chat detach
+
+Chat `detachPromptTemplateUse` resolves the template and replaces the use with
+rendered literal messages, because a literal message has no slot for values.
+Decision detach keeps `{{variable}}` tokens and copies the effective values into
+the inline revision's `values`, as stated under Lifecycle. Inline decision
+revisions already carry values (D40), so keeping the tokens loses nothing and
+keeps the request reusable. Do not "align" this with chat detach later.
+
+### 3. `values` and `overrides` on the two arms (accepted)
+
+An inline revision keeps `values` for supplied assignments to variables the
+input uses; absent variables remain unresolved. Saving does not require an entry
+for every variable. A template-use revision has `overrides` instead, and no
+`values` field: a missing key falls back to the pinned revision's default, and a
+present key, including an empty string, wins. If neither supplies a value, the
+variable remains unresolved.
+
+The distinct names distinguish supplied inline assignments from assignments
+that override template defaults; either map may omit variables. The shared
+resolver is the only place that merges defaults and overrides into effective
+values. Update keeps overrides for surviving variables and drops obsolete ones;
+detach copies available effective assignments into the new inline revision's
+`values` and preserves unresolved variables. Never fill absent assignments with
+empty strings: an explicitly supplied empty string is a value, while an absent
+value must continue to block execution. The user accepted this clarification
+on 2026-10-25.
+
+## Implementation sequence
+
+### PR boundaries
+
+The numbered steps below describe dependencies, not separate PRs. Deliver them
+as these four sequential PRs; verification belongs in every slice.
+
+| Slice | Scope | Completion boundary |
+| --- | --- | --- |
+| 1. Contracts and compatibility preparation | Step 1, the existing inline revision resolver boundary, and explicit migration version advancement. | [Final type shapes and owner contracts](../SYSTEM_ONE_SAVED_PROMPTS_CONTRACTS.md); Compose adoption, suite authoring, preflight, and experiment construction read authored content through one resolver. Schema stays v14 and existing behavior is preserved. |
+| 2. Schema v15 and core lifecycle | Steps 2–3, plus consumer narrowing throughout browser, CLI, imports, and workspace code. | Both kinds parse and round-trip; pins resolve; create/save/use/update/detach/archive, usage discovery, and ordered diffs are pure tested operations. Chat-only surfaces safely filter decision entries until slice 3 supplies their editor. |
+| 3. Library and Compose | Step 4. | Mixed library, separate editors, capture/use, explicit update/detach, draft retention, project reopen, and source/return navigation work through the existing feature owners. |
+| 4. Evaluation workflows and compatibility closeout | Step 5 and remaining step 6 documentation. | Evaluate a decision template revision, discover compatible suites, deliberately retarget with diagnostics, and exercise a template-backed suite through the CLI. Existing snapshots, chat prompts, and imports retain their behavior. |
+
+Run scoped browser coverage for behavior changes and the full committed suite
+before handing back each behavior-changing slice. The final feature acceptance
+matrix still applies across the completed series. Slice 1 is preparation: it
+does not make the new schema or saved decision prompts available in the UI.
+
+### Dependency order
+
+1. **Finalize contracts from the accepted decisions.** The three recommendations
+   above are accepted. Specify final type shapes and owner interfaces consistent
+   with them; involve the user only if a new material contract decision arises.
+2. **Schema and resolution.** Add discriminated templates and request inputs,
+   explicit migrations, validation, and the shared decision revision resolver.
+   Update all direct decision revision consumers and narrow chat consumers.
+3. **Core lifecycle.** Implement create/save/use/update/detach/archive behavior,
+   value precedence, usage discovery, and decision revision diffs. Keep these
+   operations pure and cover immutability and ordering.
+4. **Library and Compose.** Separate the library shell and content editors;
+   add decision authoring, capture/use actions, pinned-use presentation, and
+   source/return navigation. Cover draft retention and project reopen.
+5. **Evaluations and compatibility.** Add decision revision evaluation and suite
+   retargeting, complete CLI/workspace integration, and verify existing chat
+   templates and imported prompts still behave correctly.
+6. **Verification and documentation.** Run scoped browser specs while iterating,
+   the full browser suite once at completion, and appropriate build/core checks.
+   Document the user workflow and any limits found during verification.
+
+Before each behavior change, write and run its regression test. A failure must
+assert the actual missing or incorrect result. A selector timeout for a button
+that has not been built, or a TypeScript import failure for a new function, does
+not establish behavioral regression evidence. Where a preimplementation red
+test cannot exercise the behavior, record that limit explicitly.
+
+## Acceptance and test coverage
+
+Core coverage:
+
+- Supported project versions migrate and round-trip without changed chat data,
+  decision order, or broken references; new-schema invalid references fail.
+- Defaults/overrides/case values resolve with the specified precedence, including
+  empty, missing, escaped, and forbidden variable names.
+- Saving, reopening, and detaching requests with unfilled variables preserve
+  absent assignments; runs remain blocked until those values are supplied.
+- Saving a new source revision cannot alter an existing use, suite input, or
+  experiment snapshot. Update/detach create the expected child revisions.
+- Archive preserves historical resolution, kind checks reject invalid uses, and
+  diffs detect question/criteria ordering changes.
+
+Add committed Playwright coverage, proposed as
+`tests/e2e/system-one-saved-prompts.spec.ts`:
+
+- Create in the library and capture from Compose; save, reopen the project, and
+  verify content, defaults, kind, revision, and ordering.
+- Use a historical revision, fill values, and run against the committed System
+  One capture replay. Assert rendered answers and actual request evidence.
+  Use captured questions: the fixture refuses unrelated question definitions.
+- Save a newer library revision, confirm the use stays pinned, then update and
+  detach. Verify the content and values actually displayed and persisted.
+- Preserve valid and invalid drafts through navigation; verify explicit discard
+  behavior and the no-project workflow.
+- Evaluate a saved decision revision, retarget deliberately, and show diagnostics
+  for incompatible bindings/checks while preserving prior results.
+- Verify mixed-library search/filter, archive/restore, keyboard navigation,
+  narrow layouts, and the existing chat insertion workflow.
+
+Iterate with `npm run test:e2e -- tests/e2e/system-one-saved-prompts.spec.ts`.
+Also scope runs to affected decision request/suite, prompt authoring/retention,
+revision diff, and insertion specs. Follow `tests/e2e/README.md` and
+`docs/PROVIDER_FIXTURES.md`; let Playwright start its own servers.
+
+At completion run `npm run typecheck`, `npm run test:core`, relevant component
+tests and builds, then `npm run test:e2e` once. Verify the CLI decision suite path
+against a template-backed project using the existing fixture infrastructure.
+Report exact commands, gaps, and fixture limits. Hosted-provider and native
+desktop checks are separate from what browser replay proves.
+
+## Original planning verification
+
+This proposal was checked against the current source and repository testing
+guidelines. No application code changed and no tests or browser suites were run
+for this documentation-only task.
+
+## Slice 1 verification
+
+Verified on October 25, 2026 with typecheck, lint, build, the core suite, the
+System One decision request and suite browser specs, and the full browser
+suite. Exact commands and results are recorded on the slice 1 pull request.
+The slice is behavior-preserving apart from one message: suite preflight now
+gives the same literal-brace guidance for a malformed token that Compose
+already gives. No hosted-provider or native-desktop checks were run; the saved
+decision template UI and its acceptance spec belong to subsequent slices, and
+new library and pinned-use presentation will need the user's visual review
+when slice 3 exists.
+
+
+## Slice 2 implementation and verification
+
+The project parser now reads/writes v15, with explicit migration from v14.
+`PromptTemplate` and `ProjectDecisionRequestRevision` are discriminated unions;
+strict parsing and reference checks reject mixed or cross-kind content. The
+shared resolver supplies cloned authored input and defaults plus overrides to
+Compose adoption, suite preflight, check editors and experiment snapshots.
+
+`decision-template.ts` owns pure create/draft/append commands. `decision-request.ts`
+owns use-revision, override edits, explicit retargeting and detach. Shared
+metadata/archive actions remain in `project.ts`, and usage discovery includes
+decision request revisions and their suites. Ordered decision revision diffs
+live in `decision-template-revision-diff.ts`. Chat-only surfaces narrow before
+reading content, and the n8n importer explicitly creates chat entries.
+
+Decision suite preflight now distinguishes an absent case value from a supplied
+empty string, matching the accepted assignment contract. So that absence is
+representable, v15 lets a decision case omit a binding's value; new decision
+cases and inputs start unfilled, and the case editor removes a cleared value
+rather than saving `""`. Chat case validation, chat case preflight and legacy
+chat default validation retain their existing behavior.
+
+Preimplementation red runs demonstrated v15 rejection, v14 migration returning
+14 instead of 15, usage discovery returning zero instead of two, and a supplied
+empty case value incorrectly producing `empty-case-value`. The new lifecycle
+entry points had no existing callable API, so their tests were not demonstrated
+red before implementation. The browser fixture needed an explicit connection
+mapping and the existing `Start 1 calls` label; those setup/selector failures
+are not behavioral regression evidence.
+
+Verified on October 25, 2026 with `npm run typecheck`,
+`npm run typecheck:core`, `npm run build`, and `npm run lint` (zero errors,
+four existing warnings). `npm run test:core` passed all 1,471 tests, including
+the template-backed CLI/provider test. The six affected template, evaluation
+suite and n8n component specs passed all 53 tests. Scoped Playwright covered
+`system-one-decision-requests.spec.ts`, `system-one-decision-suites.spec.ts`,
+`prompt-authoring-workspace.spec.ts`, and `prompt-insertion-handoff.spec.ts`;
+`npm run test:e2e` finished with 341 passed and 7 opt-in Python MCP/N1 skips.
+The pull request records the exact component command and scoped-run corrections.
+
+Browser
+coverage exercises an imported template-backed suite, pinned question/check
+options, empty case precedence through saved provider request evidence, and
+mixed-library safety. It does not cover the future library editor, capture,
+update/detach controls, or navigation/draft retention workflows; those belong
+to slice 3. Hosted-provider and native-desktop behavior remain unchecked, and
+visual review of the new authoring controls is still due when they exist.
+
+## Slice 3 implementation and verification
+
+The Prompts workspace now composes a mixed-kind library shell with separate chat
+and decision editors. `useProjectTemplates` owns both kinds' persistence and
+session templates, plus transient decision editor snapshots. The reusable
+`DecisionInputEditor` accepts draft commands without target or session state.
+`useDecisionCompose` owns capture, draft preservation before use, pinned request
+adoption, source/return commands, update/detach, and result invalidation.
+The route only connects these owners and navigation.
+
+Capture stages a session-only prompt even in an open project, allowing the
+author to review captured values before publishing its first revision. Valid
+library drafts persist; incomplete edits remain in memory with an explicit
+session-only status. Explicit empty defaults and missing defaults stay distinct.
+Pinned content is read-only while values remain editable. Update reviews show
+ordered content/default changes and create a child revision; detach preserves
+tokens and effective assignments. Source-only navigation retains the displayed
+result. Recommendations resolve through portable connection requirements and
+local System One declarations, without selecting a connection or model.
+
+Pre-fix browser regressions demonstrated the omitted decision-library row,
+capture incorrectly persisting defaults before review, secret-name controls
+being enabled, 130px mobile value fields, source return dropping a displayed
+answer, and missing local recommendation diagnostics. The existing
+`new-project-isolation` spec also caught a collapsed empty-library panel. The
+remaining new workflow tests were added after implementation and were not
+shown failing before it. Ambiguous JSON-tab selectors, the existing `Current`
+revision label, and the old slice-2 expectation that decisions stay hidden caused
+setup/expectation failures; these are not behavioral red evidence.
+
+Validation commands:
+
+- `npm run typecheck`, `npm run typecheck:core`, `npm run lint`, and
+  `npm run build`. Lint has zero errors and four existing unused-variable
+  warnings; the build retains the existing bundle-size warning.
+- `npm run test:core`: 1,473 tests passed, including the template-backed
+  CLI/provider path. No new schema or CLI format is introduced in this slice.
+- `node --test --test-timeout=120000 tests/project-templates-render.test.mjs tests/project-templates-interaction.test.mjs tests/template-use-card-interaction.test.mjs tests/decision-response-render.test.mjs tests/decision-session-interaction.test.mjs`:
+  all 34 tests passed.
+- Iteration covered `system-one-saved-prompts`, `prompt-authoring-workspace`,
+  `prompt-draft-retention`, `prompt-insertion-handoff`,
+  `saved-prompt-revision-diff`, `first-use-prompt-authoring`,
+  `system-one-decision-requests`, `system-one-decision-suites`, and
+  `new-project-isolation`. The final closeout commands included
+  `npm run test:e2e -- tests/e2e/system-one-saved-prompts.spec.ts tests/e2e/new-project-isolation.spec.ts`
+  (10 passed) and the preceding decision request/suite closeout (20 passed).
+
+The saved-prompt spec checks mixed search/filter, capture review, explicit empty
+and missing defaults, incomplete edit retention through prompt/revision/mode
+navigation, discard/cancel, provider answers and request evidence, pinned source
+immutability, update/new required values, detach/reopen, historical use,
+recommendations, ordered criteria diffs, archive/restore, keyboard activation,
+and 390px authoring without a project or System One connection. Its mobile
+screenshot was visually inspected after correcting the narrow layout.
+
+The first full browser run reported 347 passed, 7 opt-in skips and 3 failures:
+the empty-library layout regression and two cases blocked by a Vite dev-server
+`Response body object should not be disturbed or locked` overlay. The affected
+specs passed on the scoped rerun after the layout fix. A second parallel full
+run reported 350 passed, 7 opt-in skips and one chat streaming test blocked by
+the same dev-server overlay. The final full run uses
+`npm run test:e2e -- --workers=1`: **351 passed, 7 opt-in skips**, with no
+failures (6.5 minutes). No system Chromium override or browser-download fallback
+was used.
+
+Review follow-up: the library shell now derives its list and editor from one
+filter/selection helper, so kind, search and status filters never leave the
+editor contradicting the list. Duplicate-name warnings compare across the whole
+mixed library (the extracted chat editor had been comparing a prompt only with
+itself). The update review dialog takes focus, closes on Escape and returns
+focus to its trigger. Saving and using a draft is one command that returns the
+saved project, replacing a latest-project ref. Decision editor memory lives in
+a store owned beside `useProjectTemplates`, and the editor reports draft
+changes through a stable callback rather than relying on an unmemoized one.
+Override derivation and session-prompt publication are pure functions with
+unit tests. Browser regressions for the filter mismatch, the duplicate-name
+warning and the dialog's focus/Escape behavior failed before the fix; the
+revision-name retention assertion and the new unit tests were not shown failing.
+
+Hosted providers, the native desktop app, and the Docker CLI were not exercised.
+Browser execution uses the committed llama.cpp capture replay, which only
+accepts the captured question definitions. The new editor and update-review
+presentation are worth the user's own visual review. Direct library
+evaluation, compatible-suite discovery and deliberate retargeting followed in
+slice 4.
+
+## Slice 4 implementation and verification
+
+`decision-template-evaluation.ts` owns pure library evaluation creation,
+same-template suite discovery, all-case retarget preview and commit. Creation
+composes the existing inactive template-use and decision-suite commands.
+Retargeting appends a child request revision and moves only that suite's pin.
+The defaults that select Compose's active requests stay unchanged. Existing
+request revisions, cases, bindings, checks, configurations and targets remain
+intact; surviving request overrides keep their values, including empty strings.
+Removed overrides leave the new child and remain available on its parent.
+Schema v15 and experiment, trace and CLI formats are unchanged.
+
+The evaluation authoring owner dispatches library evaluation by template kind.
+The mixed library supplies compatible suites and preview through `PromptsMode`;
+the new decision dialog owns choice and review, focus containment, Escape and
+cancel. Review uses the existing resolver and preflight, so removed variables,
+missing assignments, removed questions, changed types and invalid options agree
+with execution. Ordered content/default diffs are available in the review.
+Retargeting retains invalid checks and case data for explicit repair, and
+preflight blocks running until repaired. Saved current and historical revisions
+can be evaluated; unsaved content must be checkpointed first. Existing chat
+evaluation and import paths retain their owners. `app/page.tsx` is unchanged.
+
+New suites start with the project's default connection and model plus System
+One protocol, with no automatic recommendation or device mapping. The ordinary
+suite Setup controls own choosing and mapping the decision target. The setup
+band now names its pinned saved prompt and revision and confirms library
+arrival. The [authoring guide](../SYSTEM_ONE_SAVED_PROMPTS.md#evaluate-a-saved-revision)
+documents creation, target setup, compatible-suite discovery and retarget repair.
+
+Before implementation, the existing `evaluatePromptRevision` command returned
+`false` for a valid decision prompt, reporting the chat-only pin rejection. The
+new interaction regression failed on that actual value. The browser regression
+failed on the existing footer's actual text, which offered only `Use Current`
+and lacked evaluation. The first interaction setup attempt instead hit a
+duplicate check ID in a shared fixture; that was corrected before the behavioral
+red run. New core entry points had no existing callable API and were not shown
+failing before implementation. Later retarget, stale-suite, CLI and draft
+retention assertions were not demonstrated red. A missing local connection
+mapping and an incorrectly declared CLI fixture default were setup failures,
+not behavioral regression evidence.
+
+Validation:
+
+- `npm run typecheck`, `npm run typecheck:core`, `npm run build` and
+  `npm run lint` passed. Lint retains four existing unused-variable warnings;
+  build retains the existing bundle-size warning. The initial lint run mistook
+  the pure `useDecisionPromptTemplateRevision` command for a React hook; its
+  import now uses the existing Compose naming convention, `createDecisionTemplateUse`.
+- `npm run test:core`: **1,486 passed**, including both existing template-backed
+  CLI coverage and a new `runCli`/headless-provider test of library-created and
+  retargeted suites. It asserts actual old/new provider states, case precedence,
+  preserved project bytes and immutable historical plan bytes.
+- `node --test --test-timeout=120000 tests/decision-template-evaluation-interaction.test.mjs tests/evaluation-suite-render.test.mjs tests/evaluation-suite-interaction.test.mjs tests/project-templates-render.test.mjs tests/project-templates-interaction.test.mjs tests/n8n-import-render.test.mjs`:
+  **49 passed** after the keyboard and repeated-creation follow-ups. The interaction spec also
+  covers refusing a stale suite ID without creating another suite.
+- `npm run test:e2e -- tests/e2e/system-one-prompt-evaluations.spec.ts tests/e2e/system-one-saved-prompts.spec.ts tests/e2e/evaluation-prompt-retarget.spec.ts tests/e2e/system-one-decision-suites.spec.ts --workers=1`:
+  **21 passed**. The new workflow checks provider answers and saved trace input,
+  suite discovery, same-pin opening, reviewed incompatible retargeting, cancel,
+  retained case/check data, blocked execution, historical retargeting back to
+  compatibility, and unchanged saved plan/result bytes. Compose's active pin
+  and incomplete JSON draft survive. The review at 390px was captured and
+  visually inspected; its text and actions fit.
+- `npm run test:e2e -- --workers=1`: **354 passed, 7 opt-in skips**, with no
+  failures in the final closeout (6.5 minutes). An earlier full run also passed;
+  a later rerun was interrupted before its summary, and its leftover fixture
+  servers were stopped before the final clean run. The final full run includes
+  both review follow-ups below. No Chromium override or fallback was used.
+
+Review follow-up found that focus containment initially skipped the native
+`Revision changes` disclosure. The first component assertion returned a button
+instead of the disclosure, but JSDOM's native focus and selector-order limits
+made it unreliable as behavioral red evidence. The corrected component test
+observes the requested focus target; the browser checks actual focus, keyboard
+expansion and the rendered question-type diff. Those final assertions were not
+demonstrated red. A separate pre-fix regression demonstrated duplicate
+React keys when two evaluations used the same prompt. Request choices now carry
+their stable request IDs instead of using names as keys. The final focused run,
+`npm run test:e2e -- tests/e2e/system-one-prompt-evaluations.spec.ts tests/e2e/system-one-decision-suites.spec.ts --workers=1`,
+passed all seven tests, including creation and discovery of two suites from the
+same historical prompt revision. Build, lint and all 49 component tests passed
+again after these follow-ups.
+
+No hosted providers, native desktop app or packaged Docker CLI were exercised.
+The browser uses the committed llama.cpp capture replay, which accepts only
+the captured question definitions; the incompatible target is reviewed and
+blocked, then retargeted back to a captured revision. The new library choice
+and retarget review are worth the user's own visual review, especially for
+prompts with many cases or long question instructions.

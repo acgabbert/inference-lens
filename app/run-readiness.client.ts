@@ -5,7 +5,10 @@
 
 import { sameChatCompletionsTarget } from "../packages/core/src/openai-compatible.ts";
 import { protocolLabel } from "../packages/core/src/provider-protocols.ts";
-import type { ProviderWireProtocol } from "../packages/core/src/run-kernel/types.ts";
+import type {
+  ConversationMessage,
+  ProviderWireProtocol,
+} from "../packages/core/src/run-kernel/types.ts";
 
 export type RunReadinessActionKind =
   | "map-profile"
@@ -13,6 +16,7 @@ export type RunReadinessActionKind =
   | "choose-protocol"
   | "update-project-endpoint"
   | "edit-template"
+  | "edit-message"
   | "review-templates"
   | "review-tools";
 
@@ -36,6 +40,7 @@ export type ReadinessDestination =
       control:
         | "model"
         | "protocol"
+        | "message"
         | "template-use"
         | "template-variable"
         | "tool-manifest";
@@ -118,7 +123,10 @@ export function runEmptyStatePresentation(
             : action?.destination.surface === "connections" &&
                 action.destination.control === "tools-capability"
               ? "Allow tool calling or review attached tools"
-              : readiness.headline;
+              : action?.destination.surface === "request" &&
+                  action.destination.control === "message"
+                ? "Write the user message"
+                : readiness.headline;
   return { headline, detail: readiness.detail, ...(action ? { action } : {}) };
 }
 
@@ -150,16 +158,33 @@ export interface RunReadinessInput {
   toolsEnabled: boolean;
   /** Endpoint the open project declares, when it declares one. */
   requiredEndpoint?: string;
-  activeConnectionRequirementId?: string;
   /**
    * The protocol the run would use and whether its profile has it enabled.
-   * `managedByServer` means the profile's protocol switches are locked to
-   * `INFERENCE_LENS_API_PROTOCOLS`, so enabling one here is not an option.
+   * `managedByServer` names where the server sets the profile's locked
+   * protocol switches, so enabling one here is not an option.
    */
-  protocol?: { id: ProviderWireProtocol; supported: boolean; managedByServer?: boolean };
+  protocol?: { id: ProviderWireProtocol; supported: boolean; managedByServer?: string };
   templateResolutionError?: string;
   templateIssues: RunReadinessTemplateIssue[];
   templateTargets?: RunReadinessTemplateTarget[];
+  /** The last user message, when it carries no text; see `emptyFinalUserMessageId`. */
+  emptyUserMessageId?: string;
+}
+
+/**
+ * The last user message, when it has nothing but whitespace in it.
+ *
+ * Only the last one: it is the turn the model is being asked to answer, so an
+ * empty one is almost always a prompt not yet written. Providers disagree about
+ * empty content elsewhere in a conversation, and some reject it with a 5xx that
+ * looks retryable, so that stays the provider's call.
+ */
+export function emptyFinalUserMessageId(
+  messages: readonly ConversationMessage[],
+): string | undefined {
+  const last = messages.findLast(({ role }) => role === "user");
+  if (!last) return undefined;
+  return last.content.some(({ text }) => text.trim()) ? undefined : last.id;
 }
 
 function profileLabel(name: string): string {
@@ -207,11 +232,11 @@ export function runReadiness(
     selectedToolCount,
     toolsEnabled,
     requiredEndpoint,
-    activeConnectionRequirementId,
     protocol,
     templateResolutionError,
     templateIssues,
     templateTargets = [],
+    emptyUserMessageId,
   } = input;
   const profile = profileLabel(activeProfileName);
 
@@ -308,7 +333,7 @@ export function runReadiness(
     if (protocol.managedByServer) {
       return {
         ...shared,
-        detail: `Choose another API in Run settings, or another connection. This server sets "${profile}"'s APIs with INFERENCE_LENS_API_PROTOCOLS, so enabling ${label} means changing that on the server.`,
+        detail: `Choose another API in Run settings, or another connection. This server sets "${profile}"'s APIs with ${protocol.managedByServer}, so enabling ${label} means changing that on the server.`,
         summary: `Choose an API "${profile}" supports before running.`,
         actions: [
           { ...chooseAnother, primary: true },
@@ -433,16 +458,40 @@ export function runReadiness(
     };
   }
 
+  if (emptyUserMessageId) {
+    return {
+      blocked: true,
+      headline: "The last user message is empty",
+      detail: "Write the prompt the model should answer, or remove the empty message.",
+      summary: "Write the last user message before running.",
+      facts: [],
+      actions: [
+        {
+          kind: "edit-message",
+          label: "Write the message",
+          destination: {
+            surface: "request",
+            tab: "messages",
+            control: "message",
+            entityId: emptyUserMessageId,
+          },
+          primary: true,
+        },
+      ],
+    };
+  }
+
+  // Individual mismatches live beside their inserted prompt, with local dismissal.
   const distinctTemplateTargets = new Map(
     templateTargets.map((target) => [
-      `${target.connectionRequirementId}\u0000${target.model}`,
+      target.model.trim(),
       target,
     ]),
   );
   if (distinctTemplateTargets.size > 1) {
     return {
       blocked: false,
-      headline: "Prompts recommend different run targets",
+      headline: "Prompts recommend different models",
       detail:
         "This request uses the project’s current model. Review the recommendations before relying on them.",
       explanation:
@@ -463,42 +512,6 @@ export function runReadiness(
           kind: "open-connections",
           label: "Choose run model",
           destination: { surface: "request", tab: "messages", control: "model" },
-        },
-      ],
-    };
-  }
-
-  const [templateTarget] = distinctTemplateTargets.values();
-  if (
-    templateTarget &&
-    (templateTarget.connectionRequirementId !== activeConnectionRequirementId ||
-      templateTarget.model !== activeProfileModel)
-  ) {
-    return {
-      blocked: false,
-      headline: `"${templateTarget.templateName}" recommends another model`,
-      detail: `This run will use ${activeProfileModel}; the prompt recommends ${templateTarget.model}.`,
-      explanation:
-        "A recommendation records a prompt’s source target; it never changes the run target.",
-      summary: "A prompt recommends a different model.",
-      facts: [
-        {
-          label: "Prompt recommends",
-          value: `${templateTarget.connectionRequirementName} · ${templateTarget.model}`,
-        },
-        { label: "Run uses", value: activeProfileModel },
-      ],
-      actions: [
-        {
-          kind: "open-connections",
-          label: "Choose run model",
-          destination: { surface: "request", tab: "messages", control: "model" },
-          primary: true,
-        },
-        {
-          kind: "edit-template",
-          label: "Review prompt",
-          destination: { surface: "prompts", control: "prompt-library" },
         },
       ],
     };

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import type { ChatEvaluationSuite } from "../packages/core/src/evaluation-suites.ts";
 import test from "node:test";
 
 import {
@@ -109,7 +110,7 @@ test("retargeting keeps the template-use and suite bindings stable in an immutab
   assert.deepEqual(use?.kind === "template-use" && use.use.values, {});
   assert.deepEqual(use?.kind === "template-use" && use.use.outputMessageIds, ["message_v2-system", "message_v2-user"]);
   assert.equal(project.conversationRevisions.find(({ id }) => id === parentRevisionId)!.items.find((item) => item.kind === "template-use")?.kind, "template-use");
-  assert.equal(retargeted.project.evaluationSuites[0]!.inputBindings[0]!.target.templateUseId, "template-use_existing-use");
+  assert.equal((retargeted.project.evaluationSuites[0] as ChatEvaluationSuite).inputBindings[0]!.target.templateUseId, "template-use_existing-use");
   assert.equal(resolveProjectRevisionMessages(retargeted.project, child).length, 3);
 });
 
@@ -210,7 +211,7 @@ test("generates fresh identities and leaves suites, bindings, and cases unchange
   // never retargeted onto it.
   assert.notEqual(created.templateUseId, "template-use_existing-use");
   assert.equal(
-    created.project.evaluationSuites[0]!.inputBindings[0]!.target.templateUseId,
+    (created.project.evaluationSuites[0] as ChatEvaluationSuite).inputBindings[0]!.target.templateUseId,
     "template-use_existing-use",
   );
   assert.deepEqual(created.project.defaults.target, project.defaults.target);
@@ -255,7 +256,7 @@ test("unresolved template variables are valid authored state, and the project st
   });
 
   assert.equal(created.project.schemaVersion, PROJECT_SCHEMA_VERSION);
-  assert.equal(created.project.schemaVersion, 11);
+  assert.equal(created.project.schemaVersion, 15);
   // `topic` has no value at any level; that is authoring in progress, not a
   // document the parser may reject.
   const serialized = serializeProjectFile(created.project);

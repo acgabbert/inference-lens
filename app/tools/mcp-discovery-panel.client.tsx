@@ -14,11 +14,17 @@ import type {
 } from "../../packages/contracts/src/mcp-discovery.ts";
 import { isValidToolName } from "../../packages/core/src/tool-name.ts";
 import { isTauriRuntime } from "../runtime.client.ts";
+import type { ToolAttachmentDestination } from "../request/use-request-draft.client";
+import { AttachDestinationControl } from "./attach-destination-control.client";
 
 export type McpAttachmentMode = "ask" | "automatic" | "manual";
 interface Props {
-  onAttach(tool: McpDiscoveredTool, name: string, destination: "project" | "request", serverId: string, mode: McpAttachmentMode): Promise<string | undefined>;
-  attachedNames: string[];
+  onAttach(tool: McpDiscoveredTool, name: string, destination: ToolAttachmentDestination, serverId: string, mode: McpAttachmentMode): Promise<string | undefined>;
+  /** Names a project or tab tool already holds, attached or not. */
+  takenNames: string[];
+  destination: ToolAttachmentDestination;
+  onDestinationChange(destination: ToolAttachmentDestination): void;
+  onClose(): void;
 }
 
 function changedFields(previous: McpDiscoveredTool, current: McpDiscoveredTool): string[] {
@@ -27,9 +33,8 @@ function changedFields(previous: McpDiscoveredTool, current: McpDiscoveredTool):
 }
 
 /** Explicitly connects only after a user chooses a declared host profile. */
-export function McpDiscoveryPanel({ onAttach, attachedNames }: Props) {
+export function McpDiscoveryPanel({ onAttach, takenNames, destination, onDestinationChange, onClose }: Props) {
   const [selection, setSelection] = useState<string[]>([]);
-  const [destination, setDestination] = useState<"project" | "request">("request");
   const [mode, setMode] = useState<McpAttachmentMode>("ask");
   const [attaching, setAttaching] = useState(false);
   const [catalog, setCatalog] = useState<McpServersResponse>();
@@ -99,8 +104,8 @@ export function McpDiscoveryPanel({ onAttach, attachedNames }: Props) {
       setError("Each selected tool needs a valid, unique model-visible name.");
       return;
     }
-    if (names.some((name) => attachedNames.includes(name))) {
-      setError("A selected name is already attached. Deselect it or choose another name.");
+    if (names.some((name) => takenNames.includes(name))) {
+      setError("A selected name is already in use. Deselect it or choose another name.");
       return;
     }
     setAttaching(true);
@@ -121,10 +126,11 @@ export function McpDiscoveryPanel({ onAttach, attachedNames }: Props) {
     } finally { setAttaching(false); }
   }
 
-  if (isTauriRuntime()) return <section aria-label="MCP servers"><h3>MCP servers</h3><p>MCP discovery is available in the service-hosted app.</p></section>;
+  const close = <button className="button secondary" type="button" onClick={onClose}>Close</button>;
+  if (isTauriRuntime()) return <section aria-label="MCP servers" className="tool-editor mcp-discovery-panel"><div className="tool-editor-toolbar"><h3>MCP servers</h3>{close}</div><p className="mcp-discovery-body">MCP discovery is available in the service-hosted app.</p></section>;
 
   return <section aria-label="MCP servers" className="tool-editor mcp-discovery-panel">
-    <div className="tool-editor-toolbar"><div><span className="eyebrow">External tools</span><h3>MCP servers</h3></div></div>
+    <div className="tool-editor-toolbar"><div><span className="eyebrow">External tools</span><h3>MCP servers</h3></div>{close}</div>
     <div className="mcp-discovery-body">
     <p>Connect to an operator-declared server, inspect its tools, and attach a definition. Choose tools and how their calls are handled.</p>
     {catalogError && <p role="alert">{catalogError}</p>}
@@ -147,12 +153,7 @@ export function McpDiscoveryPanel({ onAttach, attachedNames }: Props) {
         <label>Search tools <input value={search} onChange={(event) => setSearch(event.target.value)} /></label>
         {missing.length > 0 && <p role="status">No longer advertised: {missing.map((tool) => tool.remoteName).join(", ")}. Attached snapshots stay unchanged.</p>}
         <div className="tool-fields mcp-attachment-controls">
-          <label>Attachment
-            <select value={destination} disabled={attaching} onChange={(event) => setDestination(event.target.value as "request" | "project")}>
-              <option value="request">Keep attached in this tab</option>
-              <option value="project">Save to project</option>
-            </select>
-          </label>
+          <AttachDestinationControl value={destination} onChange={onDestinationChange} disabled={attaching} />
           {discovery.server.executionAvailable ? <label>Execution mode
             <select value={mode} disabled={attaching} onChange={(event) => setMode(event.target.value as McpAttachmentMode)}>
               <option value="ask">Ask before running</option>
@@ -164,7 +165,7 @@ export function McpDiscoveryPanel({ onAttach, attachedNames }: Props) {
             {attaching ? "Attaching…" : `Attach selected (${selection.length})`}
           </button>
         </div>
-        <p>{destination === "request" ? "Available for subsequent runs in this tab until removed. Cleared on reload or opening a different project." : "Definitions are saved with the project. Execution permissions are temporary and are not saved."}</p>
+        {destination === "project" && <p>Execution permissions stay on this device and are not saved with the project.</p>}
         {visibleTools.length === 0 && <p>No tools match your search.</p>}
         <div className="tool-list">
           {visibleTools.map((tool) => {
@@ -172,11 +173,11 @@ export function McpDiscoveryPanel({ onAttach, attachedNames }: Props) {
             const fields = before && before.fingerprint !== tool.fingerprint ? changedFields(before, tool) : [];
             const name = (aliases[tool.remoteName] ?? tool.remoteName).trim();
             const nameValid = isValidToolName(name);
-            const alreadyAttached = attachedNames.includes(name);
-            const attachable = !tool.invalidReason && nameValid && !alreadyAttached;
+            const nameInUse = takenNames.includes(name);
+            const attachable = !tool.invalidReason && nameValid && !nameInUse;
             return <article className="tool-editor" key={tool.remoteName}>
               <label><input type="checkbox" aria-label={`Select ${tool.remoteName}`} checked={selection.includes(tool.remoteName)} disabled={(!attachable && !selection.includes(tool.remoteName)) || attaching} onChange={(event) => setSelection((current) => event.target.checked ? [...current, tool.remoteName] : current.filter((name) => name !== tool.remoteName))} /> {tool.title ?? tool.remoteName}</label>
-              {alreadyAttached && <small>Already attached</small>}
+              {nameInUse && <small>Name in use — rename it under Tool details to attach</small>}
               <details><summary>Tool details</summary>
               {tool.title && <p>Remote name: <code>{tool.remoteName}</code></p>}
               {tool.description && <p>{tool.description}</p>}

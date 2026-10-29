@@ -20,6 +20,13 @@ export interface RunInspectionSummary {
   phase: RunInspectionPhase;
   status: RunInspectionStatus;
   totalDurationMs?: number;
+  /**
+   * Present only while a provider request is in flight. `totalDurationMs`
+   * advances only when an event arrives, so a presentation counts wall time
+   * from this run start instead. Waiting on tools or the user is not request
+   * time, so those pauses keep the last recorded value.
+   */
+  clockStartedAt?: string;
   ttfoMs?: number;
   totalTokens?: number;
   outputTokensPerSecond?: number;
@@ -66,10 +73,14 @@ export function runInspectionSummary(
     state.status.kind === "cancelled" ||
     state.status.kind === "failed";
 
+  const inFlight =
+    state.status.kind === "starting" || state.status.kind === "running";
+
   return {
     phase: terminal ? "terminal" : "active",
     status: inspectionStatus(state),
     totalDurationMs: finite(metrics.totalDurationMs),
+    clockStartedAt: inFlight ? state.startedAt : undefined,
     ttfoMs: finite(metrics.ttfoMs),
     totalTokens: finite(metrics.usage.totalTokens),
     outputTokensPerSecond: finite(metrics.outputTokensPerSecond),

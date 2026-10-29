@@ -54,7 +54,12 @@ The API service resolves credentials through `CredentialStore`. The initial
 `EnvironmentCredentialStore` reads `INFERENCE_LENS_API_KEY` inside the API process.
 It releases that credential only to the origin configured by
 `INFERENCE_LENS_API_ENDPOINT`, making it suitable for an individual developer's
-local container while keeping the secret out of client JavaScript. The HTTP
+local container while keeping the secret out of client JavaScript.
+`ServerConnectionStore` wraps it as the `default` connection and adds the
+catalog `INFERENCE_LENS_CONNECTIONS` names, read per request; an
+`environment-default` selection picks a connection by `connectionId`, and each
+key is released only to its own connection's origin
+([design](archive/SERVER_CONNECTIONS_DESIGN.md)). The HTTP
 routes also require same-origin JSON requests. A `provided` credential is
 session-only input for the local workbench; it is never included in profile
 metadata, projects, diagnostics, or browser persistence.
@@ -75,11 +80,11 @@ resumable state machine, or the provider protocol parsing, in Rust.
 Project persistence follows the same boundary:
 
 ```text
-Project v11 parser/serializer -> ProjectWorkspace -> browser bundle or Tauri filesystem
-RunTrace v1 parser/serializer -> ProjectWorkspace -> traces/<runId>.json
+Project v15 parser/serializer -> ProjectWorkspace -> browser bundle or Tauri filesystem
+RunTrace v8 parser/serializer -> ProjectWorkspace -> traces/<runId>.json
 ```
 
-`packages/core/src/project.ts` owns the strict, portable Project v10 document
+`packages/core/src/project.ts` owns the strict, portable Project v15 document
 and the provider-neutral bundle naming rules.
 Browser and Tauri adapters own directory selection, permissions,
 external-change detection, and writing. Imported projects contain portable

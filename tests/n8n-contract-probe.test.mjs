@@ -495,6 +495,8 @@ test("the probe forwards an optional provider capture directory", async () => {
       "capture_one",
       "--provider-capture",
       "/tmp/provider-capture",
+      "--provider-capture-kind",
+      "terminal",
     ],
     env: {
       INFERENCE_LENS_N8N_BASE_URL: "https://n8n.example.test",
@@ -511,6 +513,7 @@ test("the probe forwards an optional provider capture directory", async () => {
   assert.equal(code, 0);
   assert.equal(received.subworkflowId, "workflow_child");
   assert.equal(received.providerCaptureDirectory, "/tmp/provider-capture");
+  assert.equal(received.providerCaptureKind, "terminal");
 });
 
 test("projects IDs, removes credential material, and validates digests", async (t) => {
@@ -682,4 +685,136 @@ test("rejects configured secrets and private topology in projections", () => {
     () => assertNoSensitiveText('{"X-N8N-API-KEY":"value"}'),
     /API-key header/,
   );
+});
+
+test("bundles one-request terminal evidence without manufacturing a continuation", async (t) => {
+  const root = await temporaryDirectory(t);
+  const providerDirectory = path.join(root, "provider");
+  await mkdir(providerDirectory);
+  const providerFiles = {
+    "provider-request-initial.json": {
+      model: "template-echo-model",
+      tools: [
+        {
+          type: "function",
+          function: {
+            name: "il_echo_string",
+            parameters: {
+              type: "object",
+              properties: {
+                headers: { type: "string" },
+                credentials: { type: "boolean" },
+              },
+            },
+          },
+        },
+      ],
+    },
+    "provider-response-final.json": {
+      choices: [{ message: { role: "assistant", content: "done" } }],
+    },
+  };
+  for (const [filename, value] of Object.entries(providerFiles)) {
+    await writeFile(
+      path.join(providerDirectory, filename),
+      JSON.stringify(value),
+      "utf8",
+    );
+  }
+
+  await assert.rejects(captureN8nContract({
+    baseUrl: "https://n8n.example.test", apiKey: "capture-secret",
+    workflowId: "workflow_real", executionIds: ["execution_real"],
+    captureName: "ordinary_still_requires_continuation", stagingRoot: root,
+    providerCaptureDirectory: providerDirectory,
+    fetchImplementation: async () => Response.json({ id: "fixture" }),
+  }), (error) => error.cause?.code === "ENOENT" &&
+    error.cause.path.endsWith("provider-response-tool-call.json"));
+
+  const rawDirectory = await captureN8nContract({
+    baseUrl: "https://n8n.example.test",
+    apiKey: "capture-secret",
+    workflowId: "workflow_real",
+    executionIds: ["execution_real"],
+    captureName: "with_provider",
+    stagingRoot: root,
+    providerCaptureDirectory: providerDirectory,
+    providerCaptureKind: "terminal",
+    capturedAt: "2026-07-28T00:00:00.000Z",
+    fetchImplementation: async (url) =>
+      Response.json(
+        url.pathname.includes("/workflows/")
+          ? {
+              id: "workflow_real",
+              name: "tool fixture",
+              active: false,
+              nodes: [],
+              connections: {},
+              settings: {},
+            }
+          : {
+              id: "execution_real",
+              workflowId: "workflow_real",
+              mode: "manual",
+              status: "success",
+              finished: true,
+              data: {},
+            },
+      ),
+  });
+
+  const rawManifest = JSON.parse(
+    await readFile(path.join(rawDirectory, "capture-manifest.json"), "utf8"),
+  );
+  assert.deepEqual(rawManifest.files.provider, Object.keys(providerFiles));
+  assert.equal(
+    await readFile(
+      path.join(rawDirectory, "provider-request-initial.json"),
+      "utf8",
+    ),
+    JSON.stringify(providerFiles["provider-request-initial.json"]),
+  );
+
+  const projectedDirectory = path.join(root, "projected-provider");
+  await redactN8nCapture({
+    inputDirectory: rawDirectory,
+    outputDirectory: projectedDirectory,
+    n8nVersion: "2.38.10-test",
+    projectedAt: "2026-07-28T00:01:00.000Z",
+  });
+  const manifest = await validateRedactedCapture({
+    directory: projectedDirectory,
+  });
+  assert.deepEqual(manifest.providerFiles, Object.keys(providerFiles));
+  for (const filename of Object.keys(providerFiles)) {
+    assert.ok(manifest.files[filename]);
+  }
+  const initial = await readFile(
+    path.join(projectedDirectory, "provider-request-initial.json"),
+    "utf8",
+  );
+  assert.match(initial, /"headers"/);
+  assert.match(initial, /"credentials"/);
+  await writeFile(
+    path.join(rawDirectory, "provider-request-initial.json"),
+    JSON.stringify({ authorization: "Bearer must-not-survive" }),
+    "utf8",
+  );
+  await assert.rejects(
+    redactN8nCapture({
+      inputDirectory: rawDirectory,
+      outputDirectory: path.join(root, "rejected-provider"),
+      n8nVersion: "2.38.10-test",
+    }),
+    /authorization material/,
+  );
+  await writeFile(path.join(providerDirectory, "provider-request-continuation.json"), "{}");
+  await assert.rejects(captureN8nContract({
+    baseUrl: "https://n8n.example.test", apiKey: "capture-secret",
+    workflowId: "workflow_real", executionIds: ["execution_real"],
+    captureName: "mixed_artifacts_rejected", stagingRoot: root,
+    providerCaptureDirectory: providerDirectory, providerCaptureKind: "terminal",
+    fetchImplementation: async () => Response.json({ id: "fixture" }),
+  }), (error) => error.cause?.message === "Terminal capture contains ordinary continuation artifacts.");
+
 });

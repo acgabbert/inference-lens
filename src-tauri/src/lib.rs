@@ -16,6 +16,8 @@ use tauri_plugin_dialog::DialogExt;
 use tokio_util::sync::CancellationToken;
 use url::Url;
 
+mod workbench;
+
 #[cfg(not(debug_assertions))]
 const KEYCHAIN_SERVICE: &str = "app.inferencelens.desktop";
 
@@ -24,7 +26,6 @@ struct ActiveRuns(Arc<Mutex<HashMap<String, CancellationToken>>>);
 
 const PROJECT_DIRECTORY_SUFFIX: &str = ".inference-lens";
 const PROJECT_FILE_NAME: &str = "project.json";
-const PROJECT_GITIGNORE_CONTENTS: &str = "*\n";
 const TRACES_DIRECTORY_NAME: &str = "traces";
 const EXPERIMENTS_DIRECTORY_NAME: &str = "experiments";
 const EVALUATION_BASELINES_FILE_NAME: &str = "evaluation-baselines.json";
@@ -99,10 +100,28 @@ enum WireProtocol {
     Responses,
     #[serde(rename = "anthropic-messages")]
     AnthropicMessages,
+    /// Decision requests. Sent like a buffered turn; the webview builds the
+    /// body and reads the answer, so Rust still only knows path and header.
+    #[serde(rename = "systemone")]
+    SystemOne,
 }
 
 /// Every protocol path, so a pasted full URL reduces to its base.
-const PROTOCOL_PATHS: [&str; 3] = ["/chat/completions", "/responses", "/messages"];
+const PROTOCOL_PATHS: [&str; 4] = ["/chat/completions", "/responses", "/messages", "/systemone"];
+
+/// Which model listing discovery asks for (D13). Named rather than given as a
+/// URL, so a webview cannot direct a credential anywhere but the endpoint's
+/// own listings.
+#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+enum ModelListing {
+    #[default]
+    Chat,
+    /// `<base>/models?output_modalities=decisions` (OpenRouter, llama.cpp).
+    Decisions,
+    /// Ollama's native `/api/tags`, at the base with its `/v1` removed.
+    OllamaTags,
+}
 
 impl WireProtocol {
     fn path(self) -> &'static str {
@@ -110,6 +129,7 @@ impl WireProtocol {
             Self::ChatCompletions => "/chat/completions",
             Self::Responses => "/responses",
             Self::AnthropicMessages => "/messages",
+            Self::SystemOne => "/systemone",
         }
     }
 
@@ -126,7 +146,7 @@ impl WireProtocol {
                     None => request,
                 }
             }
-            Self::ChatCompletions | Self::Responses => match api_key {
+            Self::ChatCompletions | Self::Responses | Self::SystemOne => match api_key {
                 Some(api_key) => request.bearer_auth(api_key),
                 None => request,
             },
@@ -168,9 +188,14 @@ enum RawStreamEvent {
     End,
     Error {
         kind: &'static str,
+        /// A summary, cut at 4,000 characters for a provider error body.
         message: String,
         #[serde(skip_serializing_if = "Option::is_none")]
         status: Option<u16>,
+        /// The complete provider error body, for readers that keep it as
+        /// evidence. Chat reads only `message`.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        body: Option<String>,
     },
     Cancelled,
 }
@@ -252,7 +277,7 @@ fn create_project_bundle(
     parent: &Path,
     bundle_name: &str,
     contents: &str,
-    protect_from_git: bool,
+    gitignore_contents: Option<&str>,
 ) -> Result<PathBuf, String> {
     validate_project_bundle_name(bundle_name)?;
     let directory = parent.join(bundle_name);
@@ -263,14 +288,14 @@ fn create_project_bundle(
     }
     fs::create_dir(&directory)
         .map_err(|error| format!("Could not create the project bundle: {error}"))?;
-    if protect_from_git {
-        if let Err(error) = fs::write(directory.join(".gitignore"), PROJECT_GITIGNORE_CONTENTS) {
+    if let Some(gitignore_contents) = gitignore_contents {
+        if let Err(error) = fs::write(directory.join(".gitignore"), gitignore_contents) {
             let _ = fs::remove_dir(&directory);
-            return Err(format!("Could not protect the project from Git: {error}"));
+            return Err(format!("Could not write the project Git rules: {error}"));
         }
     }
     if let Err(error) = write_project_manifest(&directory, contents) {
-        if protect_from_git {
+        if gitignore_contents.is_some() {
             let _ = fs::remove_file(directory.join(".gitignore"));
         }
         let _ = fs::remove_dir(&directory);
@@ -609,12 +634,17 @@ async fn create_project_workspace(
     workspaces: State<'_, ProjectWorkspaces>,
     contents: String,
     bundle_name: String,
-    protect_from_git: bool,
+    gitignore_contents: Option<String>,
 ) -> Result<Option<NativeProjectWorkspace>, String> {
     let Some(parent) = selected_project_directory(&app)? else {
         return Ok(None);
     };
-    let directory = create_project_bundle(&parent, &bundle_name, &contents, protect_from_git)?;
+    let directory = create_project_bundle(
+        &parent,
+        &bundle_name,
+        &contents,
+        gitignore_contents.as_deref(),
+    )?;
     Ok(Some(register_project_workspace(
         &workspaces,
         directory,
@@ -646,6 +676,81 @@ fn save_project_workspace(
     write_project_manifest(&workspace.directory, &contents)?;
     workspace.last_contents = contents;
     Ok(())
+}
+
+#[tauri::command]
+fn list_workbench_records(
+    workspaces: State<'_, ProjectWorkspaces>,
+    workspace_id: String,
+) -> Result<Vec<workbench::File>, String> {
+    let workspaces = workspaces
+        .0
+        .lock()
+        .map_err(|_| command_error("Project workspace state is unavailable."))?;
+    let workspace = workspaces
+        .get(&workspace_id)
+        .ok_or_else(|| command_error("This project folder is no longer open."))?;
+    workbench::list(&workspace.directory)
+}
+
+#[tauri::command]
+fn mutate_workbench_record(
+    workspaces: State<'_, ProjectWorkspaces>,
+    workspace_id: String,
+    path: String,
+    expected_contents: Option<String>,
+    contents: Option<String>,
+    project_id: String,
+) -> Result<workbench::Mutation, String> {
+    // Hold the process-wide mutex through identity/protection checks, expected
+    // contents, mutation and read-back, including independently opened handles.
+    let workspaces = workspaces
+        .0
+        .lock()
+        .map_err(|_| command_error("Project workspace state is unavailable."))?;
+    let workspace = workspaces
+        .get(&workspace_id)
+        .ok_or_else(|| command_error("This project folder is no longer open."))?;
+    workbench::mutate(
+        &workspace.directory,
+        &path,
+        expected_contents.as_deref(),
+        contents.as_deref(),
+        &project_id,
+    )
+}
+
+#[tauri::command]
+fn read_workbench_migration(
+    workspaces: State<'_, ProjectWorkspaces>,
+    workspace_id: String,
+) -> Result<workbench::MigrationSnapshot, String> {
+    let workspaces = workspaces
+        .0
+        .lock()
+        .map_err(|_| command_error("Project workspace state is unavailable."))?;
+    let workspace = workspaces
+        .get(&workspace_id)
+        .ok_or_else(|| command_error("This project folder is no longer open."))?;
+    workbench::read_migration(&workspace.directory)
+}
+
+#[tauri::command]
+fn stage_workbench_migration(
+    workspaces: State<'_, ProjectWorkspaces>,
+    workspace_id: String,
+    project_id: String,
+    files: Vec<workbench::MigrationPayload>,
+) -> Result<workbench::MigrationStage, String> {
+    // One acquisition covers the complete batch and shares ordinary record coordination.
+    let workspaces = workspaces
+        .0
+        .lock()
+        .map_err(|_| command_error("Project workspace state is unavailable."))?;
+    let workspace = workspaces
+        .get(&workspace_id)
+        .ok_or_else(|| command_error("This project folder is no longer open."))?;
+    workbench::stage_migration(&workspace.directory, &project_id, &files)
 }
 
 #[tauri::command]
@@ -1031,18 +1136,20 @@ struct ModelDiscoveryProxyResponse {
     body: String,
 }
 
-/// Streaming HTTP proxy for `GET /models`: attaches the resolved credential
+/// Streaming HTTP proxy for a model listing: attaches the resolved credential
 /// and returns the raw response body. TypeScript already enforces the
-/// `modelDiscovery` capability check and parses/normalizes the body — Rust
-/// never inspects provider protocol shape.
+/// `modelDiscovery` capability check, decides which listing to ask for next,
+/// and parses/normalizes the body — Rust never inspects provider protocol
+/// shape.
 #[tauri::command]
 async fn discover_models(
     endpoint: String,
     protocol: WireProtocol,
+    listing: Option<ModelListing>,
     credential: CredentialSelection,
 ) -> Result<ModelDiscoveryProxyResponse, String> {
     let credential = resolve_credential(credential, &endpoint)?;
-    let models_url = models_url(&endpoint, protocol)?;
+    let models_url = models_url(&endpoint, protocol, listing.unwrap_or_default())?;
     let request = protocol.authorize(Client::new().get(models_url), credential.api_key.as_deref());
     let response = request
         .send()
@@ -1162,6 +1269,23 @@ async fn execute_provider_turn(
     active_runs.remove(&request_id);
 }
 
+fn provider_error_event(status: reqwest::StatusCode, detail: String) -> RawStreamEvent {
+    if detail.is_empty() {
+        return RawStreamEvent::Error {
+            kind: "provider",
+            message: format!("Provider returned HTTP {status}."),
+            status: Some(status.as_u16()),
+            body: None,
+        };
+    }
+    RawStreamEvent::Error {
+        kind: "provider",
+        message: detail.chars().take(4_000).collect(),
+        status: Some(status.as_u16()),
+        body: Some(detail),
+    }
+}
+
 async fn stream_provider_turn(
     events: &ProviderEvents,
     endpoint: &str,
@@ -1178,6 +1302,7 @@ async fn stream_provider_turn(
                 kind: "transport",
                 message,
                 status: None,
+                body: None,
             });
             return;
         }
@@ -1204,6 +1329,7 @@ async fn stream_provider_turn(
                 kind: "transport",
                 message: format!("Could not reach provider: {error}"),
                 status: None,
+                body: None,
             });
             return;
         }
@@ -1217,16 +1343,7 @@ async fn stream_provider_turn(
     });
     if !status.is_success() {
         let detail = response.text().await.unwrap_or_default();
-        let message = if detail.is_empty() {
-            format!("Provider returned HTTP {status}.")
-        } else {
-            detail.chars().take(4_000).collect()
-        };
-        events.emit(&RawStreamEvent::Error {
-            kind: "provider",
-            message,
-            status: Some(status.as_u16()),
-        });
+        events.emit(&provider_error_event(status, detail));
         return;
     }
 
@@ -1245,6 +1362,7 @@ async fn stream_provider_turn(
                     kind: "transport",
                     message: format!("Could not read provider response: {error}"),
                     status: None,
+                    body: None,
                 });
                 return;
             }
@@ -1271,6 +1389,7 @@ async fn stream_provider_turn(
                     kind: "transport",
                     message: format!("Provider stream failed: {error}"),
                     status: None,
+                    body: None,
                 });
                 return;
             }
@@ -1368,12 +1487,30 @@ fn provider_request_url(endpoint: &str, protocol: WireProtocol) -> Result<String
     Ok(endpoint_with_path(endpoint, protocol.path())?.to_string())
 }
 
-/// Mirrors `discoveryUrl` in TypeScript. Anthropic pages its listing at 20 by
-/// default, so discovery asks for its maximum.
-fn models_url(endpoint: &str, protocol: WireProtocol) -> Result<String, String> {
+/// Mirrors `modelListingUrl` in TypeScript. Anthropic pages its listing at 20
+/// by default, so discovery asks for its maximum.
+fn models_url(
+    endpoint: &str,
+    protocol: WireProtocol,
+    listing: ModelListing,
+) -> Result<String, String> {
+    if listing == ModelListing::OllamaTags {
+        let mut parsed = endpoint_with_path(endpoint, "")?;
+        let base = parsed.path().trim_end_matches('/').to_owned();
+        let Some(root) = base.strip_suffix("/v1") else {
+            return Err(command_error(
+                "Ollama's model listing needs an endpoint ending in /v1.",
+            ));
+        };
+        parsed.set_path(&format!("{root}/api/tags"));
+        parsed.set_query(None);
+        return Ok(parsed.to_string());
+    }
     let mut parsed = endpoint_with_path(endpoint, "/models")?;
     parsed.set_query(None);
-    if protocol == WireProtocol::AnthropicMessages {
+    if listing == ModelListing::Decisions {
+        parsed.set_query(Some("output_modalities=decisions"));
+    } else if protocol == WireProtocol::AnthropicMessages {
         parsed.set_query(Some("limit=1000"));
     }
     Ok(parsed.to_string())
@@ -1394,6 +1531,10 @@ pub fn run() {
             open_project_workspace,
             create_project_workspace,
             save_project_workspace,
+            list_workbench_records,
+            mutate_workbench_record,
+            read_workbench_migration,
+            stage_workbench_migration,
             save_run_trace,
             list_run_traces,
             read_run_trace,
@@ -1456,7 +1597,7 @@ mod tests {
             &parent.0,
             "Prompt Lab.inference-lens",
             "{\"schemaVersion\":5}\n",
-            true,
+            Some("*\n"),
         )
         .expect("create protected bundle");
         assert_eq!(
@@ -1476,11 +1617,35 @@ mod tests {
             &parent.0,
             "Shared.inference-lens",
             "{\"schemaVersion\":5}\n",
-            false,
+            None,
         )
         .expect("create unprotected bundle");
         assert!(!bundle.join(".gitignore").exists());
         assert!(bundle.join(PROJECT_FILE_NAME).exists());
+    }
+
+    #[test]
+    fn creates_definitions_bundle_with_supplied_rules_and_preserves_them_on_save() {
+        let parent = TemporaryProjectDirectory::new();
+        // Policy is generated by core and passed through the creation command.
+        let policy = "*\n!/.gitignore\n!/project.json\n";
+        let bundle = create_project_bundle(
+            &parent.0,
+            "Definitions.inference-lens",
+            "{}\n",
+            Some(policy),
+        )
+        .expect("create definitions bundle");
+        assert_eq!(
+            fs::read_to_string(bundle.join(".gitignore")).expect("read policy"),
+            policy
+        );
+        fs::write(bundle.join(".gitignore"), "# custom\ntraces/\n").expect("customize policy");
+        write_project_manifest(&bundle, "{\"name\":\"Updated\"}\n").expect("save manifest");
+        assert_eq!(
+            fs::read_to_string(bundle.join(".gitignore")).expect("read customized policy"),
+            "# custom\ntraces/\n"
+        );
     }
 
     #[test]
@@ -1497,7 +1662,7 @@ mod tests {
             "double  space.inference-lens",
         ] {
             assert!(
-                create_project_bundle(&parent.0, invalid, "{}\n", true).is_err(),
+                create_project_bundle(&parent.0, invalid, "{}\n", Some("*\n")).is_err(),
                 "accepted invalid bundle name: {invalid}"
             );
         }
@@ -1505,12 +1670,14 @@ mod tests {
             &parent.0,
             "COM1-project.archive.inference-lens",
             "{}\n",
-            true,
+            Some("*\n"),
         )
         .expect("accept frontend-sanitized Windows device name");
-        create_project_bundle(&parent.0, "Taken.inference-lens", "{}\n", true)
+        create_project_bundle(&parent.0, "Taken.inference-lens", "{}\n", Some("*\n"))
             .expect("create first bundle");
-        assert!(create_project_bundle(&parent.0, "Taken.inference-lens", "{}\n", true).is_err());
+        assert!(
+            create_project_bundle(&parent.0, "Taken.inference-lens", "{}\n", Some("*\n")).is_err()
+        );
     }
 
     #[test]
@@ -1770,6 +1937,35 @@ mod tests {
     }
 
     #[test]
+    fn a_provider_error_keeps_its_complete_body_beside_the_shortened_message() {
+        let detail = format!("{{\"detail\":\"{}\"}}", "é".repeat(5_000));
+        let event = serde_json::to_value(provider_error_event(
+            reqwest::StatusCode::UNPROCESSABLE_ENTITY,
+            detail.clone(),
+        ))
+        .unwrap();
+        assert_eq!(event["type"], "error");
+        assert_eq!(event["kind"], "provider");
+        assert_eq!(event["status"], 422);
+        let message = event["message"].as_str().unwrap();
+        assert_eq!(message.chars().count(), 4_000);
+        assert!(detail.starts_with(message));
+        assert_eq!(event["body"].as_str().map(str::len), Some(detail.len()));
+        assert_eq!(event["body"], detail);
+    }
+
+    #[test]
+    fn an_empty_provider_error_has_no_body() {
+        let event = serde_json::to_value(provider_error_event(
+            reqwest::StatusCode::BAD_GATEWAY,
+            String::new(),
+        ))
+        .unwrap();
+        assert_eq!(event["message"], "Provider returned HTTP 502 Bad Gateway.");
+        assert!(event.get("body").is_none());
+    }
+
+    #[test]
     fn drains_only_complete_lines_leaving_a_partial_tail_buffered() {
         let mut pending = b"data: one\ndata: tw".to_vec();
         let lines = drain_complete_lines(&mut pending);
@@ -1897,7 +2093,7 @@ mod tests {
                 "https://api.example.com/v1/messages"
             );
             assert_eq!(
-                models_url(endpoint, WireProtocol::ChatCompletions).unwrap(),
+                models_url(endpoint, WireProtocol::ChatCompletions, ModelListing::Chat).unwrap(),
                 "https://api.example.com/v1/models"
             );
         }
@@ -1916,12 +2112,73 @@ mod tests {
         assert_eq!(
             models_url(
                 "https://api.anthropic.com/v1?ignored=1",
-                WireProtocol::AnthropicMessages
+                WireProtocol::AnthropicMessages,
+                ModelListing::Chat
             )
             .unwrap(),
             "https://api.anthropic.com/v1/models?limit=1000"
         );
         assert!(provider_request_url("file:///tmp", WireProtocol::Responses).is_err());
+    }
+
+    #[test]
+    fn derives_system_one_and_its_decision_listings_from_the_same_base() {
+        for endpoint in [
+            "http://localhost:11434/v1",
+            "http://localhost:11434/v1/systemone/",
+            "http://localhost:11434/v1/chat/completions",
+        ] {
+            assert_eq!(
+                provider_request_url(endpoint, WireProtocol::SystemOne).unwrap(),
+                "http://localhost:11434/v1/systemone"
+            );
+            assert_eq!(
+                models_url(endpoint, WireProtocol::SystemOne, ModelListing::Decisions).unwrap(),
+                "http://localhost:11434/v1/models?output_modalities=decisions"
+            );
+            assert_eq!(
+                models_url(endpoint, WireProtocol::SystemOne, ModelListing::OllamaTags).unwrap(),
+                "http://localhost:11434/api/tags"
+            );
+        }
+        // A pasted System One URL is the same connection for chat runs too.
+        assert_eq!(
+            provider_request_url(
+                "http://localhost:11434/v1/systemone",
+                WireProtocol::ChatCompletions
+            )
+            .unwrap(),
+            "http://localhost:11434/v1/chat/completions"
+        );
+        assert_eq!(
+            models_url(
+                "https://proxy.example/ollama/v1?key=1",
+                WireProtocol::SystemOne,
+                ModelListing::OllamaTags
+            )
+            .unwrap(),
+            "https://proxy.example/ollama/api/tags"
+        );
+        // Without `/v1` there is no server root to guess at.
+        assert!(models_url(
+            "http://localhost:8080",
+            WireProtocol::SystemOne,
+            ModelListing::OllamaTags
+        )
+        .is_err());
+
+        let request = WireProtocol::SystemOne
+            .authorize(Client::new().get("https://example.test"), Some("secret"))
+            .build()
+            .expect("build system one request");
+        assert_eq!(request.headers()["authorization"], "Bearer secret");
+        let parsed: WireProtocol =
+            serde_json::from_value(json!("systemone")).expect("parse protocol");
+        assert_eq!(parsed, WireProtocol::SystemOne);
+        let listing: ModelListing =
+            serde_json::from_value(json!("ollama-tags")).expect("parse listing");
+        assert_eq!(listing, ModelListing::OllamaTags);
+        assert!(serde_json::from_value::<ModelListing>(json!("https://evil.test")).is_err());
     }
 
     #[test]

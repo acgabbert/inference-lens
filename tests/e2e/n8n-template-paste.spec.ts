@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 
 import { createProjectFile, createPromptTemplate } from "../../packages/core/src/project";
 import { importProject, openMode, seedProfile, waitForHydration } from "./support";
+import { expectModalContract } from "./support/modal";
 
 function pasteProject() {
   let project = createProjectFile({
@@ -71,4 +72,16 @@ test("converts explicit and ordinary n8n template paste without changing native 
   await suggestion.getByRole("button", { name: "Convert n8n expressions" }).click();
   await expect(content).toHaveValue("Before: {{topic}}{{title}}");
   await expect(content).not.toHaveValue(/NaN|Infinity|undefined/);
+});
+
+test("the n8n paste dialog follows the modal contract", async ({ page }) => {
+  await seedProfile(page);
+  await page.goto("/");
+  await waitForHydration(page);
+  await importProject(page, pasteProject(), "n8n paste fixture");
+  await openMode(page, "Prompts");
+  await expectModalContract(page, {
+    open: page.getByRole("button", { name: "Paste from n8n…" }),
+    dialog: page.getByRole("dialog", { name: "Paste from n8n" }),
+  });
 });

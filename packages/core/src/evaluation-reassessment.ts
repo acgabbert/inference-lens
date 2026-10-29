@@ -4,7 +4,7 @@ import { alignSuiteSnapshots } from "./evaluation-suite-alignment.ts";
 import type { AlignableSuiteSnapshot } from "./evaluation-suite-alignment.ts";
 import type {
   EvaluationCriteriaOverride,
-  EvaluationExperimentPlanV4,
+  SuiteExperimentPlan,
 } from "./experiment.ts";
 import type { EvaluationCaseId } from "./run-kernel/types.ts";
 
@@ -61,7 +61,7 @@ export interface SuiteCriteriaProjection {
  * an outcome the author never asked a question to get.
  */
 export function currentSuiteCriteria(
-  plan: EvaluationExperimentPlanV4,
+  plan: SuiteExperimentPlan,
   suite: AlignableSuiteSnapshot | undefined,
 ): SuiteCriteriaProjection {
   const criteria = new Map<EvaluationCaseId, readonly CheckDefinition[]>();
@@ -150,7 +150,7 @@ export interface SuiteAdoption {
  */
 export function planSuiteAdoption(
   criteria: EvaluationCriteriaOverride,
-  plan: EvaluationExperimentPlanV4,
+  plan: SuiteExperimentPlan,
   suite: AlignableSuiteSnapshot | undefined,
 ): SuiteAdoption {
   const authored = new Set((suite?.cases ?? []).map(({ caseId }) => caseId));

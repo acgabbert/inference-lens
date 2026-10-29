@@ -1,4 +1,8 @@
+import { inlineRevision, chatTemplate, legacyContent } from "./project-kind-helpers.ts";
 import assert from "node:assert/strict";
+import type { DecisionInput } from "../packages/core/src/decision.ts";
+import { updateDecisionRequestDraft } from "../packages/core/src/decision-request.ts";
+import type { ChatEvaluationSuite } from "../packages/core/src/evaluation-suites.ts";
 import test from "node:test";
 
 import {
@@ -23,6 +27,7 @@ import {
   projectExportFileName,
   projectDraft,
   renamePromptTemplate,
+  renamePromptTemplateRevision,
   removePromptTemplateRevision,
   removePromptTemplateUse,
   resolveProjectRevision,
@@ -34,6 +39,7 @@ import {
   updatePromptTemplateDraft,
   updateConnectionRequirementEndpoint,
   updateProjectDraft,
+  updatePromptTemplateUseRevision,
   updatePromptTemplateUseToLatest,
   updatePromptTemplateUseValues,
 } from "../packages/core/src/project.ts";
@@ -124,7 +130,7 @@ function projectWithEvaluationSuite() {
   });
 }
 
-test("creates a strict, portable Project v11 document", () => {
+test("creates a strict, portable Project v15 document", () => {
   const project = createProjectFile({
     name: "Example",
     request,
@@ -151,8 +157,8 @@ test("creates a strict, portable Project v11 document", () => {
   assert.equal(projectDirectoryName("   "), "Untitled.inference-lens");
   assert.equal(projectExportFileName("Prompt Lab"), "Prompt Lab.project.json");
   assert.equal(projectExportFileName("CON"), "CON-project.project.json");
-  assert.equal(PROJECT_SCHEMA_VERSION, 11);
-  assert.equal(project.schemaVersion, 11);
+  assert.equal(PROJECT_SCHEMA_VERSION, 15);
+  assert.equal(project.schemaVersion, 15);
   assert.equal(project.projectId, "project_example");
   const draft = projectDraft(project);
   assert.deepEqual(projectDraft(project), {
@@ -176,7 +182,7 @@ test("creates a strict, portable Project v11 document", () => {
   });
   assert.deepEqual(project.externalImports, []);
   assert.deepEqual(project.evaluationSuites, []);
-  assert.equal(JSON.parse(serializeProjectFile(project)).schemaVersion, 11);
+  assert.equal(JSON.parse(serializeProjectFile(project)).schemaVersion, 15);
 });
 
 test("resolves native formatting-whitespace tokens without rewriting authored project JSON", () => {
@@ -323,7 +329,7 @@ test("rejects pre-v10 project artifacts with an actionable version error", () =>
       (error: unknown) => {
         const message = (error as Error).message;
         assert.match(message, new RegExp(`schema v${schemaVersion} is not supported`));
-        assert.match(message, /opens schema v10 and v11/);
+        assert.match(message, /opens schema v10, v11, v12, v13, v14, and v15/);
         assert.match(message, /earlier Inference Lens release/);
         assert.doesNotMatch(message, /v10-compatible/);
         return true;
@@ -334,16 +340,16 @@ test("rejects pre-v10 project artifacts with an actionable version error", () =>
 
 test("a project from a newer schema asks for an updated build, not an older release", () => {
   const current = createProjectFile({
-    name: "Version 12",
+    name: "Version 15",
     request,
-    idSuffix: "version-12",
+    idSuffix: "version-15",
     createdAt: "2026-08-01T12:00:00.000Z",
   });
   assert.throws(
-    () => parseProjectFile({ ...current, schemaVersion: 12 }),
+    () => parseProjectFile({ ...current, schemaVersion: 16 }),
     (error: unknown) => {
       const message = (error as Error).message;
-      assert.match(message, /schema v12 is not supported/);
+      assert.match(message, /schema v16 is not supported/);
       assert.match(message, /newer Inference Lens/);
       assert.doesNotMatch(message, /earlier Inference Lens release/);
       return true;
@@ -378,7 +384,7 @@ test("a v10 project moves its connection's protocol onto every execution target"
     })),
   };
   const opened = parseProjectFile(v10);
-  assert.equal(opened.schemaVersion, 11);
+  assert.equal(opened.schemaVersion, 15);
   assert.deepEqual(opened, current);
   assert.equal(opened.defaults.target.protocol, "openai-compatible-chat-completions");
   assert.equal(
@@ -386,6 +392,77 @@ test("a v10 project moves its connection's protocol onto every execution target"
     "openai-compatible-chat-completions",
   );
   assert.equal("protocol" in opened.connectionRequirements[0]!, false);
+});
+
+test("every supported starting version follows the full migration chain without changing chat data", () => {
+  let current = projectWithEvaluationSuite();
+  current = updatePromptTemplateDraft(current, {
+    templateId: "template_evaluation-question",
+    sourceRevisionId: "template-revision_evaluation-question-1",
+    messages: [{ role: "user", content: "Draft {{topic}}" }],
+    variableDefaults: { topic: "" },
+  });
+  current = archivePromptTemplate(current, "template_evaluation-question", "2026-10-25T12:00:00.000Z");
+  const serialized = serializeProjectFile(current);
+  for (const schemaVersion of [10, 11, 12, 13, 14, 15]) {
+    const legacy: Record<string, unknown> = { ...(schemaVersion < 15 ? legacyContent(structuredClone(current)) : structuredClone(current)), schemaVersion };
+    if (schemaVersion < 13) {
+      delete legacy.decisionRequests;
+      delete legacy.decisionRequestRevisions;
+    }
+    if (schemaVersion === 10) {
+      const target: Record<string, unknown> = { ...current.defaults.target };
+      delete target.protocol;
+      legacy.connectionRequirements = current.connectionRequirements.map((requirement) => ({
+        ...requirement, protocol: "openai-compatible-chat-completions",
+      }));
+      legacy.defaults = { ...current.defaults, target };
+      legacy.evaluationSuites = current.evaluationSuites.map((suite) => {
+        const suiteTarget: Record<string, unknown> = { ...suite.execution.target };
+        delete suiteTarget.protocol;
+        return { ...suite, execution: { ...suite.execution, target: suiteTarget } };
+      });
+    }
+    const before = structuredClone(legacy);
+    const opened = parseProjectFile(legacy);
+    assert.deepEqual(legacy, before, `v${schemaVersion} migration must not mutate its input`);
+    assert.deepEqual(opened, current, `v${schemaVersion} must preserve the project`);
+    assert.equal(serializeProjectFile(opened), serialized, `v${schemaVersion} must write the same bytes`);
+    assert.deepEqual(parseProjectJson(serializeProjectFile(opened)), current);
+  }
+});
+
+test("v13 and v14 starting points keep ordered decision content and still reject dangling references", () => {
+  const ordered: DecisionInput = {
+    state: { ticket: "{{ticket}}", team: "{{team}}" },
+    questions: {
+      zeta: { type: "choice", instructions: "Route {{team}}", criteria: { urgent: "Now", later: "Queue" } },
+      alpha: { type: "noul", instructions: "Spam?" },
+    },
+  };
+  const current = updateDecisionRequestDraft(projectWithEvaluationSuite(), {
+    decision: ordered, values: { ticket: "" }, branch: false, idSuffix: "chain", createdAt: "2026-10-25T12:00:00.000Z",
+  });
+  const serialized = serializeProjectFile(current);
+  for (const schemaVersion of [13, 14]) {
+    const opened = parseProjectFile({ ...legacyContent(structuredClone(current)), schemaVersion });
+    assert.deepEqual(opened, current, `v${schemaVersion} must preserve the project`);
+    assert.equal(serializeProjectFile(opened), serialized, `v${schemaVersion} must write the same bytes`);
+    const revision = inlineRevision(opened.decisionRequestRevisions[0]!);
+    assert.deepEqual(Object.keys(revision.decision.state as Record<string, string>), ["ticket", "team"]);
+    assert.deepEqual(Object.keys(revision.decision.questions), ["zeta", "alpha"]);
+    assert.deepEqual(Object.keys(revision.decision.questions.zeta!.criteria!), ["urgent", "later"]);
+    assert.deepEqual(revision.values, { ticket: "" });
+
+    const dangling = structuredClone(current);
+    inlineRevision(dangling.decisionRequestRevisions[0]!).decisionRequestId = "decision-request_missing";
+    assert.throws(
+      () => parseProjectFile({ ...legacyContent(dangling), schemaVersion }),
+      (error: unknown) => error instanceof ProjectValidationError
+        && error.issues.some(({ path }) => path.includes("decisionRequestRevisions")),
+      `v${schemaVersion} must reject a revision naming a missing request`,
+    );
+  }
 });
 
 test("the execution target, not the connection, records the protocol a run uses", () => {
@@ -436,13 +513,13 @@ test("an evaluation configuration may override the suite's protocol", () => {
     "Suite",
     () => "variants-suite",
   );
-  const suite = project.evaluationSuites.find(({ id }) => id === suiteId)!;
+  const suite = project.evaluationSuites.find(({ id }) => id === suiteId) as ChatEvaluationSuite;
   const variant = { ...suite.variants[0]!, overrides: { target: { protocol: "openai-responses" as const } } };
   const updated = parseProjectFile({
     ...project,
     evaluationSuites: [{ ...suite, variants: [variant] }],
   });
-  const resolved = resolveEvaluationVariant(updated.evaluationSuites[0]!, updated.evaluationSuites[0]!.variants[0]!);
+  const resolved = resolveEvaluationVariant(updated.evaluationSuites[0] as ChatEvaluationSuite, (updated.evaluationSuites[0] as ChatEvaluationSuite).variants[0]!);
   assert.equal(resolved.target.protocol, "openai-responses");
   assert.equal(
     resolveEvaluationVariant(suite, suite.variants[0]!).target.protocol,
@@ -478,7 +555,7 @@ test("a suite cannot expose a tool the project does not have, or expose one twic
       execution: { ...suite.execution, toolIds: ["tool_weather"] },
     }],
   });
-  assert.deepEqual(withTool.evaluationSuites[0]!.execution.toolIds, ["tool_weather"]);
+  assert.deepEqual((withTool.evaluationSuites[0] as ChatEvaluationSuite).execution.toolIds, ["tool_weather"]);
   assert.throws(
     () => parseProjectFile({
       ...withTool,
@@ -495,7 +572,7 @@ test("a suite cannot expose a tool the project does not have, or expose one twic
     tools: [],
     enabledToolIds: [],
   });
-  assert.deepEqual(afterDelete.evaluationSuites[0]!.execution.toolIds, []);
+  assert.deepEqual((afterDelete.evaluationSuites[0] as ChatEvaluationSuite).execution.toolIds, []);
 });
 
 test("stores ordered evaluation suites, cases, bindings, checks, and reference answers", () => {
@@ -785,7 +862,7 @@ test("migrates v5 fragments by duplicating templates used under different roles"
   assert.deepEqual(migrated.evaluationSuites, []);
   assert.equal(migrated.promptTemplates.length, 2);
   assert.deepEqual(
-    migrated.promptTemplates.map(({ name, revisions }) => [
+    migrated.promptTemplates.filter((template) => template.kind === "chat").map(({ name, revisions }) => [
       name,
       revisions[0]?.messages[0]?.role,
     ]),
@@ -855,7 +932,7 @@ test("resolves pinned single and multi-message prompts with stable output IDs", 
   });
   project.promptTemplates = [
     {
-      id: "template_prompt",
+      kind: "chat", id: "template_prompt",
       name: "Prompt",
       currentRevisionId: "template-revision_prompt-1",
       revisions: [
@@ -868,7 +945,7 @@ test("resolves pinned single and multi-message prompts with stable output IDs", 
       ],
     },
     {
-      id: "template_pair",
+      kind: "chat", id: "template_pair",
       name: "Pair",
       currentRevisionId: "template-revision_pair-1",
       revisions: [
@@ -974,7 +1051,7 @@ test("keeps authored order when literal messages and template uses interleave", 
   });
   project.promptTemplates = [
     {
-      id: "template_middle",
+      kind: "chat", id: "template_middle",
       name: "Middle",
       currentRevisionId: "template-revision_middle-1",
       revisions: [
@@ -1059,10 +1136,10 @@ test("creates immutable template revisions, finds uses, and rejects unsafe remov
   assert.equal(unchanged, created);
 
   const renamed = renamePromptTemplate(created, "template_question", "Question v2");
-  assert.equal(renamed.promptTemplates[0]?.name, "Question v2");
+  assert.equal(chatTemplate(renamed.promptTemplates[0]).name, "Question v2");
   assert.equal(
-    renamed.promptTemplates[0]?.currentRevisionId,
-    created.promptTemplates[0]?.currentRevisionId,
+    chatTemplate(renamed.promptTemplates[0]).currentRevisionId,
+    chatTemplate(created.promptTemplates[0]).currentRevisionId,
   );
   assert.throws(
     () => renamePromptTemplate(created, "template_question", " "),
@@ -1077,10 +1154,10 @@ test("creates immutable template revisions, finds uses, and rejects unsafe remov
     createdAt: "2026-07-24T12:02:00.000Z",
   });
   assert.equal(
-    revised.promptTemplates[0]?.currentRevisionId,
+    chatTemplate(revised.promptTemplates[0]).currentRevisionId,
     "template-revision_question-2",
   );
-  assert.equal(revised.promptTemplates[0]?.revisions.length, 2);
+  assert.equal(chatTemplate(revised.promptTemplates[0]).revisions.length, 2);
 
   revised.conversationRevisions[0]!.items.push({
     kind: "template-use",
@@ -1098,7 +1175,7 @@ test("creates immutable template revisions, finds uses, and rejects unsafe remov
       used,
       "template_question",
       "template-revision_question-1",
-    ).map(({ conversationRevisionId, itemIndex, use }) => [
+    ).filter((usage) => usage.kind === "conversation").map(({ conversationRevisionId, itemIndex, use }) => [
       conversationRevisionId,
       itemIndex,
       use.id,
@@ -1126,7 +1203,7 @@ test("creates immutable template revisions, finds uses, and rejects unsafe remov
     "template-revision_question-2",
   );
   assert.deepEqual(
-    removed.promptTemplates[0]?.revisions.map(({ id }) => id),
+    chatTemplate(removed.promptTemplates[0]).revisions.map(({ id }) => id),
     ["template-revision_question-1"],
   );
 });
@@ -1156,25 +1233,25 @@ test("persists a mutable prompt draft separately from named immutable revisions"
     variableDefaults: { topic: "autosave" },
   });
   const parsedDraft = parseProjectJson(serializeProjectFile(drafted));
-  assert.deepEqual(parsedDraft.promptTemplates[0]?.draft, {
+  assert.deepEqual(chatTemplate(parsedDraft.promptTemplates[0]).draft, {
     sourceRevisionId: "template-revision_question-draft-1",
     messages: [{ role: "user", content: "Explain {{topic}} clearly." }],
     variableDefaults: { topic: "autosave" },
   });
-  assert.equal(parsedDraft.promptTemplates[0]?.revisions.length, 1);
+  assert.equal(chatTemplate(parsedDraft.promptTemplates[0]).revisions.length, 1);
 
   const checkpoint = appendPromptTemplateRevision(drafted, {
     templateId: "template_question-draft",
-    messages: drafted.promptTemplates[0]!.draft!.messages,
-    variableDefaults: drafted.promptTemplates[0]!.draft!.variableDefaults,
+    messages: chatTemplate(drafted.promptTemplates[0]).draft!.messages,
+    variableDefaults: chatTemplate(drafted.promptTemplates[0]).draft!.variableDefaults,
     name: "Clarify the request",
     idSuffix: "question-draft-2",
     createdAt: "2026-08-11T12:02:00.000Z",
   });
-  assert.equal(checkpoint.promptTemplates[0]?.draft, undefined);
-  assert.equal(checkpoint.promptTemplates[0]?.revisions.at(-1)?.name, "Clarify the request");
+  assert.equal(chatTemplate(checkpoint.promptTemplates[0]).draft, undefined);
+  assert.equal(chatTemplate(checkpoint.promptTemplates[0]).revisions.at(-1)?.name, "Clarify the request");
   assert.equal(
-    checkpoint.promptTemplates[0]?.revisions[0]?.messages[0]?.content,
+    chatTemplate(checkpoint.promptTemplates[0]).revisions[0]?.messages[0]?.content,
     "Explain {{topic}}.",
   );
 });
@@ -1208,7 +1285,7 @@ test("archives templates without breaking pinned uses and restores future insert
     "2026-07-31T12:02:00.000Z",
   );
   assert.equal(
-    archived.promptTemplates[0]?.archivedAt,
+    chatTemplate(archived.promptTemplates[0]).archivedAt,
     "2026-07-31T12:02:00.000Z",
   );
   assert.equal(findPromptTemplateUsages(archived, "template_archive-reusable").length, 1);
@@ -1223,7 +1300,7 @@ test("archives templates without breaking pinned uses and restores future insert
   );
 
   const restored = restorePromptTemplate(archived, "template_archive-reusable");
-  assert.equal(restored.promptTemplates[0]?.archivedAt, undefined);
+  assert.equal(chatTemplate(restored.promptTemplates[0]).archivedAt, undefined);
   assert.doesNotThrow(() =>
     insertPromptTemplateUse(restored, {
       conversationRevisionId,
@@ -1281,6 +1358,17 @@ test("inserts, updates, detaches, and removes template uses through core helpers
     templateUseId: "template-use_reusable",
     newOutputMessageIdSuffixes: ["reusable-2"],
   });
+  // Compose's revision selector can move a use back to any earlier revision,
+  // keeping its output message IDs and only values the target still declares.
+  const reverted = updatePromptTemplateUseRevision(latest, {
+    conversationRevisionId,
+    templateUseId: "template-use_reusable",
+    templateRevisionId: "template-revision_reusable-1",
+  });
+  const revertedUse = findPromptTemplateUsages(reverted, "template_reusable")
+    .filter((usage) => usage.kind === "conversation")[0]!.use;
+  assert.equal(revertedUse.templateRevisionId, "template-revision_reusable-1");
+  assert.deepEqual(revertedUse.outputMessageIds, ["message_reusable-1"]);
   const latestWithValues = updatePromptTemplateUseValues(latest, {
     conversationRevisionId,
     templateUseId: "template-use_reusable",
@@ -1289,7 +1377,7 @@ test("inserts, updates, detaches, and removes template uses through core helpers
   const latestUse = findPromptTemplateUsages(
     latestWithValues,
     "template_reusable",
-  )[0]!.use;
+  ).filter((usage) => usage.kind === "conversation")[0]!.use;
   assert.equal(
     latestUse.templateRevisionId,
     "template-revision_reusable-2",
@@ -1348,7 +1436,7 @@ test("resolves an unfilled variable into a diagnostic instead of a failure", () 
   });
   project.promptTemplates = [
     {
-      id: "template_open",
+      kind: "chat", id: "template_open",
       name: "Open",
       currentRevisionId: "template-revision_open-1",
       revisions: [
@@ -1467,7 +1555,7 @@ test("rejects invalid template-use ownership, output shape, and secret-like valu
   });
   project.promptTemplates = [
     {
-      id: "template_prompt",
+      kind: "chat", id: "template_prompt",
       name: "Prompt",
       currentRevisionId: "template-revision_prompt-1",
       revisions: [
@@ -1571,15 +1659,15 @@ test("records a recommended target without appending a revision or unpinning use
     "template_question",
     target,
   );
-  const template = recommended.promptTemplates[0]!;
+  const template = chatTemplate(recommended.promptTemplates[0]);
   assert.deepEqual(template.recommendedTarget, target);
   // The point of template-level ownership: authored content is untouched, so
   // every existing use stays pinned to the revision it already named.
   assert.equal(template.revisions.length, 1);
-  assert.deepEqual(template.revisions, inserted.promptTemplates[0]!.revisions);
+  assert.deepEqual(template.revisions, chatTemplate(inserted.promptTemplates[0]).revisions);
   assert.equal(
     template.currentRevisionId,
-    inserted.promptTemplates[0]!.currentRevisionId,
+    chatTemplate(inserted.promptTemplates[0]).currentRevisionId,
   );
   const stillPinned = recommended.conversationRevisions
     .at(-1)!
@@ -1602,9 +1690,9 @@ test("records a recommended target without appending a revision or unpinning use
     "template_question",
     undefined,
   );
-  assert.equal(cleared.promptTemplates[0]?.recommendedTarget, undefined);
+  assert.equal(chatTemplate(cleared.promptTemplates[0]).recommendedTarget, undefined);
   assert.ok(
-    !Object.hasOwn(cleared.promptTemplates[0]!, "recommendedTarget"),
+    !Object.hasOwn(chatTemplate(cleared.promptTemplates[0]), "recommendedTarget"),
     "clearing should drop the key rather than store undefined",
   );
   assert.throws(
@@ -1757,7 +1845,7 @@ test("keeps template uses atomic and authored when creating a branch", () => {
   });
   project.promptTemplates = [
     {
-      id: "template_pair",
+      kind: "chat", id: "template_pair",
       name: "Pair",
       currentRevisionId: "template-revision_pair-1",
       revisions: [
@@ -1870,7 +1958,7 @@ test("rejects unsupported versions, unknown fields, and dangling references", ()
         ...project,
         promptTemplates: [
           {
-            id: "template_invalid-target",
+            kind: "chat", id: "template_invalid-target",
             name: "Invalid target",
             currentRevisionId: "template-revision_invalid-target-1",
             recommendedTarget: {
@@ -1942,7 +2030,7 @@ test("rejects mock and template references outside their owners", () => {
     result: { content: [{ type: "text", text: "{}" }] },
   });
   project.promptTemplates.push({
-    id: "template_summary",
+    kind: "chat", id: "template_summary",
     name: "Summary",
     currentRevisionId: "template-revision_other",
     revisions: [
@@ -1972,7 +2060,7 @@ function templateBranchProject() {
   });
   project.promptTemplates = [
     {
-      id: "template_pair",
+      kind: "chat", id: "template_pair",
       name: "Pair",
       currentRevisionId: "template-revision_pair-1",
       revisions: [
@@ -2244,5 +2332,43 @@ test("re-pointing an unknown connection is refused rather than ignored", () => {
         "http://127.0.0.1:8080/v1",
       ),
     ProjectValidationError,
+  );
+});
+
+test("renaming a template revision changes only its label", () => {
+  const project = createProjectFile({
+    name: "Revision rename",
+    request,
+    idSuffix: "revision-rename",
+    createdAt: "2026-07-24T12:00:00.000Z",
+  });
+  const created = createPromptTemplate(project, {
+    name: "Question",
+    messages: [{ role: "user", content: "Explain {{topic}}." }],
+    variableDefaults: { topic: "branching" },
+    idSuffix: "question",
+    revisionIdSuffix: "question-1",
+    createdAt: "2026-07-24T12:01:00.000Z",
+  });
+  const revisionId = chatTemplate(created.promptTemplates[0]).currentRevisionId;
+
+  const named = renamePromptTemplateRevision(created, "template_question", revisionId, "  Baseline  ");
+  const [before] = chatTemplate(created.promptTemplates[0]).revisions;
+  const [after] = chatTemplate(named.promptTemplates[0]).revisions;
+  assert.deepEqual(after, { ...before, name: "Baseline" });
+
+  assert.equal(renamePromptTemplateRevision(named, "template_question", revisionId, "Baseline"), named);
+
+  // Clearing drops the key, so the revision serializes as if it was never named.
+  const cleared = renamePromptTemplateRevision(named, "template_question", revisionId, " ");
+  assert.equal(Object.hasOwn(chatTemplate(cleared.promptTemplates[0]).revisions[0]!, "name"), false);
+
+  assert.throws(
+    () => renamePromptTemplateRevision(created, "template_question", "template-revision_missing", "X"),
+    /Template revision does not exist/,
+  );
+  assert.throws(
+    () => renamePromptTemplateRevision(created, "template_missing", revisionId, "X"),
+    /Template does not exist/,
   );
 });

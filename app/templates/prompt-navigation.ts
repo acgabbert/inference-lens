@@ -2,6 +2,7 @@ import type {
   PromptTemplateId,
   PromptTemplateRevisionId,
   PromptTemplateUseId,
+  DecisionRequestRevisionId,
 } from "../../packages/core/src/run-kernel/index.ts";
 
 /**
@@ -9,10 +10,9 @@ import type {
  * snapshot, so a use removed while the source is open falls back safely and
  * project serialization is untouched.
  */
-export interface PromptReturnTarget {
-  kind: "template-use";
-  useId: PromptTemplateUseId;
-}
+export type PromptReturnTarget =
+  | { kind: "template-use"; useId: PromptTemplateUseId }
+  | { kind: "decision-request"; revisionId: DecisionRequestRevisionId };
 
 /**
  * The prompt the Prompts mode shows. `key` changes only when navigation opens

@@ -1,0 +1,45 @@
+{
+  "provenance": {
+    "kind": "captured",
+    "implementation": "llama.cpp llama-server /v1/systemone",
+    "server": "llama-server b11669-620d2225c behind Caddy, --api-key set",
+    "model": "Laya BF16 GGUF, served as \"local-decision\"",
+    "captured": "2026-10-24",
+    "note": "llama.cpp extension: state as a chat-message array."
+  },
+  "request": {
+    "model": "local-decision",
+    "state": [
+      {
+        "role": "user",
+        "content": "Cancel my subscription"
+      },
+      {
+        "role": "assistant",
+        "content": "Sure, done."
+      }
+    ],
+    "questions": {
+      "resolved": {
+        "type": "noul",
+        "instructions": "Was the request resolved?"
+      }
+    }
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "model": "local-decision",
+      "answers": {
+        "resolved": {
+          "type": "noul",
+          "noul": 0.2279504501973382
+        }
+      },
+      "usage": {
+        "input_tokens": 62,
+        "output_tokens": 0
+      }
+    }
+  }
+}

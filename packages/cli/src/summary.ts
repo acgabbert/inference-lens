@@ -1,8 +1,8 @@
 import { isRateLimitedRun } from "../../core/src/experiment.ts";
 import type {
   EvaluationBakeoffAssessment,
-  EvaluationExperimentPlanV4,
   EvaluationRepetitionClassification,
+  EvaluationVariantSnapshot,
   ExperimentConcurrency,
   ExperimentLifecycle,
   ExperimentMetricRange,
@@ -11,7 +11,8 @@ import type {
   ExperimentStop,
   ExperimentUsageAggregate,
   RepeatedExperimentAggregate,
-  RepeatedExperimentPlanV4,
+  RepeatedExperimentPlan,
+  SuiteExperimentPlan,
 } from "../../core/src/experiment.ts";
 import type { RunId, RunState } from "../../core/src/run-kernel/index.ts";
 
@@ -72,6 +73,11 @@ export interface HeadlessScope {
 export interface HeadlessSummaryV1 {
   /** Added after the first release, to tell this summary from `repeat`'s. */
   kind: "evaluation";
+  /**
+   * Added after the first release (D54): what the suite ran. A decision
+   * suite's configurations report protocol `systemone`.
+   */
+  runKind: "chat" | "decision";
   schemaVersion: typeof HEADLESS_SUMMARY_SCHEMA_VERSION;
   experimentId: string;
   suite: { suiteId: string; name: string };
@@ -100,7 +106,7 @@ export interface HeadlessSummaryV1 {
  * A suite whose only shortfall is rate limiting is incomplete too, so a quota
  * problem never reads as a model regression.
  */
-export function headlessVerdict(assessment: EvaluationBakeoffAssessment): HeadlessVerdict {
+export function headlessVerdict(assessment: EvaluationBakeoffAssessment<EvaluationVariantSnapshot>): HeadlessVerdict {
   if (assessment.lifecycle !== "completed") return "incomplete";
   if (assessment.variants.length > 0 && assessment.variants.every(({ passed }) => passed)) return "passed";
   const repetitions = assessment.variants.flatMap(({ cases }) => cases.flatMap(({ repetitions }) => repetitions));
@@ -121,10 +127,10 @@ export function exitCodeForVerdict(verdict: HeadlessVerdict): number {
 }
 
 export function createHeadlessSummary(input: {
-  plan: EvaluationExperimentPlanV4;
+  plan: SuiteExperimentPlan;
   scope: HeadlessScope;
   result?: ExperimentResult;
-  assessment: EvaluationBakeoffAssessment;
+  assessment: EvaluationBakeoffAssessment<EvaluationVariantSnapshot>;
   projectDirectory: string;
   planPath: string;
   resultPath?: string;
@@ -134,6 +140,7 @@ export function createHeadlessSummary(input: {
   const { plan, result, assessment } = input;
   return {
     kind: "evaluation",
+    runKind: plan.kind === "decision-evaluation" ? "decision" : "chat",
     schemaVersion: HEADLESS_SUMMARY_SCHEMA_VERSION,
     experimentId: plan.experimentId,
     suite: { suiteId: plan.suite.suiteId, name: plan.suite.name },
@@ -355,7 +362,7 @@ function repetitionStatus(
 }
 
 export function createHeadlessRepeatedSummary(input: {
-  plan: RepeatedExperimentPlanV4;
+  plan: RepeatedExperimentPlan;
   result?: ExperimentResult;
   aggregate: RepeatedExperimentAggregate;
   states: ReadonlyMap<RunId, RunState>;

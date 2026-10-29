@@ -1,3 +1,4 @@
+import * as experimentModule from "../packages/core/src/experiment.ts";
 import assert from "node:assert/strict";
 import test from "node:test";
 
@@ -21,7 +22,7 @@ import {
 } from "../packages/core/src/experiment.ts";
 import type {
   EvaluationCriteriaOverride,
-  EvaluationExperimentPlanV4,
+  EvaluationExperimentPlan,
   ExperimentResultV4,
 } from "../packages/core/src/experiment.ts";
 import type { CheckDefinition } from "../packages/core/src/checks.ts";
@@ -50,7 +51,7 @@ const AS_RUN_CHECK: CheckDefinition = {
 
 const CORRECTED_CHECK: CheckDefinition = { ...AS_RUN_CHECK, flags: "i" };
 
-function planFixture(): EvaluationExperimentPlanV4 {
+function planFixture(): EvaluationExperimentPlan {
   const initial = createProjectFile({
     name: "Reassessment fixture",
     idSuffix: "reassessment-fixture",
@@ -114,7 +115,7 @@ function completed(input: ResolvedRunInput, text: string): RunState {
 
 /** Both repetitions say the right thing in the wrong case, so As run reads all-failed. */
 function executionFixture(): {
-  plan: EvaluationExperimentPlanV4;
+  plan: EvaluationExperimentPlan;
   result: ExperimentResultV4;
   states: ReadonlyMap<RunId, RunState>;
 } {
@@ -416,4 +417,28 @@ test("an assessment identical to the execution's own criteria is refused", () =>
     ),
     EvaluationAssessmentError,
   );
+});
+
+
+test("incremental aggregation yields between every check and agrees with synchronous scoring", () => {
+  const { plan, result, states } = executionFixture();
+  const incremental = experimentModule.evaluationParsedExperimentAggregateSteps;
+  assert.equal(typeof incremental, "function");
+  const criteria: EvaluationCriteriaOverride = new Map([[CASE_ID, [
+    { checkId: "check_json", kind: "valid-json" },
+    { checkId: "check_schema", kind: "json-schema", dialect: "draft-07", schema: { type: "object" } },
+    CORRECTED_CHECK,
+  ]]]);
+  for (const override of [undefined, criteria]) {
+    const steps = incremental(plan, result, states, override);
+    let pauses = 0;
+    let next = steps.next();
+    while (!next.done) {
+      pauses++;
+      assert.equal(next.value, undefined, "partial aggregates must not escape");
+      next = steps.next();
+    }
+    assert.ok(pauses >= plan.cells.length * (override ? 3 : 1));
+    assert.deepEqual(next.value, evaluationParsedExperimentAggregate(plan, result, states, override));
+  }
 });

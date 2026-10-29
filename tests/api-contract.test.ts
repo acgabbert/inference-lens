@@ -472,6 +472,35 @@ test("keeps authentication failures non-retryable", async () => {
   }
 });
 
+test("names a missing version segment when a provider answers 404", async () => {
+  const originalFetch = globalThis.fetch;
+  let requested = "";
+  globalThis.fetch = async (url) => {
+    requested = String(url);
+    return new Response("404 page not found", { status: 404 });
+  };
+
+  try {
+    const unversioned = execution();
+    unversioned.input.target.endpoint = "http://10.0.0.5:8000";
+    const events = [];
+    for await (const event of executeProviderTurn(unversioned, "test-key")) {
+      events.push(event);
+    }
+    assert.equal(requested, "http://10.0.0.5:8000/chat/completions");
+    const failure = events.at(-1);
+    assert.equal(failure?.type, "failed");
+    if (failure?.type === "failed") {
+      assert.equal(failure.error.code, "provider_error");
+      assert.equal(failure.error.providerStatus, 404);
+      assert.match(failure.error.message, /http:\/\/10\.0\.0\.5:8000\/v1\b/);
+      assert.match(failure.error.message, /404 page not found/);
+    }
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("accepts every wire protocol at the provider-turn boundary and nothing else", () => {
   for (const protocol of [
     "openai-compatible-chat-completions",
@@ -540,6 +569,30 @@ test("the server states which protocols its default connection speaks", () => {
       "openai-responses",
       "anthropic-messages",
     ],
+    systemOne: false,
+  });
+});
+
+test("systemone in the server protocol list is reported apart from the chat protocols", () => {
+  const store = new EnvironmentCredentialStore({
+    INFERENCE_LENS_API_ENDPOINT: "http://ollama:11434/v1",
+    INFERENCE_LENS_API_PROTOCOLS: "chat-completions, systemone",
+  });
+  assert.deepEqual(store.connectionConfiguration(), {
+    endpoint: "http://ollama:11434/v1",
+    protocols: ["openai-compatible-chat-completions"],
+    systemOne: true,
+  });
+  // A decision-only server speaks no chat protocol at all.
+  assert.deepEqual(parseServerProtocols("systemone"), {
+    kind: "valid",
+    protocols: [],
+    systemOne: true,
+  });
+  // `decisions` is OpenRouter's alpha path, not a protocol name (D9a).
+  assert.deepEqual(parseServerProtocols("systemone,decisions"), {
+    kind: "invalid",
+    unrecognized: ["decisions"],
   });
 });
 
@@ -560,6 +613,7 @@ test("unset, blank and recognized protocol lists are told apart from invalid one
   assert.deepEqual(parseServerProtocols("responses"), {
     kind: "valid",
     protocols: ["openai-responses"],
+    systemOne: false,
   });
   assert.deepEqual(parseServerProtocols("responses,assistants"), {
     kind: "invalid",

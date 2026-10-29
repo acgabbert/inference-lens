@@ -78,7 +78,7 @@ function drawerProps(onDestinationHandled) {
       draft: "", status: { canPersist: false, isApprovedForEndpoint: false },
       webMode: "none", setDraft() {}, setWebMode() {}, commit() {},
     },
-    serverDefault: { loaded: true, containerized: false, configured: false },
+    server: { loaded: true, containerized: false, connections: [] },
     isDesktopRuntime: false, onSelectProfile() {}, onAddProfile() {},
     onDeleteProfile() {}, onUpdateProfile() {}, onCapabilityChange() {},
     connectionRequirements: [], mappedProfileIds: {},
@@ -108,7 +108,7 @@ function composerProps(pendingDestination, onDestinationHandled) {
       templateRunOverrides: {}, templateUsageCounts: new Map(), addComposerMessage: noop,
       updateComposerMessage: noop, removeComposerMessage: noop, updateTemplateUseValues: noop,
       saveTemplateUseRunValue: noop, updateTemplateUseOverride: noop,
-      updateTemplateUseToLatestRevision: noop, detachTemplateUse: noop, removeTemplateUse: noop,
+      setTemplateUseRevision: noop, detachTemplateUse: noop, removeTemplateUse: noop,
       createProjectTemplate: noop, saveProjectTemplate: noop, insertProjectTemplate: noop,
       clearImportNotice: noop,
     },
@@ -223,7 +223,7 @@ test("the request owner focuses the named unresolved template variable", async (
   props.project = {
     projectId: "project_1",
     promptTemplates: [{
-      id: "template_1", name: "Topic prompt", currentRevisionId: "template-revision_1",
+      kind: "chat", id: "template_1", name: "Topic prompt", currentRevisionId: "template-revision_1",
       revisions: [{
         id: "template-revision_1", messages: [{ role: "user", content: "Tell me about {{topic}}." }],
         variableDefaults: {},

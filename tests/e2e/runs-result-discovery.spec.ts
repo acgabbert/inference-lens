@@ -1,4 +1,9 @@
+import { readFileSync } from "node:fs";
+
 import { expect, test } from "@playwright/test";
+
+import type { DecisionInput } from "../../packages/core/src/decision";
+import type { DecisionRunTrace } from "../../packages/core/src/decision-trace";
 
 import {
   createProjectFile,
@@ -6,7 +11,9 @@ import {
 } from "../../packages/core/src/project";
 import { RunCoordinator, createRunTrace } from "../../packages/core/src/run-kernel";
 import { createResolvedRunInput } from "../../packages/core/src/run-kernel/run-execution";
-import { serializeRunTrace } from "../../packages/core/src/run-trace";
+import { serializeDecisionRunTrace, serializeRunTrace } from "../../packages/core/src/run-trace";
+import { systemOneAdapter } from "../../packages/core/src/system-one";
+import { OPENAI_COMPATIBLE_CAPABILITIES } from "../../packages/core/src/types";
 import {
   BUFFERED_FIXTURE_ENDPOINT,
   importProject,
@@ -72,8 +79,69 @@ test("Runs links back to the current ordinary request result", async ({ page }) 
     .toContainText("Buffered fixture response");
 });
 
-/** A folder-backed project holding one saved ordinary run. */
-async function openFolderWithSavedRun(page: import("@playwright/test").Page) {
+/**
+ * A decision run that took two attempts: a 429, then the captured llama.cpp
+ * answer to all three question types.
+ */
+function savedDecisionTrace(): DecisionRunTrace {
+  const capture = JSON.parse(
+    readFileSync(new URL("../fixtures/system-one/llamacpp-all-types.json", import.meta.url), "utf8"),
+  ) as { request: DecisionInput & { model: string }; response: { body: unknown } };
+  const { model, state, questions } = capture.request;
+  const runId = "run_saved-decision" as const;
+  const input = {
+    runId,
+    resolvedAt: "2026-09-21T22:00:00.000Z",
+    target: {
+      profileId: "profile_saved-decision" as const,
+      protocol: "systemone" as const,
+      endpoint: "http://127.0.0.1:44016/llamacpp/v1",
+      model,
+      capabilities: OPENAI_COMPATIBLE_CAPABILITIES,
+    },
+    decision: { state, questions },
+  };
+  const raw = JSON.stringify(capture.response.body);
+  const exchange = (attempt: number, status: number, body: string) => ({
+    exchangeId: `exchange_saved-decision_${attempt}` as const,
+    attempt,
+    response: { status, headers: { "content-type": "application/json" } },
+    frames: [{ index: 0, raw: body }],
+  });
+  return {
+    schemaVersion: 8,
+    kind: "decision",
+    runId,
+    input,
+    status: { kind: "completed", completedAt: "2026-09-21T22:00:02.500Z" },
+    attempts: [
+      {
+        attempt: 1,
+        exchangeId: "exchange_saved-decision_1",
+        status: "failed",
+        error: { code: "provider_error", message: "slow down", providerStatus: 429, retryable: true },
+      },
+      {
+        attempt: 2,
+        exchangeId: "exchange_saved-decision_2",
+        status: "completed",
+        result: systemOneAdapter.normalizeResponse(input, raw),
+      },
+    ],
+    exchanges: {
+      "exchange_saved-decision_1": exchange(1, 429, "slow down"),
+      "exchange_saved-decision_2": exchange(2, 200, raw),
+    },
+    startedAt: "2026-09-21T22:00:00.000Z",
+    endedAt: "2026-09-21T22:00:02.500Z",
+  };
+}
+
+/** A folder-backed project holding one saved ordinary run, plus `extraTraces`. */
+async function openFolderWithSavedRun(
+  page: import("@playwright/test").Page,
+  extraTraces: Record<string, string> = {},
+) {
   const fixture = await seedMappedProject(page);
   const input = createResolvedRunInput({
     provider: "openai-compatible",
@@ -103,6 +171,7 @@ async function openFolderWithSavedRun(page: import("@playwright/test").Page) {
     files: {
       "project.json": serializeProjectFile(fixture),
       [`traces/${trace.runId}.json`]: serializeRunTrace(trace),
+      ...extraTraces,
     },
     directories: ["traces", "experiments"],
   });
@@ -154,6 +223,52 @@ test("Runs inspects saved evidence without replacing the Compose draft", async (
   ).toHaveAttribute("aria-current", "page");
   await expect(page.getByLabel("Message 1 content")).toHaveValue("Saved evidence request");
   await expect(page.getByLabel("Message 2 content")).toHaveValue("Saved evidence response");
+  // A saved parent is named by its request and the branch message, not IDs.
+  const chip = page.getByRole("status").filter({ hasText: "Pending branch" });
+  await expect(chip).toContainText(
+    "Branching from \u201cSaved evidence request\u201d at Message 2 \u00b7 assistant.",
+  );
+  expect(await chip.innerText()).not.toMatch(/\b(run|message)_[A-Za-z0-9]/);
+});
+
+test("a saved decision run is listed beside chat runs and inspected without changing Compose", async ({ page }) => {
+  const decision = savedDecisionTrace();
+  await openFolderWithSavedRun(page, {
+    [`traces/${decision.runId}.json`]: serializeDecisionRunTrace(decision),
+  });
+  await openMode(page, "Runs");
+  const list = page.getByRole("navigation", { name: "Run evidence" });
+  await expect(list).toContainText("2 entries");
+  // Read, not skipped: no notice reports an unreadable artifact.
+  await expect(list.locator(".run-history-notice")).toHaveCount(0);
+
+  const row = list.getByRole("button", { name: /Decision · 3 questions/ });
+  await expect(row).toBeVisible();
+  await expect(row).toContainText("local-decision · System One");
+  await expect(row).toContainText("completed");
+  await expect(row).toContainText("2.50 s · 2 attempts");
+  await expect(row).toContainText("Saved to folder");
+  await expect(row).not.toContainText(/tokens|turn/);
+  for (const marker of ["NaN", "Infinity", "undefined"]) {
+    await expect(list).not.toContainText(marker);
+  }
+
+  // The chat run beside it still opens in place.
+  await list.getByRole("button", { name: /Saved evidence request/ }).click();
+  await expect(page.getByRole("region", { name: "Selected run evidence" }))
+    .toContainText("Saved evidence response");
+
+  // Both kinds now open immutable evidence in Runs.
+  await row.click();
+  await expect(page.getByRole("region", { name: "Selected run evidence" })).toContainText(decision.runId);
+  await expect(page.locator(".decision-response")).toContainText("Run trace saved");
+  await expect(page.getByRole("article", { name: "Answer intent" })).toContainText("Choice billing");
+  const evidence = page.getByRole("region", { name: "Decision evidence" });
+  await expect(evidence.getByRole("article")).toHaveCount(2);
+  await expect(evidence.getByLabel("Attempt 1 raw response body")).toHaveText("slow down");
+  await openMode(page, "Compose");
+  await expect(page.getByRole("radio", { name: "Chat", exact: true })).toHaveAttribute("aria-checked", "true");
+  await expect(page.getByLabel("Message 1 content")).toHaveValue("Make this result easy to find.");
 });
 
 test("an unsaved current run says the next run replaces it", async ({ page }) => {

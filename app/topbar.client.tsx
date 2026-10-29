@@ -5,10 +5,18 @@ import type { StoredInferenceProfile } from "./profile-store.client";
 import type { ProjectStorageState } from "./use-project-workspace.client";
 import { ModeStrip } from "./modes/mode-strip.client";
 import type { AppMode, ModeIndicator } from "./modes/app-mode";
+import type { ComposePrimary } from "./compose/use-compose.client";
 
 interface TopbarProps {
   profiles: StoredInferenceProfile[];
   activeProfile: StoredInferenceProfile;
+  /** Decision Compose owns its connection independently of chat mappings. */
+  decisionConnection?: {
+    profiles: StoredInferenceProfile[];
+    profile?: StoredInferenceProfile;
+    selectProfile(profileId: string): void;
+    disabled: boolean;
+  };
   /** Portable requirement this chooser remaps while a project is open. */
   projectConnectionName?: string;
   hasCredential: boolean;
@@ -19,7 +27,8 @@ interface TopbarProps {
   hasDiagnosticCapture: boolean;
   hasRunTrace: boolean;
   hasProjectWorkspace: boolean;
-  isRequestActive: boolean;
+  /** Either Compose kind has an attempt in flight; its Stop shows in every mode. */
+  composeExecuting: boolean;
   isExperimentActive: boolean;
   /**
    * Which mode is on screen. The run controls belong to Compose; the other
@@ -30,15 +39,13 @@ interface TopbarProps {
   onModeChange(mode: AppMode): void;
   /** Per-mode running and unread-results state, shown on the strip. */
   modeIndicators?: Partial<Record<AppMode, ModeIndicator>>;
-  awaitingToolResults: boolean;
-  retryableFailure: boolean;
-  runDisabled: boolean;
   /**
-   * Id of the element that states, in visible text, why the run is refused.
-   * The reason itself is never carried by a `title` here: a native tooltip is
-   * invisible on touch and unreachable from the keyboard.
+   * Compose's primary action for the request kind on screen (D29-A). A refused
+   * run names, by id, the element that states why in visible text; the reason
+   * is never carried by a `title` here, since a native tooltip is invisible on
+   * touch and unreachable from the keyboard.
    */
-  runDisabledReasonId?: string;
+  composePrimary: ComposePrimary;
   evaluationStartDisabled: boolean;
   /** Same contract as `runDisabledReasonId`, for the Evaluations primary. */
   evaluationStartDisabledReasonId?: string;
@@ -55,42 +62,49 @@ interface TopbarProps {
   onDownloadRunTrace(): void;
   onImportRunTrace(event: ChangeEvent<HTMLInputElement>): void;
   onOpenRunHistory(): void;
-  onStop(): void;
+  onOpenRunLink?(): void;
   onStopExperiment(): void;
-  onRun(): void;
   onStartEvaluation(): void;
 }
 
+/**
+ * Closes the menu and returns focus to its summary, which then becomes the
+ * opener a dialog launched from the item hands focus back to.
+ */
 function closeContainingMenu(element: HTMLElement): void {
-  element.closest("details")?.removeAttribute("open");
+  const menu = element.closest("details");
+  menu?.removeAttribute("open");
+  menu?.querySelector("summary")?.focus();
 }
 
 /** Application menus and the current run controls. */
 export function Topbar({
-  profiles, activeProfile, projectConnectionName, hasCredential, projectName, projectDirty,
+  profiles, activeProfile, decisionConnection, projectConnectionName, hasCredential, projectName, projectDirty,
   projectStorageState,
-  folderAccessAvailable, hasDiagnosticCapture, isRequestActive, isExperimentActive, awaitingToolResults,
+  folderAccessAvailable, hasDiagnosticCapture, composeExecuting, isExperimentActive, composePrimary,
   mode, onModeChange, modeIndicators,
   hasRunTrace,
   hasProjectWorkspace,
-  retryableFailure,
-  runDisabled, onChooseProfile, onOpenConnections, onNewProject, onOpenProject,
-  runDisabledReasonId,
+  onChooseProfile, onOpenConnections, onNewProject, onOpenProject,
   evaluationStartDisabled, evaluationStartDisabledReasonId,
   onSaveProject, onImportProject, onExportProject,
   n8nImportDisabledReason, onOpenN8nImport,
-  onDownloadDiagnostics, onStop, onStopExperiment, onRun, onStartEvaluation,
+  onDownloadDiagnostics, onStopExperiment, onStartEvaluation,
   onDownloadRunTrace,
   onImportRunTrace,
   onOpenRunHistory,
+  onOpenRunLink,
 }: TopbarProps) {
   const topbarRef = useRef<HTMLElement>(null);
-  const profileName = activeProfile.name || "Untitled profile";
+  const targetProfile = decisionConnection ? decisionConnection.profile : activeProfile;
+  const targetProfiles = decisionConnection ? decisionConnection.profiles : profiles;
+  const targetRequirement = decisionConnection ? undefined : projectConnectionName;
+  const profileName = targetProfile ? targetProfile.name || "Untitled profile" : "No decision connection";
   // The dot's meaning is credential state, which no one can read off a colour.
   // It travels in the accessible name so the control is not visual-only.
   const credentialState = hasCredential ? "credential set" : "no credential";
-  const targetCaption = projectConnectionName ? "Project connection" : "Connection";
-  const targetAccessibleName = projectConnectionName
+  const targetCaption = decisionConnection ? "Decision connection" : targetRequirement ? "Project connection" : "Connection";
+  const targetAccessibleName = decisionConnection || targetRequirement
     ? `${targetCaption}: ${profileName}`
     : `Run target: ${profileName}, ${credentialState}`;
   const projectStorageLabel = !projectStorageState
@@ -101,9 +115,13 @@ export function Topbar({
         : "Session only — export a JSON copy to keep changes"
       : projectStorageState.kind === "saving"
         ? `Saving to ${projectStorageState.displayPath}…`
-        : projectStorageState.kind === "error"
-          ? "Save failed — retry from Project"
-          : `Saved to ${projectStorageState.displayPath}`;
+        : projectStorageState.kind === "unsaved"
+          ? "Unfinished edits have not been saved"
+          : projectStorageState.kind === "error"
+            ? "Save failed — retry from Project"
+            : projectStorageState.kind === "secondary"
+              ? "Not saved — another tab is editing this project"
+              : `Saved to ${projectStorageState.displayPath}`;
 
   useEffect(() => {
     const topbar = topbarRef.current;
@@ -151,19 +169,40 @@ export function Topbar({
       <div className="brand"><span className="brand-mark" aria-hidden="true">IL</span><div><h1>Inference Lens</h1><p>Inspect every model run · {projectName ? <><strong>{projectName}</strong>{projectDirty ? " · Unsaved" : ""}{projectStorageLabel ? ` · ${projectStorageLabel}` : ""}</> : "No project open"}</p></div></div>
       <ModeStrip value={mode} onChange={onModeChange} {...(modeIndicators ? { indicators: modeIndicators } : {})} />
       <div className="header-actions">
-        {/*
-          The connection profile is the only run setting global enough for the
-          topbar: compose sends through it, and a project's connection
-          requirements are mapped onto it. Model is deliberately absent. It is
-          per-request in Compose and per-configuration in Evaluations, so a
-          topbar copy would have contradicted the run the primary action starts.
-          Each surface states its own model on its settings summary instead.
-
-          The static `Connection` caption is what makes the profile name read as
-          a chosen value rather than a heading.
-        */}
-        <details className="header-menu target-menu"><summary aria-label={targetAccessibleName} className="target-control" title={profileName}><span className={projectConnectionName || hasCredential ? "connection-indicator ready" : "connection-indicator"} aria-hidden="true" /><span className="target-copy"><small className="target-caption" aria-hidden="true">{targetCaption}</small><strong>{profileName}</strong></span><span className="menu-chevron" aria-hidden="true">⌄</span></summary>
-          <div className="menu-popover target-popover"><div className="menu-heading"><span>{targetCaption}</span><small>{projectConnectionName ?? profileName}</small></div>{projectConnectionName && <p className="menu-context">Choose the local profile used by {projectConnectionName} in this project, including evaluations that share it.</p>}<div className="profile-menu-list">{profiles.map((profile) => <button aria-label={projectConnectionName ? `Use ${profile.name || "Untitled profile"} for ${projectConnectionName}` : undefined} className={profile.id === activeProfile.id ? "menu-option selected" : "menu-option"} key={profile.id} type="button" onClick={(event) => { onChooseProfile(profile.id); closeContainingMenu(event.currentTarget); }}><span><strong>{profile.name || "Untitled profile"}</strong><small>{profile.endpoint}</small></span>{profile.id === activeProfile.id && <span aria-hidden="true">✓</span>}</button>)}</div><button className="menu-action" type="button" onClick={(event) => { onOpenConnections(); closeContainingMenu(event.currentTarget); }}>Manage connections<span aria-hidden="true">→</span></button></div>
+        {/* The active Compose kind supplies its own connection chooser. A
+            decision choice never remaps the project's chat requirement. */}
+        <details className="header-menu target-menu">
+          <summary aria-label={targetAccessibleName} className="target-control" title={profileName}>
+            {!decisionConnection && <span className={targetRequirement || hasCredential ? "connection-indicator ready" : "connection-indicator"} aria-hidden="true" />}
+            {decisionConnection && <span className="decision-connection-glyph" aria-hidden="true">◇</span>}
+            <span className="target-copy"><small className="target-caption" aria-hidden="true">{targetCaption}</small><strong>{profileName}</strong></span>
+            <span className="menu-chevron" aria-hidden="true">⌄</span>
+          </summary>
+          <div className="menu-popover target-popover">
+            <div className="menu-heading"><span>{targetCaption}</span><small>{targetRequirement ?? profileName}</small></div>
+            {targetRequirement && <p className="menu-context">Choose the local profile used by {targetRequirement} in this project, including evaluations that share it.</p>}
+            {decisionConnection && <p className="menu-context">This connection sends the decision request. Only connections that declare System One are offered.</p>}
+            <div className="profile-menu-list">
+              {targetProfiles.map((profile) => (
+                <button
+                  aria-label={targetRequirement ? `Use ${profile.name || "Untitled profile"} for ${targetRequirement}` : undefined}
+                  className={profile.id === targetProfile?.id ? "menu-option selected" : "menu-option"}
+                  disabled={decisionConnection?.disabled}
+                  key={profile.id}
+                  type="button"
+                  onClick={(event) => {
+                    if (decisionConnection) decisionConnection.selectProfile(profile.id);
+                    else onChooseProfile(profile.id);
+                    closeContainingMenu(event.currentTarget);
+                  }}
+                >
+                  <span><strong>{profile.name || "Untitled profile"}</strong><small>{profile.endpoint}</small></span>
+                  {profile.id === targetProfile?.id && <span aria-hidden="true">✓</span>}
+                </button>
+              ))}
+            </div>
+            <button className="menu-action" type="button" onClick={(event) => { onOpenConnections(); closeContainingMenu(event.currentTarget); }}>Manage connections<span aria-hidden="true">→</span></button>
+          </div>
         </details>
         <details className="header-menu project-menu"><summary aria-label="Project menu" className="button secondary"><span className="project-menu-label">Project</span> <span className="menu-chevron">⌄</span></summary><div className="menu-popover project-popover">
           <div className="menu-group-heading">Project</div>
@@ -172,6 +211,7 @@ export function Topbar({
         </div></details>
         <details className="header-menu run-data-menu"><summary aria-label="Run data menu" className="button secondary"><span className="run-data-menu-label">Run data</span> <span className="menu-chevron">⌄</span></summary><div className="menu-popover project-popover run-data-popover">
           <div className="menu-group-heading">Run data</div>
+          {onOpenRunLink && <button type="button" onClick={(event) => { closeContainingMenu(event.currentTarget); onOpenRunLink(); }}>Open saved run link…</button>}
           <button type="button" onClick={(event) => { onOpenRunHistory(); closeContainingMenu(event.currentTarget); }}>Run history</button><label className="menu-file-button">Import run trace…<input type="file" accept="application/json,.json" onChange={onImportRunTrace} /></label><button disabled={!hasRunTrace} type="button" onClick={onDownloadRunTrace}>Export run trace…</button><span className="menu-separator" /><button disabled={!hasDiagnosticCapture} type="button" onClick={onDownloadDiagnostics}>Download diagnostics</button>
         </div></details>
         {/*
@@ -186,22 +226,22 @@ export function Topbar({
         */}
         {isExperimentActive ? (
           <button className="button stop" onClick={onStopExperiment}>Stop remaining</button>
-        ) : isRequestActive ? (
-          <button className="button stop" onClick={onStop}>Stop</button>
+        ) : composeExecuting && composePrimary.kind === "stop" ? (
+          <button className="button stop" onClick={composePrimary.stop}>Stop</button>
         ) : mode === "compose" ? (
-          // A paused run owns its own way out. Offering a fresh request beside
-          // it would be a third exit from a state that already has two, and
-          // starting one would silently abandon the pause.
-          awaitingToolResults ? (
-            <button className="button stop" onClick={onStop}>Stop</button>
-          ) : retryableFailure ? null : (
+          // A paused run owns its own way out (`none`). Offering a fresh request
+          // beside it would be a third exit from a state that already has two,
+          // and starting one would silently abandon the pause.
+          composePrimary.kind === "stop" ? (
+            <button className="button stop" onClick={composePrimary.stop}>Stop</button>
+          ) : composePrimary.kind === "none" ? null : (
             <button
-              aria-describedby={runDisabled ? runDisabledReasonId : undefined}
+              aria-describedby={composePrimary.disabled ? composePrimary.disabledReasonId : undefined}
               className="button primary"
-              disabled={runDisabled}
-              onClick={onRun}
+              disabled={composePrimary.disabled}
+              onClick={composePrimary.run}
             >
-              Run current conversation <span className="shortcut">⌘↵</span>
+              {composePrimary.label} <span className="shortcut">⌘↵</span>
             </button>
           )
         ) : mode === "evaluations" ? (

@@ -1,0 +1,92 @@
+{
+  "provenance": {
+    "kind": "captured",
+    "implementation": "Ollama /v1/systemone",
+    "server": "Ollama 0.40.10 on macOS (Ollama.app), keyless, default 2048-token context",
+    "model": "tev1:0.8b (b661d5650816, 752M BF16, mlx runner)",
+    "captured": "2026-10-23",
+    "note": "The llama.cpp all-types request with the object score level replaced by a string, which Ollama requires (see ollama-400-object-level). The response adds prompt_eval_cached_count."
+  },
+  "request": {
+    "model": "tev1:0.8b",
+    "state": {
+      "ticket": "I was charged twice for October and the app crashes when I open invoices.",
+      "plan": "pro"
+    },
+    "questions": {
+      "intent": {
+        "type": "choice",
+        "instructions": "What is the customer mainly asking about?",
+        "criteria": {
+          "billing": "Charges, refunds, invoices, or plan changes.",
+          "bug": "Something in the product is broken.",
+          "other": null
+        }
+      },
+      "severity": {
+        "type": "score",
+        "instructions": [
+          "How urgent is this ticket?",
+          {
+            "consider": "customer impact"
+          }
+        ],
+        "criteria": [
+          "minor",
+          "major",
+          "critical"
+        ]
+      },
+      "is_spam": {
+        "type": "noul",
+        "instructions": "Is this ticket spam?",
+        "criteria": {
+          "true": "Unsolicited advertising.",
+          "false": "A real customer request."
+        }
+      }
+    }
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "model": "tev1:0.8b",
+      "answers": {
+        "intent": {
+          "type": "choice",
+          "choice": "billing",
+          "probabilities": {
+            "billing": 0.6238987907392423,
+            "bug": 0.3299507016198636,
+            "other": 0.04615050764089421
+          },
+          "confidence": 0.26986056550830184
+        },
+        "severity": {
+          "type": "score",
+          "score": 1.291126314234367,
+          "legend": {
+            "0": "minor",
+            "1": "major",
+            "2": "critical"
+          },
+          "probabilities": {
+            "0": 0.12399792980958266,
+            "1": 0.46087782614646794,
+            "2": 0.4151242440439495
+          },
+          "confidence": 0.1072204466344503
+        },
+        "is_spam": {
+          "type": "noul",
+          "noul": 0.3491750561431417
+        }
+      },
+      "usage": {
+        "input_tokens": 453,
+        "output_tokens": 0
+      },
+      "prompt_eval_cached_count": 453
+    }
+  }
+}

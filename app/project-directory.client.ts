@@ -13,7 +13,7 @@ export interface FileSystemFileHandleLike {
   readonly name: string;
   getFile(): Promise<File>;
   createWritable(): Promise<{
-    write(data: string): Promise<void>;
+    write(data: string | Uint8Array): Promise<void>;
     close(): Promise<void>;
   }>;
 }
@@ -21,6 +21,7 @@ export interface FileSystemFileHandleLike {
 export interface FileSystemDirectoryHandleLike {
   readonly kind: "directory";
   readonly name: string;
+  isSameEntry?(other: FileSystemDirectoryHandleLike): Promise<boolean>;
   queryPermission?(descriptor?: {
     mode?: "read" | "readwrite";
   }): Promise<WorkspacePermissionState>;
@@ -44,6 +45,7 @@ export interface FileSystemDirectoryHandleLike {
 export interface StoredRunTraceFile {
   fileName: string;
   contents: string;
+  readError?: string;
 }
 
 function isNotFound(error: unknown): boolean {
@@ -75,10 +77,11 @@ export async function listTracesFromDirectory(
   const files: StoredRunTraceFile[] = [];
   for await (const entry of traces.values()) {
     if (entry.kind !== "file" || !isTraceEntryName(entry.name)) continue;
-    files.push({
-      fileName: entry.name,
-      contents: await (await entry.getFile()).text(),
-    });
+    try {
+      files.push({ fileName: entry.name, contents: await (await entry.getFile()).text() });
+    } catch (error) {
+      files.push({ fileName: entry.name, contents: "", readError: error instanceof Error ? error.message : "Unreadable trace." });
+    }
   }
   return files.sort((left, right) =>
     left.fileName < right.fileName ? -1 : left.fileName > right.fileName ? 1 : 0,

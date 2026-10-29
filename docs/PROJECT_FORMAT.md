@@ -2,22 +2,85 @@
 
 Inference Lens projects use a visible `<name>.inference-lens/` directory bundle
 containing one canonical, portable JSON document named `project.json`. New
-saves use schema version 11. The parser also opens version 10 and upgrades it on
-load: the protocol v10 kept on each connection requirement (always chat
-completions) moves onto every execution target that names that requirement —
-the project default and each suite's `execution.target` — and the requirement
-loses the field. See [Connection protocols](#connection-protocols). Earlier project
+saves use schema version 15. The parser also opens versions 10, 11, 12, 13, and 14
+and upgrades them on load. From v10, the protocol it kept on each connection
+requirement (always chat completions) moves onto every execution target that
+names that requirement — the project default and each suite's
+`execution.target` — and the requirement loses the field. See
+[Connection protocols](#connection-protocols). v12 adds check vocabulary 4
+(JSON Schema checks and JSON input policies; see
+[Deterministic checks](DETERMINISTIC_CHECKS.md)); a v10 or v11 document was
+written with vocabulary 3, so one that contains a v4 construct is rejected
+rather than upgraded. v13 adds project-owned [decision requests](#decision-requests);
+a v12 document opens with none, and one that already holds any is rejected. v14
+adds [decision suites](#decision-suites) and check vocabulary 5 (the decision
+checks); a v13 document was written with chat suites and vocabulary 4, so one
+holding either is rejected rather than upgraded. v15 adds typed chat/decision
+templates and inline/template-use decision request revisions. Legacy templates
+gain `kind: "chat"`; legacy decision revisions gain `kind: "inline"`, with
+IDs, drafts, defaults, provenance and suite pins preserved. Earlier project
 formats, including v5–v9, and the proof-of-concept request export are rejected
 with a version error rather than upgraded on load.
 Every schema is strict, so a reader rejects a document it does not understand
 rather than guessing.
 
-New bundles contain an internal `.gitignore` with `*` by default. This makes the
-entire working project—including authored prompts, fixtures, and run
-traces—private from ordinary Git staging even when it lives inside a code
-repository. The creation dialog can omit the ignore file for projects intended
-for version control. The ignore file is workspace metadata and is not part of
-the portable project document.
+## Git sharing policy
+
+When creating a bundle (including the first folder save of an imported project),
+choose one of three presets:
+
+| Preset | Bundle-local `.gitignore` |
+| --- | --- |
+| Keep this project out of Git (default) | `*` excludes the entire bundle from ordinary staging |
+| Share definitions; keep run history local | Allows only `.gitignore` and `project.json` |
+| Manage Git rules myself | No generated ignore file |
+
+The definitions preset writes exactly:
+
+```gitignore
+*
+!/.gitignore
+!/project.json
+```
+
+This allowlist excludes traces, experiment plans/results/reassessments,
+baseline pins, case-source annotations, and future artifact directories by
+default. Opening a clone with just the manifest and policy needs no run history;
+running creates local evidence without registering trace paths in the manifest.
+
+**Everything in `project.json` is shared**, including persisted prompt drafts,
+saved input/default values, tools, mock fixtures, imports, and historical or
+archived revisions. Evidence copied into a saved asset also becomes authored
+content in the manifest. This preset does not yet separate personal drafts and
+experimental settings from reusable definitions. See the
+[shared-assets plan](SHARED_ASSETS_PERSONAL_WORKBENCH_PLAN.md) for that later work.
+
+The browser and native adapters write the selected policy before project
+content. The policy is creation-only workspace metadata, outside the project document;
+opening and saving never regenerate it or overwrite customized rules. The app
+does not initialize a Git repository, stage files, commit, or push.
+
+### Existing projects and already tracked files
+
+Existing policies remain untouched. To opt an existing bundle into definitions
+sharing, intentionally replace its bundle-local `.gitignore` with the exact
+three-line policy above. Inside that bundle, inspect what Git already tracks
+and what the new policy excludes:
+
+```sh
+git ls-files -- .
+git ls-files -- traces/ experiments/ evaluation-baselines.json evaluation-case-sources.json
+git status --short --ignored -- .
+```
+
+Gitignore controls ordinary staging; it is not access control. It does not
+untrack existing files, remove content from earlier commits, or prevent
+`git add --force`. Review tracked evidence before sharing. If you choose to
+stop tracking a file while keeping its local copy, use
+`git rm --cached -- <reviewed-file>` and review the staged change. Previously
+committed content remains in history. Inference Lens never removes files from
+the Git index or rewrites history for you. Parent-repository rules can also
+exclude the bundle, so inspect `git status` before committing.
 
 ## Authored conversations
 
@@ -122,11 +185,19 @@ another model" append a content-identical revision and unpin every existing
 use. Changing a recommendation is metadata: `currentRevisionId` and every
 revision are left untouched.
 
-Because a recommendation is advisory, the app surfaces disagreement rather than
-resolving it. A recommendation differing from the run target is reported before
-the run, and so is a request whose templates recommend different targets —
-several templates may contribute to one request while that request can name
-only one model. Neither case blocks the run.
+The UI calls this a **Recommended model**, with its connection shown separately.
+The library and insertion picker show the recommendation before reuse. Each
+inserted prompt shows a model mismatch beside its content, with **Choose model**
+and **Dismiss** actions. Choosing opens the model field; insertion never changes
+the selected model automatically. Matching model IDs on different connections
+are not reported as model mismatches.
+
+Dismissals belong to the local feature session, per inserted use and its current
+comparison. They survive mode navigation and expire when the selected model or
+recommendation changes, the use is removed, or the app reloads. They are not
+serialized into the project or shared with collaborators. Chat run readiness
+retains an aggregate advisory when inserted prompts recommend different models;
+individual mismatch advice lives on the prompt cards. Neither blocks a run.
 
 External imports do not record a recommendation unless the caller opts in. The
 source model comes from the external execution's own provider while the
@@ -144,6 +215,7 @@ Project documents contain authored, shareable definitions:
 - project-scoped prompt templates and immutable template revisions
 - the default conversation revision, model target, inference options, and
   enabled tools
+- decision requests and their revisions
 
 External prompt imports retain a secret-free receipt containing source
 identity, authored fields, expression evidence, warnings, and the deterministic
@@ -165,7 +237,7 @@ credential store, an environment variable, or session memory.
 
 ## Template authoring session
 
-The live Project v10 document is the canonical owner of template definitions and
+The live project document is the canonical owner of template definitions and
 authored conversation items. Opening the Templates workspace from an ad-hoc
 request materializes an untitled in-memory project; it does not create a
 machine-local template registry.
@@ -208,8 +280,9 @@ human review; reference answers do not receive an automatic score.
 An input binding has a human-readable name and targets one stable template-use
 ID plus one template variable name. Cases store their values by input-binding
 ID rather than display name, so renaming an input does not rewrite the dataset.
-Every case supplies exactly one string value for every binding; an empty string
-is an intentional value. A suite may have no cases while it is being authored,
+Every chat case supplies exactly one string value for every binding; an empty
+string is an intentional value. A decision case may leave a binding unfilled
+(see [decision suites](#decision-suites)). A suite may have no cases while it is being authored,
 but execution preflight will not treat that as a runnable dataset.
 
 ### Suite-owned input and execution
@@ -289,6 +362,48 @@ Repetitions, `toolIds`, and `turnCeiling` are shared by every variant. See
 [the evaluation suite authoring guide](EVALUATION_SUITE_AUTHORING.md) for how
 configurations are authored and compared.
 
+### Decision suites
+
+A suite whose `input.kind` is `decision-request-revision` runs a pinned
+[decision request](#decision-requests) revision instead of a conversation. Its
+`execution` holds only a target and repetitions; there is no response mode,
+inference options, tools, or turn ceiling:
+
+```json
+"input": { "kind": "decision-request-revision", "decisionRequestRevisionId": "decision-revision_example" },
+"execution": {
+  "target": {
+    "connectionRequirementId": "connection_default",
+    "model": "local-decision",
+    "protocol": "systemone"
+  },
+  "repetitions": 3
+}
+```
+
+The connection requirement carries nothing about System One: whether a profile
+speaks it stays a device-local declaration. A configuration may override the
+target only.
+
+An input binding targets `{ "kind": "decision-variable", "variableName": … }`.
+A case value overrides the pinned revision's effective value for that variable;
+a variable with no binding keeps the revision's value. For a template-backed
+request, precedence is template defaults, request overrides, then case values.
+An explicitly supplied empty string is a value; an absent assignment remains
+unresolved. From v15 a decision case may omit a binding's value: that case is
+unfilled, and preflight blocks it with `empty-case-value` rather than falling
+back to the revision's value. New cases and inputs start unfilled, and clearing
+a case field in the editor removes its value. The parser rejects a
+secret-like variable name. Whether the pinned revision uses each bound
+variable, whether every variable resolves for each case, and whether each
+decision check names a question of the right type and a real option are
+preflight diagnostics, since the suite stays valid while its author repoints it.
+
+Each suite kind holds only its own checks: a decision suite refuses checks that
+read chat output or tool calls, and a chat suite refuses decision checks.
+`max-duration-ms` and `max-total-tokens` fit both. A hand-edited document that
+mixes them is rejected.
+
 ### Starting an evaluation from a saved prompt
 
 **Start from saved prompt…** is an authoring shortcut, not a second kind of
@@ -324,6 +439,59 @@ is warned before the revision is created rather than silently rewritten.
 Human revision descriptions are projected on demand from this data and are not
 stored. A mutable `revisionName` on portable content would let a label drift
 from the immutable revision an execution actually snapshotted.
+
+## Decision requests
+
+System One decision requests (see [the protocol plan](SYSTEM_ONE_PROTOCOL_PLAN.md),
+D31 and D38–D43) are authored, portable content beside conversations.
+`decisionRequests` holds `{ id, name }`; `decisionRequestRevisions` holds each
+revision:
+
+```json
+{
+  "id": "decision-revision_example",
+  "kind": "inline",
+  "decisionRequestId": "decision-request_example",
+  "decision": {
+    "state": { "ticket": "{{ticket}}" },
+    "questions": {
+      "intent": {
+        "type": "choice",
+        "instructions": "What is the customer asking about?",
+        "criteria": { "billing": "Charges or refunds.", "other": null }
+      }
+    }
+  },
+  "values": { "ticket": "I was charged twice." },
+  "createdAt": "2026-10-24T12:00:00.000Z"
+}
+```
+
+`decision` is sent as written, so it keeps its authored key order in every
+serialization: question order and option order are meaning. An optional
+`parentRevisionId` names the revision of the same request it was branched
+from, and the optional `defaults.decisionRequestRevisionId` names the revision
+Decision Compose opens. No decision target is stored; the connection and model
+are chosen per session.
+
+Native template variables (the grammar above, `\{{` escaping) may appear in
+string values anywhere in `state` and in question `instructions`, never in
+object keys or criteria. `values` gives one string per variable, may name only
+variables the revision uses, and never a secret-like name. A variable with no
+value is valid authored state; a run is refused until every variable resolves,
+and the run trace records the resolved request that was sent.
+
+Decision Compose edits the active revision in place until it has run in the
+session or was loaded from disk; the next edit then appends a child and moves
+the default. Only a draft that validates is written: while the editor shows
+problems, the project keeps the last valid revision. An untouched starting
+draft never creates a request.
+
+Writing that last valid revision does not mark an incomplete editor draft as
+saved. The project retains its unsaved marker and unload/replacement protection.
+Manual save, export, and "Save and switch" refuse the incomplete draft; fixing
+it allows saving, while "Discard and switch" explicitly abandons it. Incomplete
+editor state is never added to the portable project format.
 
 ## Tool definition source
 
@@ -410,3 +578,50 @@ Connections or choosing another in Run settings — or, when the server manages
 the profile's protocols through `INFERENCE_LENS_API_PROTOCOLS`, choosing another
 protocol or connection. An evaluation refuses to start, naming the
 configuration whose protocol its profile does not serve.
+
+### Saved decision templates (core support)
+
+Project v15 stores both template kinds in `promptTemplates`. Each entry has
+`kind: "chat" | "decision"`; the kind is fixed for its lifetime. Chat revisions
+and drafts contain `messages`; decision revisions and drafts contain authored
+`decision` input. Both share `variableDefaults`, revision metadata, archive
+state and optional advisory target recommendations. Only chat revisions may
+anchor n8n import receipts. Drafts use the same `sourceRevisionId` and
+`revisionName` envelope for both kinds.
+
+A decision request revision may pin a decision template instead of storing an
+inline copy:
+
+```json
+{
+  "id": "decision-revision_use",
+  "decisionRequestId": "decision-request_example",
+  "kind": "template-use",
+  "templateId": "template_triage",
+  "templateRevisionId": "template-revision_triage-1",
+  "overrides": { "ticket": "" },
+  "createdAt": "2026-10-25T12:00:00.000Z"
+}
+```
+
+The reference is the sole content source. Resolution clones authored input and
+merges pinned defaults with supplied overrides; absent keys are never filled
+with empty strings. Variables render only at the run boundary. Unfilled or
+malformed tokens may be saved but block execution. The parser rejects mixed
+content, cross-kind references, missing pins, and decision assignments naming
+unused or secret-like variables. Legacy chat default validation is unchanged.
+
+Core operations create templates, persist valid drafts, append immutable
+revisions, create uses, edit overrides, update pins and detach. Source saves
+never move existing pins. Update appends a child request revision, retaining
+overrides only for surviving variables. Detach appends an inline child with
+authored tokens and available effective assignments, including unresolved gaps.
+Archive keeps historical pins resolvable, and usage discovery includes request
+revisions and their suites, protecting referenced source revisions from removal.
+Question and criteria ordering survive serialization, equality and revision
+diffs. Experiment and trace formats continue storing resolved input.
+
+The browser library and chat pickers currently show chat templates only. Decision
+template authoring and pinned-use Compose controls follow in the next slice of
+[the Saved Prompts plan](archive/SYSTEM_ONE_SAVED_PROMPTS_PLAN.md); existing decision
+suites and the CLI can already execute valid template-backed project inputs.

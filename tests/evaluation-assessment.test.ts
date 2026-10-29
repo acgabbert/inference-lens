@@ -119,7 +119,7 @@ function repeatedPlan(): RepeatedExperimentPlanV3 {
   const { runId: sourceRunId, ...commonInput } = input;
   assert.equal(sourceRunId, "run_source");
   return {
-    schemaVersion: 4,
+    schemaVersion: 5,
     experimentId: "experiment_repeated",
     kind: "repeated-request",
     createdAt: "2026-08-07T12:00:01.000Z",
@@ -227,8 +227,9 @@ test("pins the check vocabulary and the scoring policy as literals", () => {
   const plan = evaluationPlan();
   const source = assessment(plan);
 
+  // Vocabulary 3 still opens (see structured-output-checks.test.ts); 2 never existed in a saved file.
   const olderVocabulary = JSON.parse(serializeEvaluationAssessment(source, plan));
-  olderVocabulary.checkSchemaVersion = CHECK_SCHEMA_VERSION - 1;
+  olderVocabulary.checkSchemaVersion = 2;
   assert.throws(
     () => parseEvaluationAssessmentJson(JSON.stringify(olderVocabulary), plan),
     EvaluationAssessmentError,

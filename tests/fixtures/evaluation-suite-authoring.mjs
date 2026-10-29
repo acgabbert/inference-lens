@@ -15,7 +15,7 @@ export function evaluationFixture() {
       endpoint: "http://127.0.0.1:44014/v1",
     }],
     conversationRevisions: [{ id: "revision_current", conversationId: "conversation_fixture", createdAt: "2026-08-01T12:00:00.000Z", items: [{ kind: "template-use", use: { id: "template-use_question", templateId: "template_question", templateRevisionId: "template-revision_question", values: {}, outputMessageIds: ["message_question"] } }] }],
-    promptTemplates: [{ id: "template_question", name: "Question", currentRevisionId: "template-revision_question", revisions: [{ id: "template-revision_question", createdAt: "2026-08-01T12:00:00.000Z", messages: [{ role: "user", content: "Explain {{topic}}." }], variableDefaults: { topic: "a topic" } }] }],
+    promptTemplates: [{ kind: "chat", id: "template_question", name: "Question", currentRevisionId: "template-revision_question", revisions: [{ id: "template-revision_question", createdAt: "2026-08-01T12:00:00.000Z", messages: [{ role: "user", content: "Explain {{topic}}." }], variableDefaults: { topic: "a topic" } }] }],
     evaluationSuites: [{
       id: "evaluation-suite_topics",
       name: "Topic quality",
@@ -99,6 +99,7 @@ export function evaluationFixture() {
       revisionCreatedAt: "2026-08-01T12:00:00.000Z",
       messageCount: 1,
       roles: ["user"],
+      messages: [{ role: "user", content: "Explain {{topic}}." }],
       variables: [{ name: "topic", hasDefault: true, defaultValue: "a topic" }],
     }],
     savedPromptPickerOpen: false,

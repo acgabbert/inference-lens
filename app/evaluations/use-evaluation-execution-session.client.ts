@@ -2,18 +2,27 @@
 
 import { useCallback, useRef, useState } from "react";
 
-import type { CredentialSelection, ProviderTurnTransport } from "../../packages/contracts/src/index.ts";
+import type { CredentialSelection, DecisionTransport, ProviderTurnTransport } from "../../packages/contracts/src/index.ts";
+import type { DecisionRun } from "../../packages/core/src/decision.ts";
+import { decisionRunFromTrace } from "../../packages/core/src/decision-trace.ts";
+import type { DecisionRunTrace } from "../../packages/core/src/decision-trace.ts";
 import { experimentExposedTools, rateLimitRetries } from "../../packages/core/src/experiment.ts";
 import type {
+  DecisionEvaluationExperimentPlan,
   EvaluationExperimentPlanV3,
   ExperimentConcurrencySetting,
   ExperimentResult,
+  ExperimentTarget,
+  SuiteExperimentPlan,
 } from "../../packages/core/src/experiment.ts";
-import type { ResolvedRunInput, RunId, RunState, RunTrace } from "../../packages/core/src/run-kernel/index.ts";
+import type { RunId, RunState, RunTrace } from "../../packages/core/src/run-kernel/index.ts";
 import type { EvaluationVariantId } from "../../packages/core/src/run-kernel/types.ts";
 import { runStateFromTrace, traceFileName } from "../../packages/core/src/run-trace.ts";
 import type { ProjectWorkspaceHandle } from "../project-workspace.client.ts";
-import { createExperimentWorkspacePersistence } from "../run/experiment-workspace-persistence.client.ts";
+import {
+  createDecisionExperimentWorkspacePersistence,
+  createExperimentWorkspacePersistence,
+} from "../run/experiment-workspace-persistence.client.ts";
 import type { ExperimentToolBinding } from "../../packages/core/src/tool-binding-resolution.ts";
 import { ExperimentController } from "../../packages/runner/src/experiment-controller.ts";
 import type { ExperimentConnectionPause } from "../../packages/runner/src/experiment-controller.ts";
@@ -21,7 +30,8 @@ import { createToolExecutor } from "../run/tool-executors.client.ts";
 import { verifyToolBindingsOnHost } from "../tools/tool-binding-check.client.ts";
 
 export interface EvaluationExecutionDraft {
-  plan: EvaluationExperimentPlanV3;
+  /** A chat or a decision evaluation; one suite is one kind (D44). */
+  plan: SuiteExperimentPlan;
   targetNames: Readonly<Record<EvaluationVariantId, string>>;
   /**
    * What will serve each tool the suite exposes, resolved when the draft was
@@ -56,23 +66,57 @@ export interface EvaluationLiveProgress {
   pausedConnections: readonly ExperimentConnectionPause[];
 }
 
-export interface EvaluationExecution {
-  plan: EvaluationExperimentPlanV3;
+interface EvaluationExecutionBase {
   storage: "durable" | "unsaved";
   workspace: ProjectWorkspaceHandle | null;
-  states: ReadonlyMap<RunId, RunState>;
   live?: EvaluationLiveProgress;
   result?: ExperimentResult;
   error?: string;
-  traces: ReadonlyMap<RunId, RunTrace>;
   traceFileNames: ReadonlyMap<RunId, string>;
   unreadableTraces: ReadonlyMap<RunId, string>;
+  /** Chat only: a decision repetition opens in Decision Compose instead (D51). */
   selectedRunId: RunId | null;
 }
 
+export interface ChatEvaluationExecution extends EvaluationExecutionBase {
+  kind: "chat";
+  plan: EvaluationExperimentPlanV3;
+  states: ReadonlyMap<RunId, RunState>;
+  traces: ReadonlyMap<RunId, RunTrace>;
+}
+
+export interface DecisionEvaluationExecution extends EvaluationExecutionBase {
+  kind: "decision";
+  plan: DecisionEvaluationExperimentPlan;
+  states: ReadonlyMap<RunId, DecisionRun>;
+  traces: ReadonlyMap<RunId, DecisionRunTrace>;
+}
+
+/** One execution of either kind; `kind` follows its plan's. */
+export type EvaluationExecution = ChatEvaluationExecution | DecisionEvaluationExecution;
+
+/** A saved execution as project history reads it back, of either kind. */
+export type SavedEvaluationExecution =
+  | {
+      plan: EvaluationExperimentPlanV3;
+      result?: ExperimentResult;
+      traces: ReadonlyMap<RunId, RunTrace>;
+      traceFileNames: ReadonlyMap<RunId, string>;
+      unreadableTraces: ReadonlyMap<RunId, string>;
+    }
+  | {
+      plan: DecisionEvaluationExperimentPlan;
+      result?: ExperimentResult;
+      traces: ReadonlyMap<RunId, DecisionRunTrace>;
+      traceFileNames: ReadonlyMap<RunId, string>;
+      unreadableTraces: ReadonlyMap<RunId, string>;
+    };
+
 export interface UseEvaluationExecutionSessionOptions {
-  transport: ProviderTurnTransport;
-  prepareCredential(target: ResolvedRunInput["target"]): Promise<CredentialSelection>;
+  /** Serves chat cells and, through the decision transport, decision cells. */
+  transport: ProviderTurnTransport & DecisionTransport;
+  /** Either kind's target; both carry the profile and endpoint a credential is keyed by. */
+  prepareCredential(target: ExperimentTarget): Promise<CredentialSelection>;
   onTraceSaved(): void;
   onError(message: string): void;
   /**
@@ -95,7 +139,7 @@ export function useEvaluationExecutionSession(options: UseEvaluationExecutionSes
   const [draft, setDraft] = useState<EvaluationExecutionDraft>();
   const [execution, setExecution] = useState<EvaluationExecution>();
   const [isRunning, setIsRunning] = useState(false);
-  const controllerRef = useRef<ExperimentController | undefined>(undefined);
+  const controllerRef = useRef<ExperimentController<RunState> | ExperimentController<DecisionRun> | undefined>(undefined);
 
   const begin = useCallback((next: EvaluationExecutionDraft) => setDraft(next), []);
   const dismissDialog = useCallback(() => setDraft(undefined), []);
@@ -112,89 +156,119 @@ export function useEvaluationExecutionSession(options: UseEvaluationExecutionSes
     if (!pending || controllerRef.current?.isRunning) return;
     setDraft(undefined);
     setIsRunning(true);
-    setExecution({
-      plan: pending.plan,
-      storage: workspace ? "durable" : "unsaved",
+    const plan = pending.plan;
+    const live: EvaluationLiveProgress = {
+      startedAtMs: Date.now(),
+      requested: plan.cells.length,
+      finished: 0,
+      runningOrdinals: [],
+      pausedConnections: [],
+    };
+    const common = {
+      storage: workspace ? "durable" as const : "unsaved" as const,
       workspace,
-      states: new Map(),
-      live: {
-        startedAtMs: Date.now(),
-        requested: pending.plan.cells.length,
-        finished: 0,
-        runningOrdinals: [],
-        pausedConnections: [],
-      },
-      traces: new Map(),
-      traceFileNames: new Map(),
-      unreadableTraces: new Map(),
+      live,
+      traceFileNames: new Map<RunId, string>(),
+      unreadableTraces: new Map<RunId, string>(),
       selectedRunId: null,
-    });
+    };
+    setExecution(plan.kind === "decision-evaluation"
+      ? { ...common, kind: "decision", plan, states: new Map(), traces: new Map() }
+      : { ...common, kind: "chat", plan, states: new Map(), traces: new Map() });
 
-    const persistence = workspace
-      ? createExperimentWorkspacePersistence(workspace, pending.plan)
-      : undefined;
-    const controller = new ExperimentController({
-      plan: pending.plan,
-      transport: options.transport,
-      prepareCredential: options.prepareCredential,
-      // Device-local, never written into the durable plan — the same join the
-      // repeated experiment makes, so one suite is served identically here and
-      // nowhere else by accident.
-      toolBindings: pending.toolBindings.flatMap(({ binding }) => binding ? [binding] : []),
-      createExecutor: createToolExecutor,
-      verifyToolBindings: (bindings) => verifyToolBindingsOnHost(bindings, (toolId) =>
-        experimentExposedTools(pending.plan).find(({ id }) => id === toolId)?.name ?? toolId),
-      ...persistence,
+    // Progress and saved traces are written the same way for either kind.
+    const onProgress = (progress: { status: string; states: ReadonlyMap<RunId, RunState | DecisionRun>; requested: number; finished: number; runningOrdinals: readonly number[]; pausedConnections: readonly ExperimentConnectionPause[] }) => {
+      setExecution((current) => current?.plan.experimentId === plan.experimentId
+        ? {
+            ...current,
+            states: progress.states,
+            live: progress.status === "running"
+              ? {
+                  startedAtMs: current.live?.startedAtMs ?? Date.now(),
+                  requested: progress.requested,
+                  finished: progress.finished,
+                  runningOrdinals: progress.runningOrdinals,
+                  pausedConnections: progress.pausedConnections,
+                }
+              : undefined,
+          } as EvaluationExecution
+        : current);
+    };
+    const recordTrace = (trace: RunTrace | DecisionRunTrace) => {
+      setExecution((current) => {
+        if (current?.plan.experimentId !== plan.experimentId) return current;
+        const traces = new Map<RunId, RunTrace | DecisionRunTrace>(current.traces);
+        const traceFileNames = new Map(current.traceFileNames);
+        traces.set(trace.runId, trace);
+        traceFileNames.set(trace.runId, traceFileName(trace.runId));
+        return { ...current, traces, traceFileNames } as EvaluationExecution;
+      });
+      if (workspace) options.onTraceSaved();
+    };
+    const shared = {
       ...(pending.concurrency ? { concurrency: pending.concurrency } : {}),
       ...(pending.retryRateLimits ? { retryPolicy: rateLimitRetries() } : {}),
-      onProgress(progress) {
-        setExecution((current) => current?.plan.experimentId === pending.plan.experimentId
-          ? {
-              ...current,
-              states: progress.states,
-              live: progress.status === "running"
-                ? {
-                    startedAtMs: current.live?.startedAtMs ?? Date.now(),
-                    requested: progress.requested,
-                    finished: progress.finished,
-                    runningOrdinals: progress.runningOrdinals,
-                    pausedConnections: progress.pausedConnections,
-                  }
-                : undefined,
-            }
-          : current);
-      },
-      async onTerminalTrace(trace, cell) {
-        await persistence?.onTerminalTrace?.(trace, cell);
-        setExecution((current) => {
-          if (current?.plan.experimentId !== pending.plan.experimentId) return current;
-          const traces = new Map(current.traces);
-          const traceFileNames = new Map(current.traceFileNames);
-          traces.set(trace.runId, trace);
-          traceFileNames.set(trace.runId, traceFileName(trace.runId));
-          return { ...current, traces, traceFileNames };
-        });
-        if (workspace) options.onTraceSaved();
-      },
-    });
+      onProgress,
+    };
+
+    let controller: ExperimentController<RunState> | ExperimentController<DecisionRun>;
+    if (plan.kind === "decision-evaluation") {
+      const persistence = workspace ? createDecisionExperimentWorkspacePersistence(workspace, plan) : undefined;
+      controller = new ExperimentController<DecisionRun>({
+        plan,
+        decisionTransport: options.transport,
+        prepareCredential: options.prepareCredential,
+        ...(persistence ? { savePlan: persistence.savePlan, saveResult: persistence.saveResult } : {}),
+        ...shared,
+        async onTerminalTrace(trace) {
+          await persistence?.onTerminalTrace(trace);
+          recordTrace(trace);
+        },
+      });
+    } else {
+      const persistence = workspace
+        ? createExperimentWorkspacePersistence(workspace, plan)
+        : undefined;
+      controller = new ExperimentController<RunState>({
+        plan,
+        transport: options.transport,
+        prepareCredential: options.prepareCredential,
+        // Device-local, never written into the durable plan — the same join the
+        // repeated experiment makes, so one suite is served identically here and
+        // nowhere else by accident.
+        toolBindings: pending.toolBindings.flatMap(({ binding }) => binding ? [binding] : []),
+        createExecutor: createToolExecutor,
+        verifyToolBindings: (bindings) => verifyToolBindingsOnHost(bindings, (toolId) =>
+          experimentExposedTools(plan).find(({ id }) => id === toolId)?.name ?? toolId),
+        ...persistence,
+        ...shared,
+        async onTerminalTrace(trace, cell) {
+          await persistence?.onTerminalTrace?.(trace, cell);
+          recordTrace(trace);
+        },
+      });
+    }
     controllerRef.current = controller;
     try {
       const result = await controller.run();
-      setExecution((current) => current?.plan.experimentId === pending.plan.experimentId
+      setExecution((current) => current?.plan.experimentId === plan.experimentId
         ? { ...current, result }
         : current);
-      options.onFinished?.({ experimentId: pending.plan.experimentId });
+      options.onFinished?.({ experimentId: plan.experimentId });
     } catch (error) {
       const message = error instanceof Error ? error.message : "The evaluation was interrupted.";
-      setExecution((current) => current?.plan.experimentId === pending.plan.experimentId
+      setExecution((current) => current?.plan.experimentId === plan.experimentId
         ? { ...current, error: message }
         : current);
       options.onError(message);
     } finally {
       if (controllerRef.current === controller) controllerRef.current = undefined;
-      setExecution((current) => current?.plan.experimentId === pending.plan.experimentId
-        ? { ...current, live: undefined }
-        : current);
+      setExecution((current) => {
+        if (current?.plan.experimentId !== plan.experimentId) return current;
+        const settled = { ...current };
+        delete settled.live;
+        return settled;
+      });
       setIsRunning(false);
     }
   }, [draft, options]);
@@ -208,28 +282,38 @@ export function useEvaluationExecutionSession(options: UseEvaluationExecutionSes
    */
   const openTrace = useCallback((runId: RunId) => {
     const current = execution;
-    if (!current?.traces.has(runId)) return;
+    if (current?.kind !== "chat" || !current.traces.has(runId)) return;
     setExecution((active) => active === current ? { ...active, selectedRunId: runId } : active);
   }, [execution]);
 
-  const openSaved = useCallback((opened: {
-    plan: EvaluationExperimentPlanV3;
-    result?: ExperimentResult;
-    traces: ReadonlyMap<RunId, RunTrace>;
-    traceFileNames: ReadonlyMap<RunId, string>;
-    unreadableTraces: ReadonlyMap<RunId, string>;
-  }, workspace: ProjectWorkspaceHandle) => {
+  const openSaved = useCallback((opened: SavedEvaluationExecution, workspace: ProjectWorkspaceHandle) => {
     if (controllerRef.current?.isRunning) throw new Error("Stop the running evaluation before opening a saved one.");
-    setExecution({
-      plan: opened.plan,
-      storage: "durable",
+    const common = {
+      storage: "durable" as const,
       workspace,
-      states: new Map([...opened.traces].map(([runId, trace]) => [runId, runStateFromTrace(trace)] as const)),
       ...(opened.result ? { result: opened.result } : {}),
-      traces: opened.traces,
       traceFileNames: opened.traceFileNames,
       unreadableTraces: opened.unreadableTraces,
       selectedRunId: null,
+    };
+    if (opened.plan.kind === "decision-evaluation") {
+      const traces = opened.traces as ReadonlyMap<RunId, DecisionRunTrace>;
+      setExecution({
+        ...common,
+        kind: "decision",
+        plan: opened.plan,
+        states: new Map([...traces].map(([runId, trace]) => [runId, decisionRunFromTrace(trace)] as const)),
+        traces,
+      });
+      return;
+    }
+    const traces = opened.traces as ReadonlyMap<RunId, RunTrace>;
+    setExecution({
+      ...common,
+      kind: "chat",
+      plan: opened.plan,
+      states: new Map([...traces].map(([runId, trace]) => [runId, runStateFromTrace(trace)] as const)),
+      traces,
     });
   }, []);
 

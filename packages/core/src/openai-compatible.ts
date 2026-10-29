@@ -7,6 +7,7 @@ import {
   providerRequestUrl,
   sameProviderTarget,
 } from "./provider-protocols.ts";
+import type { ConnectionProtocol } from "./provider-protocols.ts";
 import { createEntityId } from "./run-kernel/types.ts";
 import type {
   ConversationMessage,
@@ -14,7 +15,6 @@ import type {
   JsonObject,
   ProviderExecution,
   ProviderEvent,
-  ProviderWireProtocol,
   RunTokenUsage,
   ToolCallId,
 } from "./run-kernel/types.ts";
@@ -128,6 +128,34 @@ export function parseModelsResponse(body: unknown): string[] {
 }
 
 /**
+ * GETs one model listing and returns its parsed body. A non-2xx status throws
+ * an error carrying it, with the body as the message.
+ */
+export async function fetchModelListing(
+  url: string,
+  protocol: ConnectionProtocol,
+  apiKey: string,
+  signal?: AbortSignal,
+): Promise<unknown> {
+  const response = await fetch(url, {
+    method: "GET",
+    headers: {
+      ...protocolHeaders(protocol),
+      ...credentialHeaders(protocol, apiKey),
+    },
+    signal,
+  });
+  if (!response.ok) {
+    const detail = (await response.text()).slice(0, 4_000);
+    throw Object.assign(
+      new Error(detail || `Provider returned HTTP ${response.status}.`),
+      { status: response.status },
+    );
+  }
+  return response.json();
+}
+
+/**
  * Lists the model identifiers an endpoint exposes. Model discovery is
  * optional: callers can still accept a manually supplied ID. Every supported
  * protocol lists models at `/models` in the same `data[].id` shape; only the
@@ -141,23 +169,14 @@ export async function discoverOpenAICompatibleModels(
     throw new Error("Model discovery is not supported by this profile.");
   }
   const protocol = request.protocol ?? "openai-compatible-chat-completions";
-  const response = await fetch(discoveryUrl(request.endpoint, protocol), {
-    method: "GET",
-    headers: {
-      ...protocolHeaders(protocol),
-      ...credentialHeaders(protocol, request.apiKey),
-    },
-    signal,
-  });
-  if (!response.ok) {
-    const detail = (await response.text()).slice(0, 4_000);
-    throw Object.assign(
-      new Error(detail || `Provider returned HTTP ${response.status}.`),
-      { status: response.status },
-    );
-  }
-
-  return parseModelsResponse(await response.json());
+  return parseModelsResponse(
+    await fetchModelListing(
+      discoveryUrl(request.endpoint, protocol),
+      protocol,
+      request.apiKey,
+      signal,
+    ),
+  );
 }
 
 /**
@@ -166,7 +185,7 @@ export async function discoverOpenAICompatibleModels(
  */
 export function discoveryUrl(
   endpoint: string,
-  protocol: ProviderWireProtocol,
+  protocol: ConnectionProtocol,
 ): string {
   const url = new URL(modelsUrl(endpoint));
   if (protocol === "anthropic-messages") url.searchParams.set("limit", "1000");

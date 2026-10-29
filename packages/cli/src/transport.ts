@@ -2,13 +2,16 @@ import { existsSync, readFileSync } from "node:fs";
 
 import type {
   CredentialSelection,
+  DecisionExecutionRequest,
+  DecisionStream,
+  DecisionTransport,
   ProviderTurnRequest,
   ProviderTurnStream,
   ProviderTurnTransport,
 } from "../../contracts/src/index.ts";
 import type { CredentialStore } from "../../../services/api/src/credential-store.ts";
-import { resolveProviderTurnRequest } from "../../../services/api/src/inference-request.ts";
-import { executeProviderTurn } from "../../../services/api/src/run-executor.ts";
+import { resolveDecisionRequest, resolveProviderTurnRequest } from "../../../services/api/src/inference-request.ts";
+import { executeDecision, executeProviderTurn } from "../../../services/api/src/run-executor.ts";
 import { detectContainerRuntime } from "../../../services/api/src/runtime-environment.ts";
 
 /**
@@ -41,10 +44,13 @@ export function isContainerizedProcess(environment: Record<string, string | unde
 /**
  * The server's provider path, called in process instead of over HTTP.
  *
- * The request still crosses `resolveProviderTurnRequest`, so a headless turn is
- * validated exactly as one the browser sends to the service.
+ * The request still crosses `resolveProviderTurnRequest` (or
+ * `resolveDecisionRequest`), so a headless turn or decision is validated
+ * exactly as one the browser sends to the service.
  */
-export function createInProcessTransport(options: { containerized: boolean }): ProviderTurnTransport {
+export function createInProcessTransport(
+  options: { containerized: boolean },
+): ProviderTurnTransport & DecisionTransport {
   return {
     async discoverModels() {
       throw new Error("Model discovery is not available in a headless run.");
@@ -55,6 +61,16 @@ export function createInProcessTransport(options: { containerized: boolean }): P
         status: 200,
         headers: new Headers(),
         events: executeProviderTurn(resolved.execution, resolved.apiKey, signal, {
+          containerized: options.containerized,
+        }),
+      };
+    },
+    async executeDecision(request: DecisionExecutionRequest, signal?: AbortSignal): Promise<DecisionStream> {
+      const resolved = resolveDecisionRequest(request, preparedCredentialStore);
+      return {
+        status: 200,
+        headers: new Headers(),
+        events: executeDecision(resolved.execution, resolved.apiKey, signal, {
           containerized: options.containerized,
         }),
       };

@@ -50,16 +50,16 @@ async function openFolder(page: import("@playwright/test").Page, files: Record<s
 
 function fixture(): Record<string, string> {
   const project: ProjectFile = {
-    schemaVersion: 11,
+    schemaVersion: 15,
     projectId: ids.project,
     name: "Promotion browser fixture",
     defaults: { conversationRevisionId: ids.revision, target: { connectionRequirementId: ids.connection, model: "fixture-model", protocol: "openai-compatible-chat-completions" }, options: {}, enabledToolIds: [] },
     connectionRequirements: [{ id: ids.connection, name: "Fixture", provider: "openai-compatible", endpoint: "http://127.0.0.1:44014/v1" }],
     conversations: [{ id: ids.conversation, name: "Incident conversation" }],
     conversationRevisions: [{ id: ids.revision, conversationId: ids.conversation, createdAt: "2026-08-06T12:00:00.000Z", items: [{ kind: "template-use", use: { id: ids.use, templateId: ids.template, templateRevisionId: ids.templateRevision, values: {}, outputMessageIds: [ids.message] } }] }],
-    promptTemplates: [{ id: ids.template, name: "Incident prompt", currentRevisionId: ids.templateRevision, revisions: [{ id: ids.templateRevision, createdAt: "2026-08-06T12:00:00.000Z", messages: [{ role: "user", content: "Investigate {{topic}}" }], variableDefaults: {} }] }],
+    promptTemplates: [{ kind: "chat", id: ids.template, name: "Incident prompt", currentRevisionId: ids.templateRevision, revisions: [{ id: ids.templateRevision, createdAt: "2026-08-06T12:00:00.000Z", messages: [{ role: "user", content: "Investigate {{topic}}" }], variableDefaults: {} }] }],
     externalImports: [], tools: [], toolMocks: [],
-    evaluationSuites: [{
+    decisionRequests: [], decisionRequestRevisions: [], evaluationSuites: [{
       id: ids.suite, name: "Incidents", input: { kind: "conversation-revision", conversationRevisionId: ids.revision },
       execution: { target: { connectionRequirementId: ids.connection, model: "fixture-model", protocol: "openai-compatible-chat-completions" }, responseMode: "buffered", options: {}, repetitions: 1, toolIds: [] },
       variants: [{ id: ids.variant, name: "Default", overrides: {} }],
@@ -112,6 +112,39 @@ test("an ordinary source trace promotes exact values and remains openable from i
   await expect(editor.getByText("No deterministic checks yet.")).toBeVisible();
   await editor.getByRole("button", { name: "Open source trace" }).click();
   await expect(page.getByRole("button", { name: "Promote to case…" })).toBeVisible();
+});
+
+test("Promote to case follows the modal contract: focus moves in, stays in, Escape closes it and focus returns", async ({ page }) => {
+  await seedProfile(page);
+  await stubProjectDirectory(page, { name: "promotion-browser.inference-lens", files: fixture() });
+  await page.goto("/");
+  await waitForHydration(page);
+  await page.getByLabel("Project menu").click();
+  await page.getByRole("button", { name: "Open project folder…" }).click();
+  await expect(page.locator(".brand")).toContainText("Promotion browser fixture");
+  await page.getByLabel("Run data menu").click();
+  await page.getByRole("button", { name: "Run history", exact: true }).click();
+  await page.locator(".runs-evidence-item").click();
+  const opener = page.getByRole("button", { name: "Promote to case…" });
+  await opener.focus();
+  await opener.press("Enter");
+  const dialog = page.getByRole("dialog", { name: "Promote to case" });
+  await expect(dialog).toBeVisible();
+
+  const focusInside = () => page.evaluate(() => Boolean(document.activeElement?.closest('[role="dialog"]')));
+  await expect.poll(focusInside, { message: "focus moves into the dialog when it opens" }).toBe(true);
+  expect(await page.evaluate(() => document.body.style.overflow), "page behind is scroll-locked").toBe("hidden");
+  for (let press = 0; press < 6; press += 1) {
+    await page.keyboard.press("Tab");
+    expect(await focusInside(), `Tab press ${press + 1} stays inside the dialog`).toBe(true);
+  }
+  await page.keyboard.press("Shift+Tab");
+  expect(await focusInside(), "Shift+Tab stays inside the dialog").toBe(true);
+
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
+  await expect(opener).toBeFocused();
+  expect(await page.evaluate(() => document.body.style.overflow), "scroll lock is released").not.toBe("hidden");
 });
 
 test("a source annotation saved earlier is validated against its trace and opens it", async ({ page }) => {

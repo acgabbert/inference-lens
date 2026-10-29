@@ -184,6 +184,7 @@ body {
 .panel-header h2,
 .template-empty-state h3,
 .template-rail-heading h3,
+.recommended-model-editor h3,
 .template-content-heading h3,
 .template-use-card h3,
 .n8n-import-centered h3,
@@ -196,7 +197,8 @@ body {
 .empty-glyph,
 .run-metric-value,
 .run-history-empty h3,
-.pane-empty-state h3 {
+.pane-empty-state h3,
+.run-link-recovery h2 {
   font-size: var(--type-section-heading);
 }
 
@@ -300,21 +302,26 @@ textarea,
 .evaluation-portable-warning,
 .evaluation-empty-inline,
 .evaluation-regex-dialect,
-.tool-name-warning {
+.tool-name-warning,
+.decision-target legend,
+.decision-field-label {
   font-size: var(--type-compact);
 }
 
 .button,
 button,
 label:not(.file-button),
+.prompt-model-summary,
+.prompt-model-warning,
 label.file-button,
+.template-revision-field-heading,
 select,
 .section-heading,
 .template-insert-label,
 .template-preview-heading,
 .request-preview summary,
 .request-preview h3,
-.tool-enabled,
+.attach-destination legend,
 .tool-mock-toggle,
 .tool-manifest > header strong,
 .schema-node-controls input,
@@ -429,7 +436,7 @@ pre,
 .evaluation-case-check-count,
 .evaluation-regex-dialect > summary > span,
 .saved-prompt-list legend,
-.prompt-insertion-preview strong,
+.prompt-messages-preview strong,
 .evaluation-preview-case,
 .evaluation-preflight-region h5,
 .tool-call-provenance,
@@ -440,7 +447,9 @@ pre,
 .inference-settings-scope,
 .inference-settings-override,
 .target-caption,
-.mcp-permission-note {
+.mcp-permission-note,
+.decision-answer-type,
+.decision-scale-tick {
   font-size: var(--type-metadata);
 }
 
@@ -818,6 +827,85 @@ label.file-button {
 
 .model-options-error .text-button {
   margin-left: auto;
+}
+
+.saved-prompt-picker {
+  position: relative;
+}
+
+.saved-prompt-popover {
+  position: absolute;
+  top: calc(100% + 5px);
+  left: 0;
+  z-index: 4;
+  display: grid;
+  width: min(360px, calc(100vw - 32px));
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface-panel);
+  box-shadow: var(--shadow-popover);
+}
+
+.saved-prompt-popover input {
+  margin: var(--space-sm);
+  width: auto;
+  padding-block: var(--space-sm);
+}
+
+.saved-prompt-options {
+  max-height: 260px;
+  overflow-y: auto;
+  border-block: 1px solid var(--border-subtle);
+}
+
+.saved-prompt-option-row {
+  display: grid;
+  gap: var(--space-2xs);
+  padding: var(--space-sm);
+  border-bottom: 1px solid var(--border-subtle);
+  cursor: pointer;
+}
+
+.saved-prompt-option-row:last-child {
+  border-bottom: 0;
+}
+
+.saved-prompt-option-row.highlighted {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.saved-prompt-option-row strong {
+  overflow-wrap: anywhere;
+}
+
+.saved-prompt-option-row span,
+.saved-prompt-popover-footer span {
+  color: var(--text-muted);
+}
+
+.saved-prompt-options-status {
+  margin: 0;
+  padding: var(--space-sm);
+  color: var(--text-muted);
+}
+
+.saved-prompt-popover-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-xs) var(--space-sm);
+}
+
+.saved-prompt-popover-empty {
+  display: grid;
+  justify-items: start;
+  gap: var(--space-sm);
+  padding: var(--space-sm);
+}
+
+.saved-prompt-popover-empty p {
+  margin: 0;
 }
 
 label:not(.file-button) {
@@ -1233,6 +1321,37 @@ output {
   margin-bottom: var(--space-sm);
 }
 
+/* Reads as the header's other labels, with the rename action on the same line
+   so the select below keeps its full width. */
+.template-revision-field {
+  min-width: 0;
+}
+
+.template-revision-field-heading {
+  min-height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  color: var(--text-secondary);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.template-revision-field-heading .text-button {
+  padding-block: 0;
+}
+
+.template-revision-rename-actions {
+  display: flex;
+  gap: var(--space-xs);
+}
+
+/* Matches the select it replaces, so the header does not shift. */
+input.template-revision-rename {
+  height: 32px;
+}
+
 .template-editor-actions {
   display: flex;
   align-items: center;
@@ -1346,9 +1465,23 @@ output {
   padding-block: 0;
 }
 
-.template-editor-focus-mode .template-editor-body {
+/* The editor body and revision diff share one scroll region. In focus mode it
+   is the viewport, so an open diff extends the scroll instead of taking the
+   body's height. */
+.template-editor-scroll {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.template-editor-focus-mode .template-editor-scroll {
   min-height: 0;
   overflow-y: auto;
+}
+
+.template-editor-focus-mode .template-editor-body {
+  flex: 1 0 auto;
   align-items: stretch;
 }
 
@@ -1514,7 +1647,7 @@ output {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  /* In focus mode the body owns the scroll viewport. Give the stacked content
+  /* In focus mode the scroll region is the viewport. Give the stacked content
      row an explicit floor so the variable rail flows below it instead of the
      grid shrinking the editor underneath its overflowing textarea. */
   .template-editor-focus-mode .template-content-editor {
@@ -1974,13 +2107,12 @@ output {
   background: var(--surface-subtle);
 }
 
-/* Sits between the send toggle and Remove: the order these buttons change is
-   the order the selected tools reach the provider in. */
+/* Lives on the attached list, not the project cards: the order these buttons
+   change is the order the attached tools reach the provider in. */
 .tool-reorder {
+  flex: 0 0 auto;
   display: flex;
   gap: var(--space-2xs);
-  margin-left: auto;
-  margin-right: var(--space-sm);
 }
 
 .tool-reorder button:disabled {
@@ -1988,7 +2120,6 @@ output {
   cursor: default;
 }
 
-.tool-enabled,
 .tool-mock-toggle {
   display: flex !important;
   align-items: center;
@@ -1997,10 +2128,45 @@ output {
   font-weight: 700;
 }
 
-.tool-enabled input,
 .tool-mock-toggle input {
   width: auto;
   margin: 0;
+}
+
+.tool-definition-disclosure > summary {
+  padding: var(--space-sm) var(--space-md);
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  color: var(--text-secondary);
+  cursor: pointer;
+  list-style: none;
+  font-weight: 700;
+}
+
+.tool-definition-disclosure > summary::-webkit-details-marker {
+  display: none;
+}
+
+.tool-definition-disclosure > summary::before {
+  content: "▸";
+  color: var(--text-muted);
+}
+
+.tool-definition-disclosure[open] > summary {
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.tool-definition-disclosure[open] > summary::before {
+  content: "▾";
+}
+
+/* Typed values, not labels: the label they sit in is bold, and form controls
+   inherit its weight. The message editor's body is regular, and so are these. */
+.definition-editor input:not([type="checkbox"]),
+.definition-editor textarea,
+.tool-mock-result textarea {
+  font-weight: 400;
 }
 
 .tool-fields {
@@ -2012,6 +2178,12 @@ output {
 .tool-fields label,
 .tool-call-card label {
   gap: var(--space-xs);
+}
+
+/* A sibling of the tool list rather than an item in it, so it takes the list's
+   gutter itself instead of running edge to edge beneath the cards above. */
+.mcp-discovery-panel {
+  margin: 0 var(--space-xl) var(--space-xl);
 }
 
 .mcp-discovery-body {
@@ -2114,10 +2286,110 @@ output {
   color: var(--danger-strong);
 }
 
-.tool-manifest > header .button {
+.tool-manifest-actions {
   flex: 0 0 auto;
+  display: flex;
+  gap: var(--space-xs);
+}
+
+.tool-manifest > header .allow-tool-calling {
   border-color: var(--danger-border);
   color: var(--danger-strong);
+}
+
+/* Every route into the request starts here, and each asks the same
+   destination question first. */
+.attach-tool-menu {
+  margin: 0 var(--space-md) var(--space-md);
+  padding: var(--space-sm) var(--space-md);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--surface-panel);
+  display: grid;
+  gap: var(--space-sm);
+}
+
+.attach-tool-menu p[role="alert"] {
+  margin: 0;
+  color: var(--danger-strong);
+}
+
+.attach-tool-sources {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-xs);
+}
+
+.attach-tool-detached ul {
+  margin: var(--space-2xs) 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: var(--space-3xs);
+}
+
+.attach-tool-detached li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+}
+
+.attach-tool-detached code {
+  font-family: var(--font-geist-mono), monospace;
+}
+
+.attach-destination {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2xs) var(--space-md);
+}
+
+.attach-destination legend {
+  float: left;
+  margin-right: var(--space-xs);
+  padding: 0;
+  font-weight: 700;
+}
+
+.attach-destination label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2xs);
+  margin: 0;
+}
+
+.attach-destination input {
+  width: auto;
+  margin: 0;
+}
+
+.attach-destination small {
+  flex-basis: 100%;
+  color: var(--text-muted);
+}
+
+.registry-editor > .attach-destination {
+  padding: var(--space-xs) var(--space-md);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+/* A tab tool has no project card, so its definition opens inside its row. */
+.tool-manifest-editor {
+  flex-basis: 100%;
+}
+
+.tool-attach-status {
+  color: var(--text-muted);
+  font-weight: 700;
+}
+
+.tool-attach-status.attached {
+  color: var(--accent);
 }
 
 .tool-manifest-list {
@@ -2269,13 +2541,6 @@ output {
   padding: var(--space-xs) var(--space-sm);
 }
 
-.schema-node-controls select,
-.schema-property-row select {
-  height: 28px;
-  padding: 0 var(--space-xl) 0 var(--space-sm);
-  background-position: calc(100% - 13px) center, calc(100% - 9px) center;
-}
-
 .schema-subheading {
   min-height: 34px;
   justify-content: space-between;
@@ -2327,7 +2592,7 @@ output {
     22px
     minmax(90px, 0.8fr)
     minmax(78px, 0.55fr)
-    54px
+    64px
     minmax(130px, 1.2fr)
     minmax(90px, 0.7fr)
     auto;
@@ -2354,13 +2619,14 @@ output {
   cursor: default;
 }
 
+/* The checkbox sits in a box the height of the inputs beside it, so its label
+   lines up with theirs in a row aligned to the controls' bottom edge. */
 .schema-required {
-  text-align: center;
-}
-
-.schema-required span {
-  display: block;
-  margin-bottom: var(--space-sm);
+  display: grid !important;
+  grid-template-rows: auto 32px;
+  row-gap: var(--space-2xs);
+  justify-items: center;
+  align-items: center;
 }
 
 .schema-required input[type="checkbox"] {
@@ -2420,21 +2686,8 @@ output {
 .tool-mock-result textarea {
   min-height: 112px;
   padding: var(--space-sm) var(--space-md);
-  border-color: var(--border-strong);
-  background: var(--surface-inset);
-  box-shadow: var(--shadow-field-inset);
   font-family: var(--font-geist-mono), monospace;
   line-height: var(--leading-normal);
-}
-
-.tool-mock-result textarea:hover {
-  border-color: var(--border-strong);
-  background: var(--surface-subtle);
-}
-
-.tool-mock-result textarea:focus {
-  border-color: var(--accent);
-  background: var(--surface-raised);
 }
 
 .tool-command-fields {
@@ -3011,25 +3264,52 @@ output {
 }
 
 .n8n-template-paste-dialog h2 { margin: 5px 0 0; }
-.n8n-template-paste-dialog > p { color: var(--text-muted); line-height: 1.5; }
+.n8n-template-paste-dialog .wide-dialog-header > p { color: var(--text-muted); line-height: 1.5; }
 .n8n-template-paste-dialog textarea { width: 100%; margin-top: 6px; }
+.n8n-template-paste-source { display: grid; gap: var(--space-xs); }
+.n8n-template-paste-source label { margin-bottom: 0; }
+.n8n-template-paste-source-toggle { justify-self: start; }
+.n8n-template-paste-source-toggle::before { content: "▸ "; }
+.n8n-template-paste-source-toggle[aria-expanded="true"]::before { content: "▾ "; }
 .n8n-template-paste-preview, .n8n-template-paste-mapping {
   margin-top: var(--space-md);
   padding: var(--space-sm);
   border: 1px solid var(--border-default);
   border-radius: var(--radius-md);
 }
-.n8n-template-paste-preview { white-space: pre-wrap; background: var(--surface-subtle); }
+.n8n-template-paste-preview { white-space: pre-wrap; overflow-wrap: anywhere; background: var(--surface-subtle); }
+.n8n-template-paste-token {
+  display: inline;
+  margin: 0;
+  padding: 0 var(--space-3xs);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font: inherit;
+  white-space: inherit;
+  cursor: pointer;
+}
+.n8n-template-paste-token.active { outline: 2px solid var(--accent); }
 .n8n-template-paste-mapping { display: grid; gap: 7px; }
+.n8n-template-paste-mapping.active { border-color: var(--accent); }
 .n8n-template-paste-mapping code { overflow-wrap: anywhere; }
 .n8n-template-paste-mapping input { width: 100%; }
 .n8n-template-paste-review { font-weight: 650; }
 .n8n-template-paste-error { margin-top: 12px; color: var(--danger); }
+.n8n-template-paste-variables-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  color: var(--text-muted);
+}
+.n8n-template-paste-empty { margin: var(--space-md) 0 0; color: var(--text-muted); }
 .n8n-template-paste-dialog .n8n-template-paste-preference {
   display: flex;
   align-items: center;
   gap: var(--space-xs);
-  margin: var(--space-lg) 0 0;
+  margin: 0;
   cursor: pointer;
 }
 .n8n-template-paste-preference input[type="checkbox"] {
@@ -3039,7 +3319,15 @@ output {
   padding: 0;
   flex: 0 0 auto;
 }
-.n8n-template-paste-dialog footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+.n8n-template-paste-dialog footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md);
+  margin-top: var(--space-lg);
+}
+.wide-dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-left: auto; }
 
 .confirmation-dialog {
   width: min(560px, 100%);
@@ -3389,11 +3677,18 @@ output {
   color: var(--text-muted);
 }
 
+.project-creation-git-policy {
+  border: 0;
+  margin: var(--space-lg) 0 0;
+  padding: 0;
+  min-width: 0;
+}
+
 .project-creation-protection {
   align-items: flex-start;
   display: flex;
   gap: var(--space-md);
-  margin-top: var(--space-xl);
+  margin-top: var(--space-md);
 }
 
 .project-creation-protection input {
@@ -3445,6 +3740,8 @@ output {
 .registry-modal {
   width: min(1180px, 100%);
   height: min(820px, calc(100vh - 48px));
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-xl);
@@ -3453,6 +3750,7 @@ output {
 }
 
 .registry-header {
+  flex: 0 0 auto;
   min-height: 82px;
   padding: var(--space-lg) var(--space-xl);
   border-bottom: 1px solid var(--border-default);
@@ -3471,7 +3769,8 @@ output {
 }
 
 .registry-workspace {
-  height: calc(100% - 82px);
+  flex: 1 1 auto;
+  min-height: 0;
   display: grid;
   grid-template-columns: 240px minmax(0, 1fr);
 }
@@ -3843,6 +4142,7 @@ textarea {
    box — the default here is the collapsed case, where this row is the
    entire card. */
 .transcript-message-header {
+  position: relative;
   display: flex;
   align-items: center;
   gap: var(--space-sm);
@@ -3865,7 +4165,7 @@ textarea {
   background: var(--surface-hover);
 }
 
-.transcript-message-header:focus-visible {
+.transcript-message-header:has(.transcript-toggle:focus-visible) {
   outline: 2px solid var(--accent);
   outline-offset: -2px;
 }
@@ -3890,7 +4190,54 @@ textarea {
   margin: 0 0 var(--space-sm);
 }
 
-.transcript-edit { margin-left: auto; }
+/* The row's toggle is a button that fills the row; its text styling is the
+   header's, not the button default's. */
+.transcript-toggle {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: var(--space-sm);
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.transcript-toggle:focus-visible { outline: none; }
+
+.transcript-message-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: var(--space-md);
+  white-space: nowrap;
+}
+
+/* A collapsed row is one muted line, so its actions appear on hover or focus.
+   They stay in the DOM and tab order, and touch screens, which have no hover,
+   show them always. */
+.transcript-message-header:not(.transcript-message-header-open) .transcript-message-actions {
+  position: absolute;
+  top: 50%;
+  right: var(--space-md);
+  transform: translateY(-50%);
+  padding-left: var(--space-sm);
+  background: var(--surface-hover);
+  opacity: 0;
+}
+
+.transcript-message-header:hover .transcript-message-actions,
+.transcript-message-header:focus-within .transcript-message-actions {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .transcript-message-header .transcript-message-actions { opacity: 1; }
+}
 .transcript-tool-call { overflow: auto; }
 .transcript-tool-result { color: var(--text-muted); }
 
@@ -3911,6 +4258,23 @@ textarea {
   margin: 0;
   white-space: pre-wrap;
   line-height: var(--leading-prose);
+}
+
+.copy-source {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-sm);
+}
+
+.copy-source-status {
+  color: var(--text-faint);
+  line-height: var(--leading-tight);
+}
+
+.output-copy {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: var(--space-sm);
 }
 
 .result-header-controls {
@@ -4075,7 +4439,20 @@ textarea {
 
 .markdown-table-scroll {
   margin: 0 0 var(--space-md);
+}
+
+/* Horizontal table viewports keep their content height when an outer grid or
+   flex pane scrolls vertically. Their automatic minimum would otherwise be 0. */
+.markdown-table-scroll,
+.run-metrics-table-scroll,
+.evaluation-value-scroll,
+.evaluation-configuration-table-scroll {
+  position: relative;
+  min-width: 0;
+  min-height: min-content;
+  flex-shrink: 0;
   overflow-x: auto;
+  overflow-y: hidden;
 }
 
 .markdown-body table {
@@ -4131,6 +4508,10 @@ textarea {
 
 .run-failure-state p {
   color: var(--danger);
+}
+
+.run-failure-state p.run-failure-edited {
+  color: var(--text-muted);
 }
 
 /* Retry and Discard used to be topbar neighbours, one reflex click apart and
@@ -4678,10 +5059,6 @@ textarea {
   font-family: var(--font-geist-mono), monospace;
 }
 
-.run-metrics-table-scroll {
-  overflow-x: auto;
-}
-
 .run-metrics-table {
   width: 100%;
   border-collapse: collapse;
@@ -4755,6 +5132,17 @@ textarea {
 
 .template-revision-diff-heading .evaluation-section-toggle {
   width: 100%;
+}
+
+.template-revision-diff-action {
+  flex: 0 0 auto;
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.template-revision-diff-hide {
+  display: block;
+  margin-top: var(--space-md);
 }
 
 .template-revision-diff-body h4 {
@@ -4970,6 +5358,26 @@ textarea {
   user-select: none;
 }
 
+/* Stands in for a run of unchanged lines; reads as part of the code block. */
+.diff-fold {
+  width: 100%;
+  min-height: 1.6em;
+  padding: 0 var(--space-md) 0 calc(var(--space-md) + 18px);
+  display: block;
+  border: 0;
+  border-block: 1px dashed var(--border-subtle);
+  background: var(--surface-subtle);
+  color: var(--text-muted);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.diff-fold:hover,
+.diff-fold:focus-visible {
+  color: var(--accent);
+}
+
 .diff-absent,
 .diff-warning {
   margin: var(--space-sm) var(--space-md);
@@ -5043,12 +5451,18 @@ pre {
     border-top: 1px solid var(--border-default);
   }
 
+  /* Seven items: reorder, Name, Type, Required, then Description on a line of
+     its own and Default beside Remove, all under the fields above. */
   .schema-property-row {
-    grid-template-columns: minmax(100px, 1fr) 90px 54px minmax(130px, 1.2fr);
+    grid-template-columns: 22px minmax(100px, 1fr) 90px 64px;
+  }
+
+  .schema-property-row label:nth-of-type(4) {
+    grid-column: 2 / -1;
   }
 
   .schema-property-row label:nth-of-type(5) {
-    grid-column: 1 / 3;
+    grid-column: 2 / 4;
   }
 }
 
@@ -5099,7 +5513,6 @@ pre {
   }
 
   .registry-workspace {
-    height: calc(100% - 72px);
     grid-template-columns: 150px minmax(0, 1fr);
   }
 
@@ -5119,16 +5532,22 @@ pre {
     grid-template-columns: 1fr;
   }
 
+  .schema-property-row label:nth-of-type(4),
   .schema-property-row label:nth-of-type(5) {
     grid-column: auto;
   }
 
-  .schema-required {
-    text-align: left;
+  .schema-property-reorder,
+  .schema-property-remove {
+    justify-self: start;
   }
 
-  .schema-required span {
-    margin-bottom: var(--space-2xs);
+  .schema-property-reorder {
+    flex-direction: row;
+  }
+
+  .schema-required {
+    justify-items: start;
   }
 }
 
@@ -5244,6 +5663,8 @@ main {
 
 .pane-scroll,
 .output-scroll {
+  /* Keep absolutely positioned accessibility text inside its scroll owner. */
+  position: relative;
   min-height: 0;
   flex: 1 1 auto;
   overflow: auto;
@@ -5258,15 +5679,27 @@ main {
   flex: 0 0 auto;
 }
 
-.request-header {
-  min-height: 78px;
-  display: grid;
-  grid-template-columns: auto minmax(210px, 1fr);
-  gap: var(--space-xl);
+/* The pane's name is its region label, so the header holds only its tabs. */
+.request-header,
+.result-header:not(:has(h2)) {
+  min-height: 56px;
+  padding-block: var(--space-md);
 }
 
-.request-header:has(.request-header-actions) {
-  grid-template-columns: auto minmax(210px, 1fr) auto;
+.request-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-start;
+  gap: var(--space-sm) var(--space-xl);
+}
+
+.request-header-actions {
+  margin-left: auto;
+}
+
+.result-header:not(:has(h2)) {
+  justify-content: flex-end;
 }
 
 .pane-tabs {
@@ -5309,11 +5742,6 @@ main {
 .pane-tabs button.active .tab-count {
   background: var(--accent-soft);
   color: var(--accent);
-}
-
-.header-text-action {
-  justify-self: end;
-  white-space: nowrap;
 }
 
 .request-header-actions {
@@ -5558,6 +5986,82 @@ main {
   position: absolute;
   top: 0;
   right: 0;
+}
+
+/* The composer lifts the model field above the disclosure toggle so changing
+   it needs no expansion; the toggle row below it keeps its own padding. */
+.inference-settings-model-row {
+  flex: 1 1 230px;
+  min-width: 0;
+  padding: var(--space-3xs) 0 var(--space-3xs) var(--space-md);
+}
+
+/* Model field and toggle share one row so the field costs the first message no
+   height; either wraps under the other when the pane is narrow. */
+.inference-settings.model-above {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+}
+
+.inference-settings.model-above > .inference-settings-header {
+  flex: 3 1 340px;
+  align-self: stretch;
+}
+
+/* The chevron and the "Settings" heading already say what the toggle does;
+   the extra words would push the protocol out of a one-row header. */
+.inference-settings.model-above .inference-settings-hint {
+  display: none;
+}
+
+.inference-settings.model-above .inference-settings-toggle {
+  padding-block: var(--space-2xs);
+}
+
+/* The word "Model" sits beside its input rather than above it, which is what
+   keeps the shared row no taller than the toggle alone. */
+.inference-settings-model-row .model-combobox {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.inference-settings-model-row .model-combobox-label {
+  flex: 0 0 auto;
+}
+
+.inference-settings-model-row .inference-settings-field {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.inference-settings-model-row .model-combobox {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.inference-settings-override-compact {
+  flex: 0 0 auto;
+  padding: 0 var(--space-2xs);
+  color: var(--accent);
+  font-weight: 700;
+}
+
+/* With the model id above, the first fact is the protocol, which has to stay
+   identifiable; the tail of the row gives way instead. */
+.inference-settings.model-above .inference-settings-fact:first-child {
+  flex: 0 0 auto;
+}
+
+.inference-settings-model-row .combobox-control {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.inference-settings.model-above > .inference-settings-body {
+  flex: 1 0 100%;
 }
 
 .inference-settings-record {
@@ -5972,6 +6476,10 @@ main {
 
 .connection-indicator.ready {
   background: var(--accent-solid);
+}
+
+.decision-connection-glyph {
+  color: var(--accent-solid);
 }
 
 .target-copy {
@@ -6568,13 +7076,6 @@ main {
     display: none;
   }
 
-  .request-header {
-    grid-template-columns: auto 1fr;
-  }
-
-  .request-header .header-text-action {
-    display: none;
-  }
 
   .inference-settings-grid > * {
     flex-basis: 100%;
@@ -6797,8 +7298,7 @@ main {
   }
 
   .request-header {
-    min-height: 72px;
-    grid-template-columns: auto 1fr;
+    min-height: 56px;
     padding-inline: var(--space-lg);
   }
 
@@ -6813,6 +7313,10 @@ main {
   .message-list,
   .tool-list {
     padding: var(--space-md);
+  }
+
+  .mcp-discovery-panel {
+    margin: 0 var(--space-md) var(--space-md);
   }
 
   .templates-workspace {
@@ -7315,7 +7819,6 @@ main {
 /* The table can exceed a phone's width; it scrolls itself so the page cannot. */
 .evaluation-value-scroll {
   min-width: 0;
-  overflow-x: auto;
 }
 
 .evaluation-value-table {
@@ -7407,42 +7910,19 @@ main {
   max-height: min(88vh, 820px);
 }
 
-.prompt-insertion-dialog.has-templates {
-  height: min(88vh, 820px);
-  display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr) auto;
-  overflow: hidden;
-}
-
-.prompt-insertion-body {
-  min-height: 0;
-  overflow-y: auto;
+.prompt-insertion-dialog.wide-dialog,
+.saved-prompt-dialog.wide-dialog {
+  --wide-dialog-columns: minmax(200px, 280px) minmax(0, 1fr) minmax(200px, 300px);
 }
 
 .prompt-insertion-search {
   display: grid;
   gap: var(--space-2xs);
-  margin-top: var(--space-lg);
+  margin-bottom: 0;
 }
 
-.prompt-insertion-workspace {
-  display: grid;
-  grid-template-columns: minmax(180px, 0.72fr) minmax(0, 1.28fr);
-  gap: var(--space-md);
-  margin-top: var(--space-md);
-}
-
-.prompt-insertion-workspace .saved-prompt-list {
+.prompt-insertion-list .saved-prompt-list {
   align-content: start;
-  max-height: 380px;
-  overflow-y: auto;
-}
-
-.prompt-insertion-selection {
-  display: grid;
-  align-content: start;
-  gap: var(--space-sm);
-  min-width: 0;
 }
 
 .prompt-insertion-controls {
@@ -7460,8 +7940,9 @@ main {
   width: 100%;
 }
 
-.prompt-insertion-preview {
+.prompt-messages-preview {
   display: grid;
+  align-content: start;
   gap: var(--space-xs);
   padding: var(--space-md);
   border: 1px solid var(--border-default);
@@ -7469,25 +7950,32 @@ main {
   background: var(--surface-sunken);
 }
 
-.prompt-insertion-preview article {
+.prompt-messages-preview article {
   min-width: 0;
 }
 
-.prompt-insertion-preview article + article {
+.prompt-messages-preview article + article {
   padding-top: var(--space-xs);
   border-top: 1px solid var(--border-subtle);
 }
 
-.prompt-insertion-preview strong {
+.prompt-messages-preview strong {
   color: var(--text-muted);
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
 
-.prompt-insertion-preview pre {
+.prompt-messages-preview pre {
   margin: var(--space-3xs) 0 0;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+/* The column already scrolls, so a message shows in full rather than in a
+   box of its own. */
+.wide-dialog .prompt-messages-preview pre {
+  max-height: none;
+  overflow: visible;
 }
 
 .prompt-insertion-variable-summary {
@@ -7495,14 +7983,118 @@ main {
   color: var(--text-muted);
 }
 
-@media (max-width: 640px) {
-  .prompt-insertion-workspace,
-  .prompt-insertion-controls {
-    grid-template-columns: 1fr;
+.prompt-variable-list {
+  display: grid;
+  gap: var(--space-xs);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.prompt-variable-list li {
+  display: grid;
+  gap: var(--space-3xs);
+  padding: var(--space-xs) var(--space-sm);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+}
+
+.prompt-variable-list code {
+  overflow-wrap: anywhere;
+}
+
+.prompt-variable-list small {
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
+/* A dialog for content that runs long. It grows with the window, keeps its
+   heading and actions in place, and lets each column scroll on its own; in a
+   narrow window the columns stack and scroll together. Columns default to a
+   wide main pane and a side pane; a dialog may set --wide-dialog-columns. */
+.wide-dialog {
+  width: min(1400px, 100%);
+  height: min(920px, calc(100vh - 48px));
+  max-height: none;
+  padding: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  overflow: hidden;
+}
+
+.wide-dialog .wide-dialog-header {
+  padding: var(--space-xl) var(--space-xl) var(--space-md);
+  border-bottom: 1px solid var(--border-default);
+}
+
+.wide-dialog .wide-dialog-header > p {
+  margin: var(--space-xs) 0 0;
+  color: var(--text-muted);
+  line-height: var(--leading-normal);
+}
+
+.wide-dialog .wide-dialog-columns {
+  min-height: 0;
+  display: grid;
+  grid-template-columns: var(--wide-dialog-columns, minmax(0, 1fr) minmax(280px, 380px));
+}
+
+.wide-dialog .wide-dialog-pane {
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--space-lg) var(--space-xl);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.wide-dialog .wide-dialog-pane > * {
+  margin-top: 0;
+  flex: 0 0 auto;
+}
+
+.wide-dialog .wide-dialog-pane + .wide-dialog-pane {
+  border-left: 1px solid var(--border-default);
+}
+
+.wide-dialog .wide-dialog-pane > .wide-dialog-fill {
+  flex: 1 0 auto;
+}
+
+.wide-dialog .wide-dialog-footer {
+  margin: 0;
+  padding: var(--space-md) var(--space-xl);
+  border-top: 1px solid var(--border-default);
+}
+
+@media (max-width: 999px) {
+  .wide-dialog .wide-dialog-columns {
+    grid-template-columns: minmax(0, 1fr);
+    overflow-y: auto;
   }
 
-  .prompt-insertion-workspace .saved-prompt-list {
+  .wide-dialog .wide-dialog-pane {
+    min-height: auto;
+    overflow: visible;
+  }
+
+  .wide-dialog .wide-dialog-pane + .wide-dialog-pane {
+    border-left: 0;
+    border-top: 1px solid var(--border-default);
+  }
+}
+
+@media (max-width: 999px) {
+  .wide-dialog .saved-prompt-list {
     max-height: 180px;
+    overflow-y: auto;
+  }
+}
+
+@media (max-width: 640px) {
+  .prompt-insertion-controls {
+    grid-template-columns: 1fr;
   }
 }
 
@@ -7724,7 +8316,6 @@ label.experiment-retry-field {
 }
 
 .evaluation-configuration-table-scroll {
-  overflow-x: auto;
   border: 1px solid var(--border-default);
   border-radius: var(--radius-lg);
   background: var(--surface-translucent);
@@ -7916,7 +8507,7 @@ label.experiment-retry-field {
   list-style: none;
 }
 
-.evaluation-check-results li {
+.evaluation-check-results > li {
   display: grid;
   grid-template-columns: minmax(110px, 0.35fr) minmax(0, 1fr);
   gap: var(--space-md);
@@ -8571,14 +9162,6 @@ label.experiment-retry-field {
     display: none;
   }
 
-  .request-header > div:first-child {
-    display: none;
-  }
-
-  .request-header {
-    grid-template-columns: 1fr;
-  }
-
   .pane-tabs {
     width: 100%;
   }
@@ -8712,4 +9295,663 @@ label.experiment-retry-field {
   margin: 0;
   padding: 0 var(--space-md) var(--space-sm);
   color: var(--text-secondary);
+}
+
+/* Compose's request-kind switch (U1), in the header of whichever kind's request pane. */
+.compose-kind {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2xs);
+}
+
+.compose-kind-switch {
+  justify-self: start;
+}
+
+.compose-kind-switch button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.compose-kind-locked {
+  color: var(--text-secondary);
+}
+
+/* Decision request pane (D18, U3). */
+.decision-content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+  padding: var(--space-lg) var(--space-xl);
+}
+
+.decision-target {
+  display: grid;
+  gap: var(--space-sm);
+  margin: 0;
+  padding: var(--space-md);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+}
+
+.decision-target legend,
+.decision-field-label {
+  color: var(--text-muted);
+  font-weight: 700;
+}
+
+.decision-target-empty,
+.decision-unfiltered,
+.decision-kept-note,
+.decision-inspect-empty,
+.decision-evidence-missing {
+  margin: 0;
+  color: var(--text-secondary);
+}
+
+.decision-unfiltered {
+  padding: var(--space-xs) var(--space-sm);
+  border: 1px solid var(--warning-border);
+  border-radius: var(--radius-sm);
+  background: var(--warning-surface);
+}
+
+.decision-field {
+  display: grid;
+  gap: var(--space-2xs);
+  min-width: 0;
+}
+
+.decision-field input,
+.decision-field select,
+.decision-field textarea,
+.decision-state textarea {
+  width: 100%;
+  min-width: 0;
+}
+
+.decision-state,
+.decision-questions,
+.decision-variables {
+  display: grid;
+  gap: var(--space-sm);
+}
+
+.decision-unsaved {
+  margin: 0;
+  padding: var(--space-xs) var(--space-xl);
+  color: var(--text-secondary);
+}
+
+.decision-new-suite {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-xs) var(--space-sm);
+  padding: var(--space-xs) var(--space-xl);
+  color: var(--text-secondary);
+}
+
+.decision-hint,
+.decision-example small {
+  color: var(--text-secondary);
+  font-weight: 400;
+}
+
+.decision-help {
+  display: grid;
+  gap: var(--space-xs);
+}
+
+.decision-introduction {
+  margin: 0;
+  color: var(--text-secondary);
+}
+
+.decision-guide {
+  padding: var(--space-sm) var(--space-md);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--surface-panel);
+}
+
+.decision-guide summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.decision-guide p {
+  margin: var(--space-xs) 0 0;
+  color: var(--text-secondary);
+}
+
+.decision-guide dl {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: var(--space-2xs) var(--space-md);
+  margin: var(--space-sm) 0 0;
+}
+
+.decision-guide dt {
+  font-weight: 700;
+}
+
+.decision-guide dd {
+  margin: 0;
+  color: var(--text-secondary);
+}
+
+@media (max-width: 640px) {
+  .decision-guide dl {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .decision-guide dd {
+    margin-bottom: var(--space-xs);
+  }
+}
+
+.decision-example {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-xs) var(--space-sm);
+}
+
+.decision-example-confirm {
+  align-items: center;
+}
+
+.decision-section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+}
+
+.decision-state textarea,
+.decision-json-editor textarea {
+  font-family: var(--font-geist-mono), monospace;
+}
+
+.decision-question {
+  display: grid;
+  gap: var(--space-sm);
+  padding: var(--space-md);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--surface-panel);
+}
+
+.decision-question-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  align-items: end;
+  gap: var(--space-sm);
+}
+
+.decision-row-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.decision-options {
+  display: grid;
+  gap: var(--space-xs);
+}
+
+.decision-option-list {
+  display: grid;
+  gap: var(--space-sm);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.decision-option {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) auto;
+  align-items: end;
+  gap: var(--space-sm);
+}
+
+.decision-json-value {
+  display: grid;
+  gap: var(--space-2xs);
+  min-width: 0;
+}
+
+.decision-json-value code {
+  overflow-wrap: anywhere;
+}
+
+.decision-json-value small {
+  color: var(--text-muted);
+}
+
+.decision-json-error {
+  color: var(--danger);
+}
+
+.decision-view-problems {
+  margin: var(--space-sm) var(--space-xl) 0;
+  padding: var(--space-sm) var(--space-md);
+  border: 1px solid var(--danger-border);
+  border-radius: var(--radius-sm);
+  background: var(--danger-surface);
+}
+
+.decision-view-problems ul {
+  margin: var(--space-2xs) 0 0;
+  padding-left: var(--space-lg);
+}
+
+@container (max-width: 560px) {
+  .decision-question-header,
+  .decision-option {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Decision result (U5). */
+.decision-output {
+  display: grid;
+  gap: var(--space-lg);
+}
+
+.decision-run-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-xs) var(--space-lg);
+  margin: 0;
+}
+
+.decision-run-facts div {
+  display: flex;
+  gap: var(--space-xs);
+}
+
+.decision-run-facts dt {
+  color: var(--text-muted);
+  font-weight: 700;
+}
+
+.decision-run-facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.decision-answers {
+  display: grid;
+  gap: var(--space-md);
+}
+
+.decision-answer {
+  display: grid;
+  gap: var(--space-xs);
+  padding: var(--space-md);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--surface-panel);
+}
+
+.decision-answer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+}
+
+.decision-answer-type {
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+
+.decision-answer-instructions,
+.decision-answer-headline,
+.decision-answer-missing {
+  margin: 0;
+}
+
+.decision-answer-instructions,
+.decision-confidence {
+  color: var(--text-secondary);
+}
+
+.decision-bars {
+  display: grid;
+  gap: var(--space-2xs);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.decision-bar {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(60px, 2fr) 4.5em;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.decision-bar-label {
+  overflow-wrap: anywhere;
+}
+
+.decision-bar.selected .decision-bar-label {
+  font-weight: 700;
+}
+
+.decision-bar-track {
+  height: 8px;
+  overflow: hidden;
+  border-radius: var(--radius-pill);
+  background: var(--surface-inset);
+}
+
+.decision-bar-fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--text-faint);
+}
+
+.decision-bar.selected .decision-bar-fill {
+  background: var(--accent-solid);
+}
+
+.decision-bar-value {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.decision-scale {
+  position: relative;
+  height: 28px;
+  margin: 0 var(--space-sm);
+}
+
+.decision-scale-line {
+  position: absolute;
+  top: 8px;
+  right: 0;
+  left: 0;
+  height: 2px;
+  background: var(--border-strong);
+}
+
+.decision-scale-tick {
+  position: absolute;
+  top: 12px;
+  transform: translateX(-50%);
+  color: var(--text-muted);
+}
+
+.decision-scale-marker {
+  position: absolute;
+  top: 3px;
+  width: 12px;
+  height: 12px;
+  transform: translateX(-50%);
+  border: 2px solid var(--surface-panel);
+  border-radius: 50%;
+  background: var(--accent-solid);
+}
+
+.decision-retry-wait,
+.decision-retry-blocked {
+  color: var(--warning-strong);
+}
+
+/* Decision inspection (D19): the attempts' exchange evidence. */
+.decision-inspect {
+  flex: 0 1 45%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--border-default);
+  background: var(--surface-subtle);
+}
+
+.decision-inspect-empty {
+  padding: var(--space-md) var(--space-xl);
+}
+
+.decision-inspect-body {
+  display: grid;
+  align-content: start;
+  gap: var(--space-md);
+  padding: var(--space-md) var(--space-xl);
+}
+
+.decision-attempt {
+  display: grid;
+  gap: var(--space-xs);
+}
+
+.decision-attempt h3,
+.decision-attempt h4 {
+  margin: 0;
+}
+
+.decision-attempt-error {
+  margin: 0;
+  color: var(--danger);
+}
+
+.decision-response-evidence p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.decision-raw-body {
+  max-height: 340px;
+  margin: var(--space-xs) 0 0;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* The shared library places either content owner in the same grid cell. */
+.template-chat-editor {
+  display: contents;
+}
+
+.decision-template-editor .decision-content,
+.decision-input-editor {
+  min-width: 0;
+}
+
+.decision-template-use {
+  margin: var(--space-md) var(--space-lg);
+  padding: var(--space-md);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--surface-panel);
+}
+
+.decision-template-use-heading {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-xs);
+}
+
+/* Revision names are author text, so this does not borrow the pill's caps. */
+.pinned-revision-select {
+  max-width: 100%;
+  min-width: 0;
+  padding: var(--space-3xs) var(--space-xs);
+  border: 1px solid var(--accent-border);
+  border-radius: var(--radius-xs);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font: inherit;
+  font-weight: 650;
+}
+
+.revision-switch-variables dl {
+  margin: var(--space-md) 0 0;
+  display: grid;
+  gap: var(--space-xs);
+}
+
+.revision-switch-variables dl > div {
+  padding: var(--space-xs) var(--space-sm);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--surface-sunken);
+}
+
+.revision-switch-variables dl > div.warning {
+  background: var(--warning-surface);
+  color: var(--warning-strong);
+}
+
+.revision-switch-variables dt {
+  font-weight: 750;
+}
+
+.revision-switch-variables dd {
+  margin: var(--space-3xs) 0 0;
+  overflow-wrap: anywhere;
+  font-family: var(--font-geist-mono), monospace;
+}
+
+.revision-switch-variables > p,
+.revision-switch-dialog > p {
+  margin: var(--space-sm) 0 0;
+  color: var(--text-muted);
+}
+
+.revision-switch-diff {
+  margin-top: var(--space-md);
+}
+
+.revision-switch-diff > summary {
+  cursor: pointer;
+  font-weight: 650;
+}
+
+.template-kind-filter-button {
+  padding: var(--space-xs) var(--space-sm);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.template-kind-filter-button.selected {
+  border-color: var(--border-strong);
+  background: var(--surface-panel);
+  color: var(--text-primary);
+  font-weight: 700;
+}
+
+@media (max-width: 640px) {
+  .prompt-mode-workspace .templates-workspace {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .prompt-mode-workspace .template-sidebar {
+    max-height: 32dvh;
+    border-right: 0;
+    border-bottom: 1px solid var(--border-default);
+  }
+
+  .prompt-mode-workspace .template-create-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .prompt-mode-workspace .template-import-action {
+    grid-column: 1 / -1;
+  }
+
+  .prompt-mode-workspace .template-editor-header {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.run-link-recovery {
+  margin: var(--space-md) var(--space-xl);
+  padding: var(--space-xl);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  background: var(--surface-panel);
+  overflow-wrap: anywhere;
+}
+.run-link-recovery h2 { margin: 0 0 var(--space-sm); }
+.run-link-recovery p { margin: var(--space-sm) 0; }
+.run-link-copy { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-sm); padding: var(--space-sm); }
+.run-link-copy p { margin: 0; }
+.run-link-copy label { display: grid; gap: var(--space-2xs); flex: 1 1 20rem; }
+.run-link-copy input { width: 100%; min-width: 0; }
+
+/* Saved evidence has a vertical scroll owner so opening diagnostics cannot
+   shrink the answer to zero height. Compose retains its resizable split. */
+.saved-run-evidence {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  background: var(--surface-panel);
+}
+.saved-run-evidence > .result {
+  height: auto;
+  flex: 0 0 auto;
+}
+.saved-run-evidence .output-scroll {
+  flex: 0 0 auto;
+  min-height: 180px;
+  max-height: 50vh;
+}
+.saved-run-evidence .trace-panel.open {
+  height: var(--trace-panel-height);
+  max-height: 520px;
+  flex: 0 0 auto;
+}
+.saved-run-evidence .decision-inspect { height: auto; }
+.saved-run-evidence > .run-evidence-actions { flex-wrap: wrap; }
+.saved-run-evidence > .run-evidence-actions code { overflow-wrap: anywhere; min-width: 0; }
+.run-link-recovery { flex: 0 0 auto; max-height: 45vh; overflow: auto; }
+
+.recommended-model-editor {
+  min-width: 0;
+}
+
+.prompt-model-summary {
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
+.prompt-model-recommendation {
+  margin: var(--space-sm) 0;
+  min-width: 0;
+}
+
+.prompt-model-warning {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+  overflow-wrap: anywhere;
+}
+
+.prompt-model-warning > span {
+  flex: 1 1 220px;
+  min-width: 0;
+}
+
+.prompt-model-warning-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-md);
 }

@@ -68,7 +68,7 @@ function composerProps(overrides = {}) {
       updateTemplateUseValues: noop,
       saveTemplateUseRunValue: noop,
       updateTemplateUseOverride: noop,
-      updateTemplateUseToLatestRevision: noop,
+      setTemplateUseRevision: noop,
       detachTemplateUse: noop,
       removeTemplateUse: noop,
       createProjectTemplate: noop,
@@ -232,14 +232,17 @@ test("the settings panel hides its controls behind a summary of what will be sen
     const toggle = view.settingsToggle();
     assert.ok(toggle);
     assert.equal(toggle.getAttribute("aria-expanded"), "false");
-    // Collapsing hides every control, delivery included, while their values
-    // remain named as facts.
+    // The model field stays outside the disclosure, so changing it needs no
+    // expansion. Every other control is hidden, and the facts name the
+    // protocol and what departs from the baseline — here an explicit
+    // temperature, with no parent scope, and buffered delivery on a
+    // connection that could stream.
     const model = view.container.querySelector('[data-readiness-control="model"]');
-    assert.equal(model, null);
+    assert.equal(model?.value, "fixture-model");
     const facts = Array.from(
       view.container.querySelectorAll(".inference-settings-fact"),
     ).map((fact) => fact.textContent);
-    assert.deepEqual(facts, ["Chat Completions", "fixture-model", "Temp 0.7", "Buffered"]);
+    assert.deepEqual(facts, ["Chat Completions", "Temp 0.7", "Buffered"]);
     assert.equal(
       view.container.querySelector('.streaming-control input[type="checkbox"]'),
       null,
@@ -258,9 +261,10 @@ test("the settings panel hides its controls behind a summary of what will be sen
     assert.ok(
       view.container.querySelector('.temperature-control input[type="range"]'),
     );
+    // Expanding adds no second model field: it is the same one.
     assert.equal(
-      view.container.querySelector('[data-readiness-control="model"]')?.value,
-      "fixture-model",
+      view.container.querySelectorAll('[data-readiness-control="model"]').length,
+      1,
     );
 
     await view.click(toggle);
@@ -270,17 +274,17 @@ test("the settings panel hides its controls behind a summary of what will be sen
   }
 });
 
-test("a readiness destination naming the model opens its panel and focuses it", async () => {
+test("a readiness destination naming the model focuses its field without opening the panel", async () => {
   let handled = 0;
   const view = await mount({
     pendingDestination: { surface: "request", tab: "messages", control: "model" },
     onDestinationHandled: () => { handled += 1; },
   });
   try {
-    // The destination opens the field's disclosure before focusing it.
+    // The field is always mounted, so there is no disclosure to open first.
     const input = view.container.querySelector('[data-readiness-control="model"]');
     assert.ok(input);
-    assert.equal(view.settingsToggle().getAttribute("aria-expanded"), "true");
+    assert.equal(view.settingsToggle().getAttribute("aria-expanded"), "false");
     assert.equal(document.activeElement, input);
     assert.equal(handled, 1);
   } finally {
@@ -341,6 +345,13 @@ async function mount(overrides = {}) {
         element.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
       });
     },
+    /** Opens or closes a `<details>`; jsdom fires no toggle event on its own. */
+    async disclose(element, open) {
+      await act(async () => {
+        element.open = open;
+        element.dispatchEvent(new dom.window.Event("toggle"));
+      });
+    },
     async select(element, value) {
       await act(async () => {
         element.value = value;
@@ -368,6 +379,34 @@ async function mount(overrides = {}) {
     },
   };
 }
+
+test("the request preview renders its contents only while expanded", async () => {
+  const view = await mount({
+    requestPreview: {
+      messages: [{ role: "user", content: [{ type: "text", text: "Resolved fixture" }] }],
+      body: { model: "fixture-model", messages: [{ role: "user", content: "Resolved fixture" }] },
+    },
+  });
+  try {
+    const preview = () => view.container.querySelector("details.request-preview");
+    assert.doesNotMatch(preview().textContent, /Resolved fixture/);
+
+    await view.disclose(preview(), true);
+    assert.deepEqual(
+      Array.from(preview().querySelectorAll(".request-preview-message pre"), (pre) => pre.textContent),
+      ["Resolved fixture"],
+    );
+    // The view tabs belong to this one disclosure rather than a nested one.
+    assert.equal(preview().querySelectorAll("details").length, 0);
+    await view.click(Array.from(preview().querySelectorAll('[role="tab"]')).find((tab) => tab.textContent === "Raw"));
+    assert.match(preview().textContent, /Raw OpenAI-compatible request body/);
+
+    await view.disclose(preview(), false);
+    assert.doesNotMatch(preview().textContent, /Resolved fixture/);
+  } finally {
+    await view.close();
+  }
+});
 
 test("focus mode expands the composer and restores focus when dismissed", async () => {
   const view = await mount();

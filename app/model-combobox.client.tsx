@@ -9,6 +9,11 @@ const preventBlur = (event: { preventDefault: () => void }): void =>
   event.preventDefault();
 
 type ModelComboboxProps = {
+  label?: string;
+  placeholder?: string;
+  disabled?: boolean;
+  /** Optional recommendation fields can clear their value; run targets cannot. */
+  allowEmpty?: boolean;
   value: string;
   onChange: (model: string) => void;
   discovery: ModelDiscoveryState | null;
@@ -36,6 +41,10 @@ type ModelComboboxProps = {
  * endpoint is optional and often incomplete.
  */
 export function ModelCombobox({
+  label = "Model",
+  placeholder,
+  disabled = false,
+  allowEmpty = false,
   value,
   onChange,
   discovery,
@@ -86,7 +95,7 @@ export function ModelCombobox({
   // Without discovery there is no status to report, so a field whose favorites
   // do not match has nothing to show. Opening an empty popover over the form
   // would be a menu that says nothing.
-  const menuVisible = menuOpen && (rows.length > 0 || discovery !== null);
+  const menuVisible = !disabled && menuOpen && (rows.length > 0 || discovery !== null);
 
   function selectModel(model: string): void {
     onChange(model);
@@ -140,12 +149,15 @@ export function ModelCombobox({
       {/* A span rather than a bare text node so a host that provides its own
           visual context — the settings panel's summary row — can hide the word
           without losing the accessible name. */}
-      <span className="model-combobox-label">Model</span>
+      <span className="model-combobox-label">{label}</span>
       <div className="combobox-control">
         <input
           ref={inputRef}
+          disabled={disabled}
+          placeholder={placeholder}
           {...(readinessTarget ? { "data-readiness-control": "model" } : {})}
           role="combobox"
+          aria-label={label}
           aria-autocomplete="list"
           aria-controls={listboxId}
           aria-expanded={menuVisible}
@@ -164,10 +176,9 @@ export function ModelCombobox({
           onChange={(event) => {
             const text = event.target.value;
             setDraft(text);
-            // An empty or blank field is a step in editing, not a model. It is
-            // held locally until it names something, so the project document is
-            // never asked to store an id it cannot represent.
-            if (text.trim().length > 0) onChange(text);
+            // Only optional recommendation fields may commit a cleared value.
+            // Run targets keep that edit local until it names a model.
+            if (allowEmpty || text.trim().length > 0) onChange(text);
             setFilter(text);
             setHighlightedIndex(0);
             setMenuOpen(true);

@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 
-import { seedProfile, waitForHydration } from "./support";
+import { seedProfile, waitForHydration, addProjectTool } from "./support";
 
 /**
  * A tool's parameter order is sent to the provider verbatim, so it is authored
@@ -15,10 +15,7 @@ async function addToolWithParameters(
   parameters: readonly string[],
 ): Promise<void> {
   await page.getByRole("tab", { name: "Tools" }).click();
-  await page
-    .locator(".tools-tab-toolbar")
-    .getByRole("button", { name: "+ Add project tool" })
-    .click();
+  await addProjectTool(page);
 
   for (const [index, name] of parameters.entries()) {
     await page.getByRole("button", { name: "+ Add parameter" }).first().click();
@@ -97,13 +94,8 @@ test("moving a tool down changes its position in the tools array sent", async ({
   await waitForHydration(page);
 
   await page.getByRole("tab", { name: "Tools" }).click();
-  const addTool = page
-    .locator(".tools-tab-toolbar")
-    .getByRole("button", { name: "+ Add project tool" });
-  await addTool.click();
-  await page.locator(".tool-editor").nth(0).getByLabel("Function name").fill("tool_early");
-  await addTool.click();
-  await page.locator(".tool-editor").nth(1).getByLabel("Function name").fill("tool_late");
+  await (await addProjectTool(page)).getByLabel("Function name").fill("tool_early");
+  await (await addProjectTool(page)).getByLabel("Function name").fill("tool_late");
 
   await page.getByRole("button", { name: "Move tool_early later in the request" }).click();
   await expect(

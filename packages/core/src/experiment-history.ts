@@ -1,15 +1,19 @@
+import type { DecisionRun } from "./decision.ts";
 import {
   evaluationParsedExperimentAggregate,
   experimentArtifactIdentity,
   isExperimentEntryName,
-  isRateLimitedRun,
   parseExperimentPlanJson,
   parseExperimentResultJson,
   repeatedExperimentAggregate,
+  repetitionEvidence,
+  type EvaluationBakeoffAssessment,
+  type EvaluationVariantSnapshot,
   type ExperimentLifecycle,
 } from "./experiment.ts";
 import type {
   ConversationRevisionId,
+  DecisionRequestRevisionId,
   EvaluationSuiteId,
   ExperimentId,
   RunId,
@@ -51,7 +55,13 @@ export interface ExperimentHistoryCellReference {
 export interface EvaluationHistoryFacet {
   suiteId: EvaluationSuiteId;
   suiteName: string;
-  conversationRevisionId: ConversationRevisionId;
+  /** Which kind of run the suite executed; one suite is one kind (D44). */
+  runKind: "chat" | "decision";
+  /**
+   * The pinned input revision: a conversation revision for chat, a decision
+   * request revision for decisions.
+   */
+  inputRevisionId: ConversationRevisionId | DecisionRequestRevisionId;
   variants: Array<{
     variantId: import("./run-kernel/types.ts").EvaluationVariantId;
     name: string;
@@ -149,7 +159,6 @@ export function loadProjectHistoryFiles(
       failures.push({ fileName: planFile.fileName, message: message(error, "The experiment plan is invalid.") });
       continue;
     }
-
     let result;
     let resultFileName: string | undefined;
     const resultFile = results.get(fileExperimentId);
@@ -162,11 +171,22 @@ export function loadProjectHistoryFiles(
       }
     }
 
+    // Each plan kind reads its own run kind; a trace of the other kind under
+    // a planned run id is not this cell's evidence.
     const states = new Map<RunId, RunState>();
+    const decisionRuns = new Map<RunId, DecisionRun>();
     const cells = plan.cells.map((cell) => {
       groupedRunIds.add(cell.runId);
-      const stored = loadedRuns.statesByRunId.get(cell.runId);
-      if (stored) states.set(cell.runId, stored.state);
+      let stored: { fileName: string } | undefined;
+      if (plan.kind === "decision-evaluation") {
+        const loaded = loadedRuns.decisionRunsByRunId.get(cell.runId);
+        if (loaded) decisionRuns.set(cell.runId, loaded.run);
+        stored = loaded;
+      } else {
+        const loaded = loadedRuns.statesByRunId.get(cell.runId);
+        if (loaded) states.set(cell.runId, loaded.state);
+        stored = loaded;
+      }
       return {
         ordinal: cell.ordinal,
         runId: cell.runId,
@@ -185,13 +205,14 @@ export function loadProjectHistoryFiles(
           let missingTrace = 0;
           plan.cells.forEach((cell) => {
             const disposition = dispositions.get(cell.cellId);
-            const state = states.get(cell.runId);
-            if (disposition?.status === "not-run" || (!disposition && !state)) notRun += 1;
-            else if (!state) missingTrace += 1;
-            else if (state.status.kind === "completed") completed += 1;
-            else if (isRateLimitedRun(state)) rateLimited += 1;
-            else if (state.status.kind === "failed") failed += 1;
-            else if (state.status.kind === "cancelled") cancelled += 1;
+            const run = states.get(cell.runId) ?? decisionRuns.get(cell.runId);
+            const evidence = run ? repetitionEvidence(run) : undefined;
+            if (disposition?.status === "not-run" || (!disposition && !evidence)) notRun += 1;
+            else if (!evidence) missingTrace += 1;
+            else if (evidence.status === "completed") completed += 1;
+            else if (evidence.rateLimited) rateLimited += 1;
+            else if (evidence.status === "failed") failed += 1;
+            else if (evidence.status === "cancelled") cancelled += 1;
             else notRun += 1;
           });
           const lifecycle: ExperimentLifecycle = result?.status ?? "interrupted";
@@ -207,13 +228,22 @@ export function loadProjectHistoryFiles(
           };
         })();
     let evaluation: EvaluationHistoryFacet | undefined;
-    if (plan.kind === "evaluation") {
-      try {
-        const assessment = evaluationParsedExperimentAggregate(plan, result, states);
-        evaluation = {
+    const suiteIdentity = plan.kind === "repeated-request"
+      ? undefined
+      : {
           suiteId: plan.suite.suiteId,
           suiteName: plan.suite.name,
-          conversationRevisionId: plan.suite.conversationRevisionId,
+          ...(plan.kind === "decision-evaluation"
+            ? { runKind: "decision" as const, inputRevisionId: plan.suite.decisionRequestRevisionId }
+            : { runKind: "chat" as const, inputRevisionId: plan.suite.conversationRevisionId }),
+        };
+    if (plan.kind !== "repeated-request") {
+      try {
+        const assessment: EvaluationBakeoffAssessment<EvaluationVariantSnapshot> = plan.kind === "decision-evaluation"
+          ? evaluationParsedExperimentAggregate(plan, result, decisionRuns)
+          : evaluationParsedExperimentAggregate(plan, result, states);
+        evaluation = {
+          ...suiteIdentity!,
           variants: assessment.variants.map((variant) => ({
             variantId: variant.variant.variantId,
             name: variant.variant.name,
@@ -255,10 +285,7 @@ export function loadProjectHistoryFiles(
     } else {
       // A damaged aggregate remains reachable from history. The empty variant
       // list says it could not be scored without inventing a scalar model.
-      experiments.push({ ...common, kind: "evaluation", evaluation: {
-        suiteId: plan.suite.suiteId, suiteName: plan.suite.name,
-        conversationRevisionId: plan.suite.conversationRevisionId, variants: [],
-      } });
+      experiments.push({ ...common, kind: "evaluation", evaluation: { ...suiteIdentity!, variants: [] } });
     }
   }
 

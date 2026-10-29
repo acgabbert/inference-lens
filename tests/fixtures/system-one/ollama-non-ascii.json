@@ -1,0 +1,48 @@
+{
+  "provenance": {
+    "kind": "captured",
+    "implementation": "Ollama /v1/systemone",
+    "server": "Ollama 0.40.10 on macOS (Ollama.app), keyless, default 2048-token context",
+    "model": "tev1:0.8b (b661d5650816, 752M BF16, mlx runner)",
+    "captured": "2026-10-23",
+    "note": "Non-ASCII and emoji option labels round-trip unchanged as probability keys and as the choice."
+  },
+  "request": {
+    "model": "tev1:0.8b",
+    "state": "Ich liebe dieses Café, der Kaffee ist großartig.",
+    "questions": {
+      "sentiment": {
+        "type": "choice",
+        "instructions": "Stimmung?",
+        "criteria": {
+          "positiv 😀": "gut",
+          "négatif": "schlecht",
+          "中性": null
+        }
+      }
+    }
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "model": "tev1:0.8b",
+      "answers": {
+        "sentiment": {
+          "type": "choice",
+          "choice": "positiv 😀",
+          "probabilities": {
+            "positiv 😀": 0.9579784311342003,
+            "négatif": 0.0021873714092101797,
+            "中性": 0.039834197456589567
+          },
+          "confidence": 0.8335076038816606
+        }
+      },
+      "usage": {
+        "input_tokens": 136,
+        "output_tokens": 0
+      },
+      "prompt_eval_cached_count": 136
+    }
+  }
+}

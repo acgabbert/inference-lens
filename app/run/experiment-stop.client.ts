@@ -1,5 +1,5 @@
 import { experimentExposedTools } from "../../packages/core/src/experiment.ts";
-import type { ExperimentPlanV4, ExperimentResult } from "../../packages/core/src/experiment.ts";
+import type { ExperimentPlan, ExperimentResult } from "../../packages/core/src/experiment.ts";
 
 /**
  * Says why a batch stopped itself, for the repeated-run and evaluation result
@@ -8,7 +8,7 @@ import type { ExperimentPlanV4, ExperimentResult } from "../../packages/core/src
  * repetition to open and that the rest were never sent.
  */
 export function experimentStopDetail(
-  plan: ExperimentPlanV4,
+  plan: ExperimentPlan,
   result: ExperimentResult | undefined,
 ): string | undefined {
   const stop = result?.status === "stopped" ? result.stop : undefined;

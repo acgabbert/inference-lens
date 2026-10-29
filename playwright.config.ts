@@ -2,6 +2,8 @@ import { fileURLToPath } from "node:url";
 
 import { defineConfig, devices } from "@playwright/test";
 
+import { CHROMIUM_OVERRIDE_ENV } from "./scripts/e2e-chromium.mjs";
+
 const appPort = 4300;
 const bufferedFixturePort = 44014;
 const flakyFixturePort = 44015;
@@ -11,6 +13,7 @@ const mcpBatchFixturePort = 44020;
 const mcpInterruptionFixturePort = 44023;
 const responsesFixturePort = 44026;
 const anthropicFixturePort = 44027;
+const systemOneFixturePort = 44028;
 
 /**
  * The only reason the suite's dev server can run anything at all.
@@ -46,6 +49,14 @@ const themeSensitiveSpecs = [
   "pr2-workbench.spec.ts",
 ];
 
+/**
+ * A Chromium other than Playwright's pinned build, when one was named or
+ * `scripts/run-e2e.mjs` fell back to one (see `scripts/e2e-chromium.mjs`).
+ * Every project, including the opt-in configs built on this one, launches it.
+ */
+const chromiumOverride = process.env[CHROMIUM_OVERRIDE_ENV];
+const launchOptions = chromiumOverride ? { executablePath: chromiumOverride } : {};
+
 export default defineConfig({
   testDir: "./tests/e2e",
   fullyParallel: true,
@@ -63,12 +74,12 @@ export default defineConfig({
   projects: [
     {
       name: "chromium-light",
-      use: { ...devices["Desktop Chrome"], colorScheme: "light" },
+      use: { ...devices["Desktop Chrome"], colorScheme: "light", launchOptions },
     },
     {
       name: "chromium-dark",
       testMatch: themeSensitiveSpecs,
-      use: { ...devices["Desktop Chrome"], colorScheme: "dark" },
+      use: { ...devices["Desktop Chrome"], colorScheme: "dark", launchOptions },
     },
   ],
   webServer: [
@@ -88,6 +99,7 @@ export default defineConfig({
         INFERENCE_LENS_API_ENDPOINT: "",
         INFERENCE_LENS_API_KEY: "",
         INFERENCE_LENS_MODEL: "",
+        INFERENCE_LENS_CONNECTIONS: "",
         INFERENCE_LENS_N8N_BASE_URL: "",
         INFERENCE_LENS_N8N_API_KEY: "",
         INFERENCE_LENS_COMMAND_TOOLS: commandToolCatalog,
@@ -109,6 +121,13 @@ export default defineConfig({
     {
       command: `INFERENCE_LENS_ANTHROPIC_PORT=${anthropicFixturePort} npm run dev:anthropic-provider`,
       url: `http://127.0.0.1:${anthropicFixturePort}/health`,
+      reuseExistingServer: false,
+      timeout: 10_000,
+    },
+    {
+      // Replays the committed System One captures (D11, D15, D21).
+      command: `INFERENCE_LENS_SYSTEM_ONE_PORT=${systemOneFixturePort} npm run dev:systemone-provider`,
+      url: `http://127.0.0.1:${systemOneFixturePort}/llamacpp/v1/models`,
       reuseExistingServer: false,
       timeout: 10_000,
     },

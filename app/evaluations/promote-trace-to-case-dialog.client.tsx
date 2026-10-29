@@ -1,7 +1,9 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { ModalDialog } from "../modal-dialog.client";
 import { evaluationCasePromotionCompatibility } from "../../packages/core/src/evaluation-case-promotion.ts";
+import { isChatEvaluationSuite } from "../../packages/core/src/evaluation-suites.ts";
 import type { ProjectFile } from "../../packages/core/src/project.ts";
 import type { EvaluationSuiteId, RunTrace } from "../../packages/core/src/run-kernel/index.ts";
 
@@ -17,14 +19,14 @@ export function PromoteTraceToCaseDialog({
   onPromote(suiteId: EvaluationSuiteId, name: string): void;
 }) {
   const compatible = useMemo(() => project.evaluationSuites.flatMap((suite) => {
+    if (!isChatEvaluationSuite(suite)) return [];
     const result = evaluationCasePromotionCompatibility(suite, trace);
     return result.ok ? [{ suite, values: result.values }] : [];
   }), [project, trace]);
   const [suiteId, setSuiteId] = useState<EvaluationSuiteId | undefined>(compatible[0]?.suite.id);
   const [name, setName] = useState("Promoted incident");
   const selected = compatible.find(({ suite }) => suite.id === suiteId) ?? compatible[0];
-  return <div className="confirmation-backdrop" role="presentation">
-    <section aria-labelledby="promote-trace-title" aria-modal="true" className="confirmation-dialog" role="dialog">
+  return <ModalDialog className="confirmation-dialog" labelledBy="promote-trace-title" onClose={onCancel}>
       <span className="eyebrow">Evaluation case</span>
       <h2 id="promote-trace-title">Promote to case</h2>
       {compatible.length === 0 ? <p>No evaluation suite uses this trace’s exact input revision and template bindings. Create or retarget a compatible suite before promoting it.</p> : <>
@@ -34,6 +36,5 @@ export function PromoteTraceToCaseDialog({
         {selected && <dl className="confirmation-details">{selected.suite.inputBindings.map((binding) => <div key={binding.id}><dt>{binding.name}</dt><dd>{selected.values[binding.id]}</dd></div>)}</dl>}
       </>}
       <div className="confirmation-actions"><button className="button secondary" type="button" onClick={onCancel}>{compatible.length === 0 ? "Close" : "Cancel"}</button>{selected && <button className="button primary" disabled={!name.trim()} type="button" onClick={() => onPromote(selected.suite.id, name)}>Promote case</button>}</div>
-    </section>
-  </div>;
+  </ModalDialog>;
 }

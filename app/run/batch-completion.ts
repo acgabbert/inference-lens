@@ -1,4 +1,4 @@
-import { evaluationExperimentAggregate } from "../../packages/core/src/experiment.ts";
+import { evaluationExecutionAggregate } from "../evaluations/evaluation-execution-aggregate.ts";
 import {
   evaluationPassSummary,
   evaluationPassTone,
@@ -23,7 +23,7 @@ export type FinishedBatch =
   | { kind: "repeated"; experimentId: string; repetitions: number };
 
 /** The part of an evaluation execution its outcome is derived from. */
-export type FinishedEvaluation = Pick<EvaluationExecution, "plan" | "result" | "states" | "error">;
+export type FinishedEvaluation = Pick<EvaluationExecution, "kind" | "plan" | "result" | "states" | "error">;
 
 /**
  * `pending` and `unscored` both mean the batch decided nothing — interrupted,
@@ -57,11 +57,7 @@ export function runsIndicator(input: {
   const { evaluation } = input;
   if (evaluation && !evaluation.error) {
     try {
-      const score = evaluationExperimentAggregate(
-        evaluation.plan,
-        evaluation.result,
-        evaluation.states,
-      );
+      const score = evaluationExecutionAggregate(evaluation);
       const active = score.variants[0];
       return active ? {
         tone: indicatorToneForPassTone[evaluationPassTone(active)],
@@ -100,7 +96,7 @@ export function finishedBatchToast(
   let detail = "Every selected case has a verdict.";
   if (evaluation?.plan.experimentId === batch.experimentId) {
     try {
-      const assessment = evaluationExperimentAggregate(evaluation.plan, evaluation.result, evaluation.states);
+      const assessment = evaluationExecutionAggregate(evaluation);
       detail = assessment.variants.length
         ? `${assessment.variants.map((variant) => `${variant.variant.name}: ${evaluationPassSummary(variant)}`).join(" · ")}.`
         : detail;

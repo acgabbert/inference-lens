@@ -9,11 +9,18 @@ experiments/<experimentId>.plan.json
 experiments/<experimentId>.result.json
 ```
 
-The v3 plan is written before provider work starts and is a discriminated
-`repeated-request | evaluation` union. A repeated plan freezes one common
-resolved input. An evaluation plan freezes the selected suite/cases and stable
-identities, the check-vocabulary version and strict scoring policy, and one
-fully resolved authored input per case. Evaluation cells reference a case and
+The v5 plan is written before provider work starts and is a discriminated
+`repeated-request | evaluation | decision-evaluation` union. A repeated plan
+freezes one common resolved input. An evaluation plan freezes the selected
+suite/cases and stable identities, the check-vocabulary version (5 for new
+plans; 3 and 4 still open) and strict scoring policy, and one fully resolved
+authored input per case. A decision evaluation (System One D47) is shaped the
+same way, but each case freezes the resolved `DecisionInput` it sends, with
+the decision request and revision it came from, and each configuration holds
+only its decision target: there are no tools, response mode, options, or turn
+ceiling. Its check vocabulary is always 5, and like a decision trace, the
+`decision` subtree keeps its authored key order, because question and option
+order are what was sent. Evaluation cells of either kind reference a case and
 add only their preallocated run ID and repetition position. The
 optional terminal result records only the terminal experiment status and each
 cell’s disposition. Run evidence, including output, events, timing, usage,
@@ -67,14 +74,20 @@ never ran. A repetition with no openable trace is presented as `Waiting`,
 `Not run`, `Trace missing`, or `Trace could not be read` — never as one
 undifferentiated blank.
 
-Plans use `schemaVersion: 4`. Results use `schemaVersion: 6`.
+Plans use `schemaVersion: 5`. Results use `schemaVersion: 6`.
+
+- Plan Version 5 added the `decision-evaluation` kind. A Version 4 plan is a
+  Version 5 plan that cannot be a decision evaluation, so it opens as its
+  Version 5 equivalent; an older build reports a Version 5 plan as a newer
+  version rather than invalid. A decision cell's disposition means what a chat
+  cell's does, so results did not change version.
 
 - Version 5 added one terminal status, `stopped`, for a batch that stopped
   itself because a tool binding became unavailable. A stopped result carries
   `stop: { reason: "tool_unavailable", cellId, toolId }`, naming the failed
   repetition that found the tool unavailable.
 - Version 6 records how the batch was scheduled, so that cells can run
-  concurrently (see the [parallel experiment design](PARALLEL_EXPERIMENT_DESIGN.md)):
+  concurrently (see the [parallel experiment design](archive/PARALLEL_EXPERIMENT_DESIGN.md)):
   - `concurrency` is `{ maxInFlight, connections }`. `maxInFlight` is the
     most cells that could be in flight across the whole experiment; 1 means
     one at a time. `connections` lists one `{ profileId, endpoint, limit }`
@@ -118,3 +131,32 @@ contents again is idempotent, while different replacement contents are refused.
 Future incompatible shapes require a new schema version and a separately
 approved compatibility policy. Existing serializers always write the current
 supported version; they never silently reinterpret another version.
+
+## Structured checks and historical readings
+
+Evaluation plans embed check definitions and declare `checkSchemaVersion: 3 | 4`;
+new plans declare 4. Version 4 adds `kind: "json-schema"` with
+`dialect: "draft-07"`, a JSON-valued `schema`, and optional `inputPolicy`, and
+adds optional `inputPolicy` to `valid-json`. An omitted policy means strict
+whole-answer parsing. Vocabulary 3 rejects both the schema kind and explicit
+policies. These additions do not change the plan container version (4), result
+container version (6), or RunTrace format.
+
+Saved reassessments likewise declare vocabulary 3 or 4 independently of the
+execution plan. They store criteria, not replacement provider evidence or
+persisted outcomes. As run always derives from the original plan and traces;
+selecting a reassessment derives from its saved criteria and the same traces.
+Updating the authored suite is a separate action. The project container uses
+version 12 for vocabulary 4; versions 10 and 11 retain vocabulary 3 semantics.
+
+Opening a saved plan performs full schema preflight. Supported keywords,
+reference rules, resource limits, and charge accounting are frozen with
+vocabulary 4, because changing them could change both readability and historical
+verdicts. A future change needs a vocabulary bump and a compatibility path.
+See the [supported profile](JSON_SCHEMA_PREFLIGHT.md) and
+[deterministic check contract](DETERMINISTIC_CHECKS.md).
+
+The CLI JSON summary remains version 1: check totals and repetition
+classifications refer to plan/result/trace files rather than copying schema
+issues or provider output into the summary. The browser derives expanded
+structured diagnostics from those same artifacts when history is opened.

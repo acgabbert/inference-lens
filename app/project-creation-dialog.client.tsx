@@ -1,8 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { projectDirectoryName } from "../packages/core/src/project.ts";
+import type { ProjectGitPolicy } from "../packages/core/src/project.ts";
 import type { ProjectCreationOptions } from "./project-workspace.client.ts";
+import { useModalDialog } from "./modal-dialog.client";
 
 /**
  * Why a folder is being chosen: a new project, a first save of the open one,
@@ -49,21 +51,11 @@ export function ProjectCreationDialog({
 }) {
   const copy = copyByMode[mode];
   const [name, setName] = useState(initialName);
-  const [protectFromGit, setProtectFromGit] = useState(true);
+  const [gitPolicy, setGitPolicy] = useState<ProjectGitPolicy>("private");
   const valid = Boolean(name.trim());
 
-  useEffect(() => {
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", closeOnEscape);
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      window.removeEventListener("keydown", closeOnEscape);
-    };
-  }, [onClose]);
+  // The hook rather than <ModalDialog>: the dialog element is the form itself.
+  const dialogRef = useModalDialog<HTMLFormElement>(onClose);
 
   return (
     <div className="confirmation-backdrop" role="presentation">
@@ -71,12 +63,14 @@ export function ProjectCreationDialog({
         aria-labelledby="project-creation-title"
         aria-modal="true"
         className="confirmation-dialog project-creation-dialog"
+        ref={dialogRef}
         role="dialog"
+        tabIndex={-1}
         onSubmit={(event) => {
           event.preventDefault();
           if (!valid) return;
           onClose();
-          onCreate({ name: name.trim(), protectFromGit });
+          onCreate({ name: name.trim(), gitPolicy });
         }}
       >
         <span className="eyebrow">{copy.eyebrow}</span>
@@ -93,19 +87,30 @@ export function ProjectCreationDialog({
           />
           <small>{projectDirectoryName(name)}</small>
         </label>
-        <label className="project-creation-protection">
-          <input
-            type="checkbox"
-            checked={protectFromGit}
-            onChange={(event) => setProtectFromGit(event.target.checked)}
-          />
-          <span>
-            <strong>Keep this project out of Git</strong>
-            <small>
-              Adds .gitignore rules for prompts, traces, and future project data.
-            </small>
-          </span>
-        </label>
+        <fieldset className="project-creation-git-policy">
+          <legend>Git sharing</legend>
+          {([
+            ["private", "Keep this project out of Git", "Excludes the entire project from ordinary Git staging."],
+            ["definitions", "Share definitions; keep run history local", "Shares all content in project.json, including persisted drafts and saved values. Run history and other files stay excluded by default."],
+            ["unmanaged", "Manage Git rules myself", "Creates no .gitignore. Your Git rules decide which files are staged."],
+          ] as const).map(([value, title, description]) => (
+            <label className="project-creation-protection" key={value}>
+              <input
+                type="radio"
+                name="git-policy"
+                value={value}
+                aria-label={title}
+                aria-describedby={`git-policy-${value}-description`}
+                checked={gitPolicy === value}
+                onChange={() => setGitPolicy(value)}
+              />
+              <span>
+                <strong>{title}</strong>
+                <small id={`git-policy-${value}-description`}>{description}</small>
+              </span>
+            </label>
+          ))}
+        </fieldset>
         <div className="confirmation-actions">
           <button className="button secondary" type="button" onClick={onClose}>
             Cancel

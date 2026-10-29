@@ -15,15 +15,11 @@ import {
   protocolCapabilityKey,
 } from "../packages/core/src/provider-protocols.ts";
 import { PROVIDER_WIRE_PROTOCOLS } from "../packages/core/src/run-kernel/types.ts";
+import { DEFAULT_SERVER_CONNECTION_ID } from "../packages/core/src/server-connection-catalog.ts";
 import type { ProviderWireProtocol } from "../packages/core/src/run-kernel/types.ts";
+import { serverConnectionIdOfCredentialRef } from "./web-credential-mode.ts";
 
 const STORAGE_KEY = "inference-lens:inference-profiles:v1";
-
-/**
- * Marks a profile as provisioned from the hosting service's configuration. The
- * credential itself lives on the server; the profile only names the intent.
- */
-export const SERVER_DEFAULT_CREDENTIAL_REF = "environment-default";
 
 /**
  * Connection metadata is persisted locally, but credentials never are. The
@@ -46,6 +42,14 @@ export interface StoredInferenceProfile extends InferenceProfile {
    * already valid here, so there is nothing to reconcile it against.
    */
   favoriteModels?: string[];
+  /**
+   * The connection also serves System One decisions at `<base>/systemone`.
+   * Deliberately device-local rather than a `ProviderCapabilities` key: the
+   * capability snapshot is written into projects and traces under strict
+   * schemas, and until a project can own a decision request it has nothing
+   * that needs this. Omitted rather than `false` when not declared.
+   */
+  systemOne?: true;
 }
 
 /** Editable metadata; both forms of local identity are immutable. */
@@ -119,14 +123,15 @@ export function nextCapabilityOverrides(
 }
 
 /**
- * The profile with its protocol capabilities set to exactly `protocols`. The
- * server owns which protocols its default connection speaks, the way it owns
- * the endpoint, so this replaces those three answers and leaves every other
- * override to the user.
+ * The profile with its protocol capabilities set to exactly `protocols`, and
+ * its System One declaration to `systemOne`. The server owns which APIs its
+ * connections speak, the way it owns the endpoint, so this replaces
+ * those answers and leaves every other override to the user.
  */
 export function withServerProtocols<Profile extends StoredInferenceProfile>(
   profile: Profile,
   protocols: readonly ProviderWireProtocol[],
+  systemOne = false,
 ): Profile {
   let next = profile;
   for (const protocol of PROVIDER_WIRE_PROTOCOLS) {
@@ -137,6 +142,24 @@ export function withServerProtocols<Profile extends StoredInferenceProfile>(
     );
     next = { ...next, capabilityOverrides };
   }
+  return withSystemOne(next, systemOne);
+}
+
+export function servesSystemOne(profile: StoredInferenceProfile): boolean {
+  return profile.systemOne === true;
+}
+
+/**
+ * The profile with its System One declaration set. Withdrawing it removes the
+ * field, the same "nothing stored unless declared" convention favorites use.
+ */
+export function withSystemOne<Profile extends StoredInferenceProfile>(
+  profile: Profile,
+  enabled: boolean,
+): Profile {
+  if (enabled) return { ...profile, systemOne: true };
+  const next = { ...profile };
+  delete next.systemOne;
   return next;
 }
 
@@ -170,16 +193,21 @@ export function toggleFavoriteModel(
 export function profileDeletionRefusal(
   profiles: StoredInferenceProfile[],
   profile: StoredInferenceProfile,
-  serverDefaultConfigured: boolean,
+  /** The server connection this profile is managed by, when it reports one. */
+  serverConnection: { id: string; credentialConfigured: boolean } | undefined,
 ): string | undefined {
   if (profiles.length <= 1) {
     return "At least one connection profile is required.";
   }
-  if (
-    profile.credentialRef === SERVER_DEFAULT_CREDENTIAL_REF &&
-    serverDefaultConfigured
-  ) {
-    return "This profile comes from the server configuration and would be added back. Unset INFERENCE_LENS_API_KEY to remove it.";
+  // A declaration provisions its profile whether it needs a key, has one,
+  // or cannot currently read one. A failed probe or refused catalog also keeps
+  // that ownership: reconciliation clears the reference on confirmed removal.
+  const connectionId = serverConnection?.id ??
+    serverConnectionIdOfCredentialRef(profile.credentialRef);
+  if (connectionId) {
+    return connectionId === DEFAULT_SERVER_CONNECTION_ID
+      ? "This profile comes from the server configuration and would be added back. Unset INFERENCE_LENS_API_ENDPOINT to remove it."
+      : `This profile comes from the server configuration and would be added back. Remove "${connectionId}" from the INFERENCE_LENS_CONNECTIONS catalog to remove it.`;
   }
   return undefined;
 }
@@ -209,6 +237,7 @@ export function removeProfile(
 type PersistedInferenceProfile = InferenceProfile & {
   instanceId?: string;
   favoriteModels?: unknown;
+  systemOne?: unknown;
 };
 
 function isStringArray(value: unknown): value is string[] {
@@ -265,6 +294,8 @@ function sanitizeProfile(
       ? {}
       : { credentialRef: profile.credentialRef }),
     ...(favoriteModels.length === 0 ? {} : { favoriteModels }),
+    // Anything but an explicit `true` costs the declaration, not the profile.
+    ...(profile.systemOne === true ? { systemOne: true as const } : {}),
   };
 }
 

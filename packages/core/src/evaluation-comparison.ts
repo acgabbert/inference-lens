@@ -1,9 +1,16 @@
+import type { DecisionRun, DecisionWireProtocol } from "./decision.ts";
 import {
   evaluationParsedExperimentAggregate,
   evaluationVariantAssessment,
+  repetitionEvidence,
+  type DecisionEvaluationExperimentPlan,
+  type DecisionEvaluationVariantSnapshot,
   type EvaluationBakeoffAssessment,
   type EvaluationCaseAssessment,
   type EvaluationExperimentPlanV3,
+  type EvaluationVariantAssessment,
+  type EvaluationVariantSnapshot,
+  type EvaluationVariantSnapshotV4,
   type EvaluationRepetitionClassification,
   type ExperimentMetricRange,
   type ExperimentResultInput,
@@ -19,7 +26,6 @@ import {
   type SuiteAlignmentReason,
   type SuiteAlignmentStatus,
 } from "./evaluation-suite-alignment.ts";
-import { runMetrics } from "./run-metrics.ts";
 import { stableJsonValue } from "./stable-json.ts";
 import type {
   EvaluationCaseId,
@@ -39,14 +45,19 @@ import type {
  * stays a pointer rather than a copy.
  */
 
-/** One side of a comparison: the same triple an aggregate is derived from. */
-export interface EvaluationComparisonInput {
+interface ComparisonInputBase {
   experimentId: ExperimentId;
-  plan: EvaluationExperimentPlanV3;
   variantId: EvaluationVariantId;
   result?: ExperimentResultInput;
-  states?: ReadonlyMap<RunId, RunState>;
 }
+
+/**
+ * One side of a comparison: the same triple an aggregate is derived from, with
+ * the run states of the plan's kind.
+ */
+export type EvaluationComparisonInput =
+  | (ComparisonInputBase & { plan: EvaluationExperimentPlanV3; states?: ReadonlyMap<RunId, RunState> })
+  | (ComparisonInputBase & { plan: DecisionEvaluationExperimentPlan; states?: ReadonlyMap<RunId, DecisionRun> });
 
 /**
  * How a case's strict outcome moved. `incomparable` is not a hedge: it is the
@@ -135,26 +146,44 @@ export interface EvaluationVariantConcurrency {
   connectionLimit: number;
 }
 
-export interface EvaluationExecutionDrift {
+interface ExecutionDriftBase {
+  /** The conversation revision for chat, the decision request revision for decisions. */
   inputRevision?: EvaluationDriftField<string>;
   model?: EvaluationDriftField<string>;
   endpoint?: EvaluationDriftField<string>;
-  responseMode?: EvaluationDriftField<string>;
-  /** `true` when the serialized inference options differ in any way. */
-  optionsChanged?: boolean;
   repetitions?: EvaluationDriftField<number>;
   /**
    * The limits each side's configuration ran under. Absent when either side
    * has no result, because then nothing records how it ran.
    */
   concurrency?: EvaluationDriftField<EvaluationVariantConcurrency>;
-  // No `checkSchemaVersion` field: the plan pins it as a `z.literal`, so both
-  // sides must equal this build's version to have parsed at all. A version
-  // range — and the drift reporting it would justify — arrives with the PR
-  // that next bumps the check vocabulary.
+  // No `checkSchemaVersion` field. Plans record vocabulary 3, 4, or 5, and each
+  // version only adds constructs, so an identical check means the same on either side; a
+  // check that differs already appears in the case's check comparison.
   /** Convenience for callers that only need "is there anything to show". */
   any: boolean;
 }
+
+export interface ChatExecutionDrift extends ExecutionDriftBase {
+  kind: "chat";
+  responseMode?: EvaluationDriftField<string>;
+  /** `true` when the serialized inference options differ in any way. */
+  optionsChanged?: boolean;
+}
+
+/**
+ * A decision configuration varies only its target (D33), so it has no response
+ * mode or options to drift. The capability snapshot is deliberately not
+ * compared: its flags are connection-wide and a decision request reads none of
+ * them (D52).
+ */
+export interface DecisionExecutionDrift extends ExecutionDriftBase {
+  kind: "decision";
+  protocol?: EvaluationDriftField<DecisionWireProtocol>;
+}
+
+/** Split by run kind (D52); both sides of a comparison are always one kind. */
+export type EvaluationExecutionDrift = ChatExecutionDrift | DecisionExecutionDrift;
 
 export interface EvaluationComparisonSideSummary {
   experimentId: ExperimentId;
@@ -212,22 +241,25 @@ function sameJson(left: unknown, right: unknown): boolean {
 
 interface SideDerivation {
   input: EvaluationComparisonInput;
-  states: ReadonlyMap<RunId, RunState>;
-  aggregate: EvaluationBakeoffAssessment;
-  variant: import("./experiment.ts").EvaluationVariantAssessment;
+  states: ReadonlyMap<RunId, RunState | DecisionRun>;
+  aggregate: EvaluationBakeoffAssessment<EvaluationVariantSnapshot>;
+  variant: EvaluationVariantAssessment<EvaluationVariantSnapshot>;
   assessments: Map<EvaluationCaseId, EvaluationCaseAssessment>;
 }
 
 function derive(input: EvaluationComparisonInput): SideDerivation {
-  if (input.plan.kind !== "evaluation") {
+  // Plans are validated before they reach here; this guards the input's own
+  // union against a plan of a kind that scores no cases.
+  if (input.plan.kind !== "evaluation" && input.plan.kind !== "decision-evaluation") {
     throw new EvaluationComparisonError("Evaluation comparison requires evaluation plans.");
   }
-  const states = input.states ?? new Map<RunId, RunState>();
-  const aggregate = evaluationParsedExperimentAggregate(input.plan, input.result, states);
+  const aggregate: EvaluationBakeoffAssessment<EvaluationVariantSnapshot> = input.plan.kind === "evaluation"
+    ? evaluationParsedExperimentAggregate(input.plan, input.result, (input.states ?? new Map()) as ReadonlyMap<RunId, RunState>)
+    : evaluationParsedExperimentAggregate(input.plan, input.result, (input.states ?? new Map()) as ReadonlyMap<RunId, DecisionRun>);
   const variant = evaluationVariantAssessment(aggregate, input.variantId);
   return {
     input,
-    states,
+    states: input.states ?? new Map(),
     aggregate,
     variant,
     assessments: new Map(variant.cases.map((item) => [item.caseId, item])),
@@ -242,7 +274,7 @@ function durations(
   for (const repetition of assessment?.repetitions ?? []) {
     const state = side.states.get(repetition.runId);
     if (!state) continue;
-    const { totalDurationMs } = runMetrics(state);
+    const { totalDurationMs } = repetitionEvidence(state).metrics;
     if (totalDurationMs !== undefined) values.push(totalDurationMs);
   }
   return values;
@@ -331,40 +363,25 @@ function variantConcurrency(side: SideDerivation): EvaluationVariantConcurrency 
   return { maxInFlight: concurrency.maxInFlight, connectionLimit: connection?.limit ?? 1 };
 }
 
-function executionDrift(
-  baseline: SideDerivation,
-  candidate: SideDerivation,
-): EvaluationExecutionDrift {
-  const baselineInput = baseline.variant.variant;
-  const candidateInput = candidate.variant.variant;
-  const drift: EvaluationExecutionDrift = { any: false };
+function inputRevisionId(side: SideDerivation): string {
+  const { plan } = side.input;
+  return plan.kind === "decision-evaluation" ? plan.suite.decisionRequestRevisionId : plan.suite.conversationRevisionId;
+}
 
-  if (baseline.input.plan.suite.conversationRevisionId !== candidate.input.plan.suite.conversationRevisionId) {
-    drift.inputRevision = {
-      baseline: baseline.input.plan.suite.conversationRevisionId,
-      candidate: candidate.input.plan.suite.conversationRevisionId,
-    };
+/** Fills the fields both kinds share, in place. */
+function sharedDrift(baseline: SideDerivation, candidate: SideDerivation, drift: ExecutionDriftBase): void {
+  if (inputRevisionId(baseline) !== inputRevisionId(candidate)) {
+    drift.inputRevision = { baseline: inputRevisionId(baseline), candidate: inputRevisionId(candidate) };
   }
-  if (baselineInput && candidateInput) {
-    if (baselineInput.target.model !== candidateInput.target.model) {
-      drift.model = {
-        baseline: baselineInput.target.model,
-        candidate: candidateInput.target.model,
-      };
+  const baselineTarget = baseline.variant.variant?.target;
+  const candidateTarget = candidate.variant.variant?.target;
+  if (baselineTarget && candidateTarget) {
+    if (baselineTarget.model !== candidateTarget.model) {
+      drift.model = { baseline: baselineTarget.model, candidate: candidateTarget.model };
     }
-    if (baselineInput.target.endpoint !== candidateInput.target.endpoint) {
-      drift.endpoint = {
-        baseline: baselineInput.target.endpoint,
-        candidate: candidateInput.target.endpoint,
-      };
+    if (baselineTarget.endpoint !== candidateTarget.endpoint) {
+      drift.endpoint = { baseline: baselineTarget.endpoint, candidate: candidateTarget.endpoint };
     }
-    if (baselineInput.responseMode !== candidateInput.responseMode) {
-      drift.responseMode = {
-        baseline: baselineInput.responseMode,
-        candidate: candidateInput.responseMode,
-      };
-    }
-    if (!sameJson(baselineInput.options, candidateInput.options)) drift.optionsChanged = true;
   }
   if (baseline.input.plan.repetitions !== candidate.input.plan.repetitions) {
     drift.repetitions = { baseline: baseline.input.plan.repetitions, candidate: candidate.input.plan.repetitions };
@@ -377,7 +394,39 @@ function executionDrift(
   ) {
     drift.concurrency = { baseline: baselineConcurrency, candidate: candidateConcurrency };
   }
-  drift.any = Object.keys(drift).length > 1;
+}
+
+function executionDrift(
+  baseline: SideDerivation,
+  candidate: SideDerivation,
+): EvaluationExecutionDrift {
+  let drift: EvaluationExecutionDrift;
+  // Both sides are one kind (checked by the caller), so each side's variant
+  // snapshots are that kind's.
+  if (baseline.input.plan.kind === "decision-evaluation") {
+    const decision: DecisionExecutionDrift = { kind: "decision", any: false };
+    sharedDrift(baseline, candidate, decision);
+    const baselineVariant = baseline.variant.variant as DecisionEvaluationVariantSnapshot | undefined;
+    const candidateVariant = candidate.variant.variant as DecisionEvaluationVariantSnapshot | undefined;
+    if (baselineVariant && candidateVariant && baselineVariant.target.protocol !== candidateVariant.target.protocol) {
+      decision.protocol = { baseline: baselineVariant.target.protocol, candidate: candidateVariant.target.protocol };
+    }
+    drift = decision;
+  } else {
+    const chat: ChatExecutionDrift = { kind: "chat", any: false };
+    sharedDrift(baseline, candidate, chat);
+    const baselineVariant = baseline.variant.variant as EvaluationVariantSnapshotV4 | undefined;
+    const candidateVariant = candidate.variant.variant as EvaluationVariantSnapshotV4 | undefined;
+    if (baselineVariant && candidateVariant) {
+      if (baselineVariant.responseMode !== candidateVariant.responseMode) {
+        chat.responseMode = { baseline: baselineVariant.responseMode, candidate: candidateVariant.responseMode };
+      }
+      if (!sameJson(baselineVariant.options, candidateVariant.options)) chat.optionsChanged = true;
+    }
+    drift = chat;
+  }
+  // `kind` and `any` are always present; anything beyond them is a difference.
+  drift.any = Object.keys(drift).length > 2;
   return drift;
 }
 
@@ -456,6 +505,11 @@ export function compareEvaluationExecutions(
   baselineInput: EvaluationComparisonInput,
   candidateInput: EvaluationComparisonInput,
 ): EvaluationComparison {
+  if (baselineInput.plan.kind !== candidateInput.plan.kind) {
+    // D50: the two kinds score different evidence, so a delta between them
+    // would read as a regression or a fix that compares nothing.
+    throw new EvaluationComparisonError("A chat evaluation with a decision evaluation cannot be compared.");
+  }
   const baseline = derive(baselineInput);
   const candidate = derive(candidateInput);
   const alignment = alignSuiteSnapshots(baseline.input.plan.suite, candidate.input.plan.suite);

@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import type { ChatEvaluationSuite } from "../../packages/core/src/evaluation-suites.ts";
 import type { Page } from "@playwright/test";
 
 import {
@@ -108,7 +109,7 @@ function runnableProject(model: string): ProjectFile {
       value: "Buffered fixture",
     });
   }
-  const suite = project.evaluationSuites[0]!;
+  const suite = project.evaluationSuites[0] as ChatEvaluationSuite;
   project = updateEvaluationSuiteExecution(project, created.suiteId, {
     ...suite.execution,
     target: { ...suite.execution.target, model },

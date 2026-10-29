@@ -1,5 +1,11 @@
-import { createEvaluationExperimentPlan } from "../../core/src/evaluation-execution.ts";
-import { resolveEvaluationVariant } from "../../core/src/evaluation-suites.ts";
+import type { ResolvedDecisionTarget } from "../../core/src/decision.ts";
+import { createDecisionEvaluationExperimentPlan, createEvaluationExperimentPlan } from "../../core/src/evaluation-execution.ts";
+import {
+  isChatEvaluationSuite,
+  isDecisionEvaluationSuite,
+  resolveDecisionEvaluationVariant,
+  resolveEvaluationVariant,
+} from "../../core/src/evaluation-suites.ts";
 import { experimentExposedTools } from "../../core/src/experiment.ts";
 import type { ProjectFile } from "../../core/src/project.ts";
 import { supportsProtocol } from "../../core/src/provider-protocols.ts";
@@ -25,6 +31,8 @@ export interface EvaluationLocalProfile {
   name: string;
   endpoint: string;
   capabilities: ProviderCapabilities;
+  /** The device-local System One declaration (D9); decision suites need it. */
+  systemOne?: boolean;
 }
 
 export interface EvaluationResolvedLocalTarget {
@@ -48,7 +56,7 @@ export function resolveEvaluationLocalTargets(input: {
   mappedProfileIds: Readonly<Record<string, string>>;
 }): EvaluationResolvedLocalTarget[] {
   const suite = input.project.evaluationSuites.find(({ id }) => id === input.suiteId);
-  if (!suite) return [];
+  if (!suite || !isChatEvaluationSuite(suite)) return [];
   return suite.variants
     .filter(({ id }) => input.selectedVariantIds.includes(id))
     .map((variant) => {
@@ -184,4 +192,111 @@ export function createEvaluationStartPlan(input: EvaluationStartPlanInput) {
     toolBindings: listExperimentToolBindings(experimentExposedTools(plan), input.bindingForTool),
     targets,
   };
+}
+
+/** One decision configuration joined to this host (D49): only a target varies. */
+export interface DecisionEvaluationResolvedLocalTarget {
+  variantId: EvaluationVariantId;
+  variantName: string;
+  requirementId: string;
+  requirementName: string;
+  model: string;
+  profile?: EvaluationLocalProfile;
+}
+
+export function resolveDecisionEvaluationLocalTargets(input: {
+  project: ProjectFile;
+  suiteId: EvaluationSuiteId;
+  selectedVariantIds: readonly EvaluationVariantId[];
+  profiles: readonly EvaluationLocalProfile[];
+  mappedProfileIds: Readonly<Record<string, string>>;
+}): DecisionEvaluationResolvedLocalTarget[] {
+  const suite = input.project.evaluationSuites.find(({ id }) => id === input.suiteId);
+  if (!suite || !isDecisionEvaluationSuite(suite)) return [];
+  return suite.variants
+    .filter(({ id }) => input.selectedVariantIds.includes(id))
+    .map((variant) => {
+      const target = resolveDecisionEvaluationVariant(suite, variant);
+      const requirement = input.project.connectionRequirements.find(({ id }) => id === target.connectionRequirementId);
+      const profile = input.profiles.find(({ id }) => id === input.mappedProfileIds[target.connectionRequirementId]);
+      return {
+        variantId: variant.id,
+        variantName: variant.name,
+        requirementId: target.connectionRequirementId,
+        requirementName: requirement?.name ?? target.connectionRequirementId,
+        model: target.model,
+        ...(profile ? { profile } : {}),
+      };
+    });
+}
+
+/** Why a decision evaluation cannot start, as data for each host to phrase. */
+export type DecisionEvaluationStartBlocker =
+  | { kind: "suite_diagnostic"; message: string }
+  | { kind: "no_configuration_selected" }
+  | { kind: "batch_limit"; limit: EvaluationBatchLimit; size: EvaluationBatchSize }
+  | { kind: "profile_unmapped"; target: DecisionEvaluationResolvedLocalTarget }
+  | { kind: "endpoint_missing"; target: DecisionEvaluationResolvedLocalTarget & { profile: EvaluationLocalProfile } }
+  | { kind: "model_missing"; target: DecisionEvaluationResolvedLocalTarget }
+  | { kind: "system_one_undeclared"; target: DecisionEvaluationResolvedLocalTarget & { profile: EvaluationLocalProfile } };
+
+/** The first reason a decision evaluation cannot start, in the chat order minus tools. */
+export function decisionEvaluationStartBlocker(input: {
+  diagnostics: readonly { message: string }[];
+  selectedCaseCount: number;
+  selectedVariantCount: number;
+  repetitions: number;
+  targets: readonly DecisionEvaluationResolvedLocalTarget[];
+}): DecisionEvaluationStartBlocker | undefined {
+  if (input.diagnostics[0]) return { kind: "suite_diagnostic", message: input.diagnostics[0].message };
+  if (input.selectedVariantCount === 0) return { kind: "no_configuration_selected" };
+  // One exchange per repetition: no tools, so no turn multiplier.
+  const size = evaluationBatchSize({
+    selectedCases: input.selectedCaseCount,
+    selectedVariants: input.selectedVariantCount,
+    repetitions: input.repetitions,
+    exposedToolCount: 0,
+  });
+  if (size.limit) return { kind: "batch_limit", limit: size.limit, size };
+  for (const target of input.targets) {
+    const { profile } = target;
+    if (!profile) return { kind: "profile_unmapped", target };
+    const mapped = { ...target, profile };
+    if (!profile.endpoint.trim()) return { kind: "endpoint_missing", target: mapped };
+    if (!target.model.trim()) return { kind: "model_missing", target };
+    if (!profile.systemOne) return { kind: "system_one_undeclared", target: mapped };
+  }
+  return undefined;
+}
+
+/**
+ * Freezes a decision suite's plan joined to this host's System One targets.
+ * Callers check `decisionEvaluationStartBlocker` first.
+ */
+export function createDecisionEvaluationStartPlan(input: {
+  project: ProjectFile;
+  suiteId: EvaluationSuiteId;
+  selectedCaseIds: readonly EvaluationCaseId[];
+  selectedVariantIds: readonly EvaluationVariantId[];
+  profiles: readonly EvaluationLocalProfile[];
+  mappedProfileIds: Readonly<Record<string, string>>;
+}) {
+  const targets = resolveDecisionEvaluationLocalTargets(input);
+  if (targets.length !== input.selectedVariantIds.length) throw new Error("A selected evaluation configuration no longer exists.");
+  const missing = targets.find(({ profile }) => !profile);
+  if (missing) throw new Error(`Map “${missing.requirementName}” to a local profile for configuration “${missing.variantName}”.`);
+  const runtimeTargets = Object.fromEntries(targets.map((target) => [target.variantId, {
+    profileId: createEntityId("profile", target.profile!.id),
+    protocol: "systemone",
+    endpoint: target.profile!.endpoint,
+    capabilities: target.profile!.capabilities,
+  }])) as Record<EvaluationVariantId, Omit<ResolvedDecisionTarget, "model">>;
+  const plan = createDecisionEvaluationExperimentPlan({
+    project: input.project,
+    suiteId: input.suiteId,
+    selectedCaseIds: input.selectedCaseIds,
+    selectedVariantIds: input.selectedVariantIds,
+    runtimeTargets,
+  });
+  return { plan, targets };
 }

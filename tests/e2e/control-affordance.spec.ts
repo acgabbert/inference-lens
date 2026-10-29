@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { seedProfile, waitForHydration } from "./support";
+import { seedProfile, waitForHydration, addProjectTool } from "./support";
 
 /**
  * An unfocused text field has to be findable. Every input and select in the app
@@ -48,10 +48,7 @@ test("tool editor text fields have a visible edge before focus", async ({ page }
   await page.goto("/");
   await waitForHydration(page);
   await page.getByRole("tab", { name: "Tools" }).click();
-  await page
-    .locator(".tools-tab-toolbar")
-    .getByRole("button", { name: "+ Add project tool" })
-    .click();
+  await addProjectTool(page);
 
   const description = page.getByLabel("Description").first();
   await expect(description).toBeVisible();

@@ -1,9 +1,10 @@
 import {
+  EXPERIMENT_SCHEMA_VERSION,
   DEFAULT_EXPERIMENT_TURN_CEILING,
   MAX_EXPERIMENT_TURN_CEILING,
   MIN_EXPERIMENT_TURN_CEILING,
 } from "../../core/src/experiment.ts";
-import type { RepeatedExperimentPlanV4 } from "../../core/src/experiment.ts";
+import type { RepeatedExperimentPlan } from "../../core/src/experiment.ts";
 import { prepareProjectRevisionRun } from "../../core/src/project.ts";
 import type { ProjectFile } from "../../core/src/project.ts";
 import { supportsProtocol } from "../../core/src/provider-protocols.ts";
@@ -35,13 +36,13 @@ export function createRepeatedExperimentPlan(
   input: ResolvedRunInput,
   repetitionCount: number,
   turnCeiling: number,
-): RepeatedExperimentPlanV4 {
+): RepeatedExperimentPlan {
   const frozenInput = structuredClone(input);
   const { runId: discardedRunId, ...commonInput } = frozenInput;
   void discardedRunId;
   const experimentId = createEntityId("experiment", randomUUID());
   return {
-    schemaVersion: 4,
+    schemaVersion: EXPERIMENT_SCHEMA_VERSION,
     experimentId,
     kind: "repeated-request",
     createdAt: new Date().toISOString(),

@@ -4,12 +4,26 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import type {
   CredentialSelection,
+  DecisionExecutionRequest,
+  DecisionStream,
+  DecisionTransport,
   ModelDiscoveryRequest,
   ModelDiscoveryResponse,
   ProviderTurnRequest,
   ProviderTurnStream,
   ProviderTurnTransport,
 } from "../packages/contracts/src";
+import type {
+  DecisionExecution,
+  DecisionTransportEvent,
+} from "../packages/core/src/decision.ts";
+import { discoverDecisionModels } from "../packages/core/src/decision-discovery.ts";
+import type { ModelListing } from "../packages/core/src/decision-discovery.ts";
+import {
+  buildDecisionHttpRequest,
+  decisionRequestEvent,
+  decisionResponseEvents,
+} from "../packages/core/src/decision-execution.ts";
 import { parseModelsResponse } from "../packages/core/src/openai-compatible.ts";
 import {
   buildProviderHttpRequest,
@@ -24,6 +38,7 @@ import {
 import type {
   ProviderExecution,
   ProviderTransportEvent,
+  RunError,
 } from "../packages/core/src/run-kernel";
 import {
   isRetryableRunError,
@@ -61,8 +76,11 @@ type RawStreamEvent =
   | {
       type: "error";
       kind: "transport" | "provider";
+      /** A summary; Rust cuts a provider error body at 4,000 characters. */
       message: string;
       status?: number;
+      /** The complete provider error body, when there was one. */
+      body?: string;
     }
   | { type: "cancelled" };
 
@@ -159,7 +177,7 @@ async function bodyFromQueue(
 
 function* terminalTransportEvent(
   event: RawStreamEvent | undefined,
-): Generator<ProviderTransportEvent> {
+): Generator<Extract<ProviderTransportEvent, { type: "failed" | "cancelled" }>> {
   if (!event) return;
   switch (event.type) {
     case "error":
@@ -249,7 +267,94 @@ async function* toProviderTransportEvents(
   }
 }
 
-export class TauriInferenceTransport implements ProviderTurnTransport {
+/**
+ * The decision counterpart of `toProviderTransportEvents`. A decision is
+ * always buffered, and Rust relays a provider error's complete body beside its
+ * shortened message, so both outcomes reach the same core reader and record
+ * the same evidence as the web service.
+ */
+async function* readDecisionTransportEvents(
+  execution: DecisionExecution,
+  hasCredential: boolean,
+  queue: AsyncEventQueue<RawStreamEvent>,
+): AsyncGenerator<DecisionTransportEvent> {
+  yield decisionRequestEvent(buildDecisionHttpRequest(execution), hasCredential);
+
+  const first = await queue.next();
+  if (first.done) return;
+  if (first.value.type !== "response") {
+    yield* terminalTransportEvent(first.value);
+    return;
+  }
+  const { status } = first.value;
+  yield {
+    type: "response_started",
+    response: { status, headers: first.value.headers },
+  };
+
+  let terminal: RawStreamEvent | undefined;
+  let raw: string;
+  try {
+    raw = await bodyFromQueue(queue, (event) => {
+      terminal = event;
+    });
+  } catch (error) {
+    if (!(error instanceof TerminalStreamSignal)) throw error;
+    const failed = terminal;
+    if (failed?.type !== "error" || failed.kind !== "provider" || failed.status === undefined) {
+      yield* terminalTransportEvent(failed);
+      return;
+    }
+    raw = failed.body ?? "";
+  }
+  try {
+    yield* decisionResponseEvents(execution, status, raw);
+  } catch (error) {
+    yield { type: "failed", error: decisionFailure(error) };
+  }
+}
+
+/**
+ * Ends the exchange as cancelled once `signal` aborts, whatever the native
+ * side has sent or still sends: a completion that arrives, or was queued,
+ * after the stop never replaces it. Releases the listener however it ends.
+ */
+async function* toDecisionTransportEvents(
+  events: AsyncGenerator<DecisionTransportEvent>,
+  signal: AbortSignal | undefined,
+  release: () => void,
+): AsyncGenerator<DecisionTransportEvent> {
+  try {
+    for await (const event of events) {
+      if (signal?.aborted) break;
+      yield event;
+      if (event.type === "failed" || event.type === "cancelled" || event.type === "completed") {
+        return;
+      }
+    }
+    if (signal?.aborted) yield { type: "cancelled", reason: "Request aborted." };
+  } finally {
+    release();
+  }
+}
+
+function decisionFailure(error: unknown): RunError {
+  if (error instanceof ProviderProtocolError) {
+    return { code: "protocol_error", message: error.message };
+  }
+  const status =
+    error && typeof error === "object" && "status" in error && typeof error.status === "number"
+      ? error.status
+      : undefined;
+  const failure = {
+    code: status === undefined ? "internal_error" as const : "provider_error" as const,
+    message: error instanceof Error ? error.message : "Request failed.",
+    providerStatus: status,
+  };
+  return { ...failure, retryable: isRetryableRunError(failure) };
+}
+
+export class TauriInferenceTransport implements ProviderTurnTransport, DecisionTransport {
   async discoverModels(
     request: ModelDiscoveryRequest,
   ): Promise<ModelDiscoveryResponse> {
@@ -257,22 +362,27 @@ export class TauriInferenceTransport implements ProviderTurnTransport {
       throw new Error("Model discovery is not supported by this profile.");
     }
     const credential = nativeCredential(request.credential);
-    const { status, body } = await invoke<{ status: number; body: string }>(
-      "discover_models",
-      {
-        endpoint: request.endpoint,
-        protocol: request.protocol ?? "openai-compatible-chat-completions",
-        credential,
-      },
-    );
-    if (status < 200 || status >= 300) {
-      const detail = body.slice(0, 4_000);
-      throw Object.assign(
-        new Error(detail || `Provider returned HTTP ${status}.`),
-        { status },
+    const protocol = request.protocol ?? "openai-compatible-chat-completions";
+    // Rust builds each listing's URL from its name and relays the body; the
+    // decision steps and every parse happen here (D13).
+    const fetchListing = async (listing: ModelListing): Promise<unknown> => {
+      const { status, body } = await invoke<{ status: number; body: string }>(
+        "discover_models",
+        { endpoint: request.endpoint, protocol, listing, credential },
       );
+      if (status < 200 || status >= 300) {
+        const detail = body.slice(0, 4_000);
+        throw Object.assign(
+          new Error(detail || `Provider returned HTTP ${status}.`),
+          { status },
+        );
+      }
+      return JSON.parse(body);
+    };
+    if (protocol === "systemone") {
+      return discoverDecisionModels(request.endpoint, fetchListing);
     }
-    return { models: parseModelsResponse(JSON.parse(body)) };
+    return { models: parseModelsResponse(await fetchListing("chat")) };
   }
 
   async executeTurn(
@@ -324,6 +434,77 @@ export class TauriInferenceTransport implements ProviderTurnTransport {
       throw error;
     }
   }
+
+  /**
+   * Like `fetch`, rejects with the signal's reason when it aborts before the
+   * stream is returned; after that, the stream ends as `cancelled`. Native
+   * work never starts for an already-aborted signal, and work already started
+   * is cancelled.
+   */
+  async executeDecision(
+    request: DecisionExecutionRequest,
+    signal?: AbortSignal,
+  ): Promise<DecisionStream> {
+    const credential = nativeCredential(request.credential);
+    const decisionRequest = buildDecisionHttpRequest(request.execution);
+    signal?.throwIfAborted();
+    const requestId = `provider-turn_${randomUUID()}`;
+    const queue = new AsyncEventQueue<RawStreamEvent>();
+    const unlisten = await listen<RawStreamEvent>(
+      `inference-lens://provider-turn/${requestId}`,
+      ({ payload }) => {
+        queue.push(payload);
+        if (isTerminalStreamEvent(payload)) queue.close();
+      },
+    );
+    const cancelNative = () => {
+      void invoke("cancel_provider_turn", { requestId });
+    };
+    const abort = () => {
+      cancelNative();
+      // Wakes a reader waiting on a native side that may never answer.
+      queue.push({ type: "cancelled" });
+      queue.close();
+    };
+    const release = () => {
+      signal?.removeEventListener("abort", abort);
+      void unlisten();
+    };
+    try {
+      signal?.throwIfAborted();
+      signal?.addEventListener("abort", abort, { once: true });
+      // The same raw proxy as a buffered chat turn: Rust derives the URL from
+      // the endpoint and protocol, so the body is all the webview supplies.
+      const accepted = await invoke<ProviderTurnAccepted>("start_provider_turn", {
+        requestId,
+        credential,
+        request: {
+          endpoint: request.execution.input.target.endpoint,
+          protocol: decisionRequest.protocol,
+          body: decisionRequest.bodyText,
+          streaming: false,
+        },
+      });
+      if (signal?.aborted) {
+        // A cancel sent while the command was starting can reach Rust before
+        // the turn is registered, where it does nothing.
+        cancelNative();
+        signal.throwIfAborted();
+      }
+      return {
+        status: accepted.status,
+        headers: new Headers({ "x-inference-lens-transport": "tauri" }),
+        events: toDecisionTransportEvents(
+          readDecisionTransportEvents(request.execution, credential.kind !== "none", queue),
+          signal,
+          release,
+        ),
+      };
+    } catch (error) {
+      release();
+      throw error;
+    }
+  }
 }
 
 export const desktopCredentialStore = {
@@ -335,7 +516,7 @@ export const desktopCredentialStore = {
   },
 };
 
-export function createInferenceTransport(): ProviderTurnTransport {
+export function createInferenceTransport(): ProviderTurnTransport & DecisionTransport {
   return isTauriRuntime()
     ? new TauriInferenceTransport()
     : new HttpInferenceTransport();

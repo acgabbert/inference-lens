@@ -1,0 +1,47 @@
+{
+  "provenance": {
+    "kind": "captured",
+    "implementation": "OpenRouter /api/v1/systemone",
+    "server": "https://openrouter.ai",
+    "captured": "2026-10-24",
+    "note": "Chat-message state is accepted."
+  },
+  "request": {
+    "model": "~typesafe/jev-latest",
+    "state": [
+      {
+        "role": "user",
+        "content": "Cancel my subscription"
+      },
+      {
+        "role": "assistant",
+        "content": "Sure, done."
+      }
+    ],
+    "questions": {
+      "resolved": {
+        "type": "noul",
+        "instructions": "Was the request resolved?"
+      }
+    }
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "model": "typesafe/jev-1.14-20261014",
+      "answers": {
+        "resolved": {
+          "type": "noul",
+          "noul": 0.59
+        }
+      },
+      "usage": {
+        "input_tokens": 311,
+        "output_tokens": 20,
+        "cost": 1.3062e-05
+      },
+      "id": "gen-dec-1792812353-XMgz39Y8lSXNgCyRcI2q",
+      "provider": "TypeSafe"
+    }
+  }
+}

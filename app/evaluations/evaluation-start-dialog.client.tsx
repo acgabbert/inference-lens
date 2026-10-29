@@ -1,6 +1,5 @@
 "use client";
 
-import { useEffect } from "react";
 
 import { DEFAULT_EXPERIMENT_TURN_CEILING, experimentConnectionKey } from "../../packages/core/src/experiment.ts";
 import type { ExperimentConcurrencySetting } from "../../packages/core/src/experiment.ts";
@@ -12,6 +11,7 @@ import {
 import type { ExperimentConnectionChoice } from "../run/experiment-concurrency.client.tsx";
 import { ExperimentRetryField } from "../run/experiment-retry.client.tsx";
 import type { EvaluationExecutionDraft } from "./use-evaluation-execution-session.client.ts";
+import { ModalDialog } from "../modal-dialog.client";
 import {
   evaluationBatchGuardrail,
   evaluationCallRange,
@@ -51,20 +51,13 @@ export function EvaluationStartDialog({
   onCancel(): void;
   onConfirm(): void;
 }) {
-  useEffect(() => {
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") onCancel(); };
-    window.addEventListener("keydown", onKeyDown);
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      window.removeEventListener("keydown", onKeyDown);
-    };
-  }, [onCancel]);
-
   const targets = draft.plan.suite.variants;
   const callCount = draft.plan.cells.length;
-  const turnCeiling = draft.plan.turnCeiling ?? DEFAULT_EXPERIMENT_TURN_CEILING;
+  // A decision repetition is one exchange; only a chat plan records a ceiling.
+  const turnCeiling = draft.plan.kind === "decision-evaluation" ? 1 : draft.plan.turnCeiling ?? DEFAULT_EXPERIMENT_TURN_CEILING;
+  const revisionId = draft.plan.kind === "decision-evaluation"
+    ? draft.plan.suite.decisionRequestRevisionId
+    : draft.plan.suite.conversationRevisionId;
   const exposesTools = draft.toolBindings.length > 0;
   const atOnce = settingMaxInFlight(draft.concurrency);
   // "sequential" before the noun, or "up to N at once" after the count.
@@ -80,40 +73,43 @@ export function EvaluationStartDialog({
     { exposedToolCount: draft.toolBindings.length, turnCeiling },
   );
   return (
-    <div className="confirmation-backdrop" role="presentation">
-      <section aria-labelledby="evaluation-start-title" aria-modal="true" className="confirmation-dialog evaluation-start-dialog" role="dialog">
-        <span className="eyebrow">Evaluation confirmation</span>
-        <h2 id="evaluation-start-title">Start “{draft.plan.suite.name}”?</h2>
-        <p>Each selected case is resolved from the frozen project revision and {atOnce > 1 ? <>runs up to {atOnce} at once. Latency measured under concurrent load is not comparable with one-at-a-time runs.</> : "runs sequentially."} Composer-only values are not included.</p>
-        <dl className="confirmation-details evaluation-start-details">
-          <div><dt>Revision</dt><dd>{draft.revisionLabel} <code>{draft.plan.suite.conversationRevisionId}</code></dd></div>
-          <div><dt>Configurations</dt><dd>{targets.map(({ variantId, name, target, responseMode }) => `${name}: ${draft.targetNames[variantId]} · ${target.endpoint} · ${target.model} · ${responseMode}`).join("; ")}</dd></div>
-          <div><dt>Cases</dt><dd>{draft.plan.suite.cases.length} · {caseSummary(draft)}</dd></div>
-          <div><dt>Repetitions</dt><dd>{draft.plan.repetitions} per case and configuration</dd></div>
-          <div><dt>Provider calls</dt><dd>{exposesTools
-            ? <>{evaluationCallRange(guardrail)} — one per repetition, up to {turnCeiling} if every repetition keeps calling tools</>
-            : <>{callCount.toLocaleString()} planned</>}</dd></div>
-          <div className="evaluation-start-concurrency"><dt>Concurrency</dt><dd>
-            <ExperimentConcurrencyFields
-              connections={connectionChoices(draft)}
-              value={draft.concurrency}
-              onChange={onConcurrencyChange}
-            />
-          </dd></div>
-          <div className="evaluation-start-retry"><dt>Rate limits</dt><dd>
-            <ExperimentRetryField checked={draft.retryRateLimits ?? false} onChange={onRetryRateLimitsChange} />
-          </dd></div>
-          <div><dt>Evidence</dt><dd>{draft.storage === "durable" ? "Saved to the open project folder" : "Session only — lost when this session closes"}</dd></div>
-        </dl>
-        {exposesTools && <ExperimentToolBindingList toolBindings={draft.toolBindings} />}
-        {guardrail.warning && <p className="evaluation-batch-warning" role="alert"><strong>Large evaluation batch.</strong> {exposesTools
-          ? <>This will run {callCount.toLocaleString()} {sequential}repetitions{overlap}, up to {guardrail.worstCaseCalls.toLocaleString()} provider calls if every one keeps calling tools.</>
-          : <>This will make {callCount.toLocaleString()} {sequential}provider calls{overlap}.</>} The batch size will not be adjusted.</p>}
-        <div className="confirmation-actions">
-          <button className="button secondary" type="button" onClick={onCancel}>Cancel</button>
-          <button className="button primary" type="button" onClick={onConfirm}>Start {exposesTools ? `${callCount.toLocaleString()} repetitions` : `${callCount.toLocaleString()} calls`}</button>
-        </div>
-      </section>
-    </div>
+    <ModalDialog className="confirmation-dialog evaluation-start-dialog" labelledBy="evaluation-start-title" onClose={onCancel}>
+      <span className="eyebrow">Evaluation confirmation</span>
+      <h2 id="evaluation-start-title">Start “{draft.plan.suite.name}”?</h2>
+      <p>Each selected case is resolved from the frozen {draft.plan.kind === "decision-evaluation" ? "decision request revision" : "project revision"} and {atOnce > 1 ? <>runs up to {atOnce} at once. Latency measured under concurrent load is not comparable with one-at-a-time runs.</> : "runs sequentially."} Composer-only values are not included.</p>
+      <dl className="confirmation-details evaluation-start-details">
+        <div><dt>Revision</dt><dd>{draft.revisionLabel} <code>{revisionId}</code></dd></div>
+        <div><dt>Configurations</dt><dd>{targets.map((variant) => [
+          `${variant.name}: ${draft.targetNames[variant.variantId]}`,
+          variant.target.endpoint,
+          variant.target.model,
+          ...("responseMode" in variant ? [variant.responseMode] : ["System One"]),
+        ].join(" · ")).join("; ")}</dd></div>
+        <div><dt>Cases</dt><dd>{draft.plan.suite.cases.length} · {caseSummary(draft)}</dd></div>
+        <div><dt>Repetitions</dt><dd>{draft.plan.repetitions} per case and configuration</dd></div>
+        <div><dt>Provider calls</dt><dd>{exposesTools
+          ? <>{evaluationCallRange(guardrail)} — one per repetition, up to {turnCeiling} if every repetition keeps calling tools</>
+          : <>{callCount.toLocaleString()} planned</>}</dd></div>
+        <div className="evaluation-start-concurrency"><dt>Concurrency</dt><dd>
+          <ExperimentConcurrencyFields
+            connections={connectionChoices(draft)}
+            value={draft.concurrency}
+            onChange={onConcurrencyChange}
+          />
+        </dd></div>
+        <div className="evaluation-start-retry"><dt>Rate limits</dt><dd>
+          <ExperimentRetryField checked={draft.retryRateLimits ?? false} onChange={onRetryRateLimitsChange} />
+        </dd></div>
+        <div><dt>Evidence</dt><dd>{draft.storage === "durable" ? "Saved to the open project folder" : "Session only — lost when this session closes"}</dd></div>
+      </dl>
+      {exposesTools && <ExperimentToolBindingList toolBindings={draft.toolBindings} />}
+      {guardrail.warning && <p className="evaluation-batch-warning" role="alert"><strong>Large evaluation batch.</strong> {exposesTools
+        ? <>This will run {callCount.toLocaleString()} {sequential}repetitions{overlap}, up to {guardrail.worstCaseCalls.toLocaleString()} provider calls if every one keeps calling tools.</>
+        : <>This will make {callCount.toLocaleString()} {sequential}provider calls{overlap}.</>} The batch size will not be adjusted.</p>}
+      <div className="confirmation-actions">
+        <button className="button secondary" type="button" onClick={onCancel}>Cancel</button>
+        <button className="button primary" type="button" onClick={onConfirm}>Start {exposesTools ? `${callCount.toLocaleString()} repetitions` : `${callCount.toLocaleString()} calls`}</button>
+      </div>
+    </ModalDialog>
   );
 }

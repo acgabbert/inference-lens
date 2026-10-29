@@ -12,11 +12,15 @@ import type {
 import type { ExperimentToolBinding } from "../../packages/core/src/tool-binding-resolution.ts";
 import { describeConversationRevision } from "../../packages/core/src/conversation-revision-description.ts";
 import {
+  createDecisionEvaluationStartPlan,
   createEvaluationStartPlan,
+  decisionEvaluationStartBlocker,
   evaluationStartBlocker,
+  resolveDecisionEvaluationLocalTargets,
   resolveEvaluationLocalTargets,
 } from "../../packages/runner/src/evaluation-start.ts";
 import type {
+  DecisionEvaluationStartBlocker,
   EvaluationLocalProfile,
   EvaluationResolvedLocalTarget,
   EvaluationStartBlocker,
@@ -24,6 +28,9 @@ import type {
 } from "../../packages/runner/src/evaluation-start.ts";
 import { evaluationBatchLimitMessage } from "./evaluation-batch.client.ts";
 import { revisionChoice } from "./revision-choice.client.ts";
+import { isChatEvaluationSuite, isDecisionEvaluationSuite } from "../../packages/core/src/evaluation-suites.ts";
+import type { DecisionEvaluationSuite } from "../../packages/core/src/evaluation-suites.ts";
+import { revisionTime } from "./revision-choice.client.ts";
 
 export interface EvaluationStartReadinessInput {
   projectOpen: boolean;
@@ -137,6 +144,73 @@ export interface EvaluationWorkspaceExecution {
   targets: EvaluationResolvedLocalTarget[];
   previewTargets: EvaluationTargetPreview[];
   disabledReason?: string;
+  /** A decision suite's configurations this device cannot serve, for the setup band. */
+  decisionTargetIssues?: string[];
+}
+
+function decisionBlockerMessage(blocker: DecisionEvaluationStartBlocker): string {
+  switch (blocker.kind) {
+    case "suite_diagnostic": return blocker.message;
+    case "no_configuration_selected": return "Select at least one configuration before starting.";
+    case "batch_limit": return evaluationBatchLimitMessage(blocker.limit, blocker.size);
+    case "profile_unmapped":
+      return `Map “${blocker.target.requirementName}” to a local profile for configuration “${blocker.target.variantName}”.`;
+    case "endpoint_missing":
+      return `The profile mapped to configuration “${blocker.target.variantName}” needs an endpoint.`;
+    case "model_missing": return `Configuration “${blocker.target.variantName}” needs a model.`;
+    case "system_one_undeclared":
+      return `Configuration “${blocker.target.variantName}” runs decisions, but ${blocker.target.profile.name || "its mapped profile"} does not declare System One. Turn it on in Connections.`;
+  }
+}
+
+/** The pinned revision as the confirmation names it: request name, then time. */
+function decisionRevisionLabel(project: ProjectFile, suite: DecisionEvaluationSuite): string {
+  const revision = project.decisionRequestRevisions.find(({ id }) => id === suite.input.decisionRequestRevisionId);
+  if (!revision) return "Missing revision";
+  const request = project.decisionRequests.find(({ id }) => id === revision.decisionRequestId);
+  return `${request?.name ?? "Decision request"} · ${revisionTime(revision.createdAt)}`;
+}
+
+/** The decision arm of `evaluationWorkspaceExecution`: one gate, one target list (D49). */
+function decisionWorkspaceExecution(
+  input: EvaluationWorkspaceExecutionInput,
+  project: ProjectFile,
+  suite: DecisionEvaluationSuite,
+): EvaluationWorkspaceExecution {
+  const targets = resolveDecisionEvaluationLocalTargets({
+    project,
+    suiteId: suite.id,
+    selectedVariantIds: input.selectedVariantIds,
+    profiles: input.profiles,
+    mappedProfileIds: input.mappedProfileIds,
+  });
+  const revisionExists = project.decisionRequestRevisions.some(({ id }) => id === suite.input.decisionRequestRevisionId);
+  const blocker = decisionEvaluationStartBlocker({
+    diagnostics: input.diagnostics,
+    selectedCaseCount: input.selectedCaseCount,
+    selectedVariantCount: input.selectedVariantIds.length,
+    repetitions: suite.execution.repetitions,
+    targets,
+  });
+  // Device-local reasons, for the band: the suite is authored correctly and
+  // this machine cannot serve one of its configurations.
+  const decisionTargetIssues = targets.flatMap((target) => {
+    const issue = decisionEvaluationStartBlocker({ diagnostics: [], selectedCaseCount: 1, selectedVariantCount: 1, repetitions: 1, targets: [target] });
+    return issue ? [decisionBlockerMessage(issue)] : [];
+  });
+  const blockedReason = !revisionExists
+    ? "The decision request revision this suite pins no longer exists."
+    : blocker
+      ? decisionBlockerMessage(blocker)
+      : input.activityInProgress
+        ? "Finish or stop the current run first."
+        : undefined;
+  return {
+    targets: [],
+    previewTargets: [],
+    ...(blockedReason ? { disabledReason: blockedReason } : {}),
+    ...(decisionTargetIssues.length > 0 ? { decisionTargetIssues } : {}),
+  };
 }
 
 /**
@@ -147,7 +221,9 @@ export interface EvaluationWorkspaceExecution {
 export function evaluationWorkspaceExecution(
   input: EvaluationWorkspaceExecutionInput,
 ): EvaluationWorkspaceExecution {
-  const suite = input.project?.evaluationSuites.find(({ id }) => id === input.suiteId);
+  const found = input.project?.evaluationSuites.find(({ id }) => id === input.suiteId);
+  if (input.project && found && isDecisionEvaluationSuite(found)) return decisionWorkspaceExecution(input, input.project, found);
+  const suite = found && isChatEvaluationSuite(found) ? found : undefined;
   const targets = input.project && suite
     ? resolveEvaluationLocalTargets({
         project: input.project,
@@ -207,7 +283,17 @@ export interface EvaluationStartDraftInput extends EvaluationStartPlanInput {
 export function createEvaluationStartDraft(input: EvaluationStartDraftInput) {
   const suite = input.project.evaluationSuites.find(({ id }) => id === input.suiteId);
   if (!suite) throw new Error("The selected evaluation suite no longer exists.");
-  const revision = input.project.conversationRevisions.find(({ id }) => id === suite?.input.conversationRevisionId);
+  if (isDecisionEvaluationSuite(suite)) {
+    const { plan, targets } = createDecisionEvaluationStartPlan(input);
+    return {
+      revisionLabel: decisionRevisionLabel(input.project, suite),
+      plan,
+      toolBindings: [],
+      targetNames: Object.fromEntries(targets.map(({ variantId, profile }) => [variantId, profile!.name || "Untitled profile"])) as Record<EvaluationVariantId, string>,
+      storage: input.durable ? "durable" as const : "unsaved" as const,
+    };
+  }
+  const revision = input.project.conversationRevisions.find(({ id }) => id === suite.input.conversationRevisionId);
   if (!revision) throw new Error("The selected conversation revision no longer exists.");
   // Confirmation names the revision the same way the selector and preflight did,
   // so the author confirms something they recognize rather than a bare timestamp.

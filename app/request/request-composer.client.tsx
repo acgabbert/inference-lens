@@ -1,6 +1,8 @@
 "use client";
 
+import type { BranchPointLabel } from "../run/pending-branch.ts";
 import { useEffect, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import type { ConversationMessage, PromptTemplateId, PromptTemplateRevisionId, PromptTemplateUseId, ToolDefinition, ToolId } from "../../packages/core/src/run-kernel";
 import type { ProjectFile, ToolMock } from "../../packages/core/src/project";
 import type { TemplateRequestPreview } from "../templates/template-run-view.ts";
@@ -19,9 +21,11 @@ import type { ProjectTemplatesHandle } from "../templates/use-project-templates.
 import { isEmptyEditableConversationDraft } from "../../packages/core/src/project";
 import type { CommandToolsHandle } from "../tools/use-command-tools.client";
 import type { McpConsentsHandle } from "../tools/use-mcp-consents.client";
-import type { McpDiscoveredTool } from "../../packages/contracts/src/mcp-discovery.ts";
+import type { ToolAttachmentDestination, ToolAttachmentSource } from "./use-request-draft.client";
 import { StatusChip } from "../notifications/status-chip.client";
 import { PromptInsertionDialog } from "../templates/prompt-insertion-dialog.client";
+import { PromptModelRecommendation } from "../templates/prompt-model-recommendation.client";
+import { SavedPromptPicker } from "../templates/saved-prompt-picker.client";
 import { RequestSettings } from "./request-settings.client";
 import type { RequestSettingsProps } from "./request-settings.client";
 
@@ -35,12 +39,14 @@ type RequestPreview = TemplateRequestPreview;
  * profile, project, and run-readiness features that supply these snapshots.
  */
 export interface RequestComposerProps {
+  /** Compose's Chat / Decision switch, placed at the start of the header. */
+  kindSwitch?: ReactNode;
   requestDraft: {
     messages: ConversationMessage[];
     tools: ToolDefinition[];
     requestTools: ToolDefinition[];
     enabledToolIds: ToolId[];
-    addTool(): ToolId;
+    attachTool(source: ToolAttachmentSource, destination: ToolAttachmentDestination): ToolDefinition | string;
     removeTool(id: ToolId): void;
     moveTool(id: ToolId, offset: number): void;
     updateTool(id: ToolId, patch: Partial<ToolDefinition>): void;
@@ -48,15 +54,15 @@ export interface RequestComposerProps {
     mockForTool(id: ToolId): ToolMock | undefined;
     updateToolMock(id: ToolId, text: string, enabled: boolean): void;
     saveRequestToolToProject(id: ToolId): void;
+    updateRequestTool(id: ToolId, patch: Partial<ToolDefinition>): void;
+    moveRequestTool(id: ToolId, offset: number): void;
     removeRequestTool(id: ToolId): void;
-    attachMcpToolToProject(tool: McpDiscoveredTool, name: string): ToolDefinition | string;
-    attachMcpToolToRequest(tool: McpDiscoveredTool, name: string): ToolDefinition | string;
   };
   /** The command-tool feature owner, for the tools tab's binding surface. */
   commandTools: CommandToolsHandle;
   mcpConsents?: McpConsentsHandle;
   templates: ProjectTemplatesHandle;
-  project:Pick<ProjectFile, "promptTemplates" | "externalImports"> | null;
+  project:Pick<ProjectFile, "promptTemplates" | "externalImports" | "connectionRequirements"> | null;
   settings: RequestSettingsProps & {
     toolsEnabled: boolean;
   };
@@ -86,6 +92,7 @@ export interface RequestComposerProps {
     parentRunId: string;
     branchMessageId: string;
     parentTraceNeedsSaving: boolean;
+    label: BranchPointLabel;
   };
   requestPreview?: RequestPreview;
   onOpenConnectionSettings(): void;
@@ -95,12 +102,13 @@ export interface RequestComposerProps {
     templateId: PromptTemplateId,
     revisionId: PromptTemplateRevisionId,
   ): void;
-  onOpenToolLibrary(): void;
+  onOpenToolLibrary(destination: ToolAttachmentDestination): void;
   onSaveParentTrace(): void;
   onDiscardPendingBranch(): void;
 }
 
 export function RequestComposer({
+  kindSwitch,
   requestDraft,
   commandTools,
   mcpConsents,
@@ -123,30 +131,42 @@ export function RequestComposer({
   onSaveParentTrace,
   onDiscardPendingBranch,
 }: RequestComposerProps) {
-  const [newToolId, setNewToolId] = useState<ToolId>();
-  function addProjectTool() {
-    const id = requestDraft.addTool();
-    setNewToolId(id);
-    return id;
-  }
   const [tab, setTab] = useState<RequestTab>("messages");
   const [shownImport, setShownImport] = useState(importedRevision);
   // Collapsed by default: the settings summary says what the next run will
   // send, which is what most visits to this pane need, and the message list
   // starts higher up for the visits that do not.
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [requestPreviewView, setRequestPreviewView] = useState<"resolved" | "raw">("resolved");
   const [focusMode, setFocusMode] = useState(false);
   const [focusModeTab, setFocusModeTab] = useState<RequestTab>("messages");
-  const [promptInsertionOpen, setPromptInsertionOpen] = useState(false);
+  // The dialog opens from the quick picker's "More options…", carrying its search.
+  const [promptInsertion, setPromptInsertion] = useState<{ query: string; templateId?: PromptTemplateId }>();
   const [pendingInsertedIndex, setPendingInsertedIndex] = useState<number>();
   // Runtime fixture handles and older embedders may not yet expose the
   // session-aware library snapshot. Project prompts remain a safe fallback.
   const libraryTemplates = templates.libraryTemplates ?? project?.promptTemplates ?? [];
   const sessionTemplateIds = templates.sessionTemplateIds ?? new Set<PromptTemplateId>();
+  const insertableTemplates = libraryTemplates.filter((template) => template.kind === "chat").filter(({ archivedAt, id }) =>
+    !archivedAt && !sessionTemplateIds.has(id));
+  const insertionItemCount = templates.activeProjectRevision?.items.length ?? requestDraft.messages.length;
+  const replaceEmptyDraft = isEmptyEditableConversationDraft(templates.templateWorkbench.composerItems);
+
+  function insertPrompt(
+    templateId: PromptTemplateId,
+    revisionId: PromptTemplateRevisionId,
+    itemIndex: number,
+    replacing: boolean,
+  ): void {
+    templates.insertProjectTemplate(templateId, revisionId, itemIndex, replacing);
+    setPromptInsertion(undefined);
+    setPendingInsertedIndex(itemIndex);
+  }
   const composerRef = useRef<HTMLElement>(null);
   const focusToggleRef = useRef<HTMLButtonElement>(null);
   const modelRef = useRef<HTMLInputElement>(null);
+  // By message id. Not a DOM attribute: ids are minted per render environment,
+  // so one in the markup would differ between server and client.
+  const messageFieldsRef = useRef(new Map<string, HTMLTextAreaElement>());
   const selectedProjectToolCount = requestDraft.tools.filter(({ id }) =>
     requestDraft.enabledToolIds.includes(id),
   ).length;
@@ -209,14 +229,11 @@ export function RequestComposer({
       });
       return () => { cancelled = true; };
     }
-    // The model and protocol fields live inside the settings disclosure.
-    // Readiness routing opens its owner first, then this effect runs again
-    // against the mounted control and focuses it.
-    if (
-      (pendingDestination.control === "model" ||
-        pendingDestination.control === "protocol") &&
-      !settingsOpen
-    ) {
+    // The protocol field lives inside the settings disclosure; the model field
+    // sits above it and is always mounted. Readiness routing opens the
+    // disclosure first, then this effect runs again against the mounted
+    // control and focuses it.
+    if (pendingDestination.control === "protocol" && !settingsOpen) {
       let cancelled = false;
       queueMicrotask(() => {
         if (!cancelled) setSettingsOpen(true);
@@ -234,6 +251,8 @@ export function RequestComposer({
           ? composerRef.current?.querySelector<HTMLElement>(
               '[data-readiness-target="tool-manifest"]',
             ) ?? null
+          : pendingDestination.control === "message" && pendingDestination.entityId
+            ? messageFieldsRef.current.get(pendingDestination.entityId) ?? null
           : pendingDestination.entityId
               ? pendingDestination.control === "template-variable" && pendingDestination.fieldName
                 ? composerRef.current?.querySelector<HTMLTextAreaElement>(
@@ -256,17 +275,15 @@ export function RequestComposer({
 
   return (
     <section
-      aria-label={requestFocusMode ? "Request composer focus mode" : undefined}
+      aria-label={requestFocusMode ? "Request composer focus mode" : "Request composer"}
       aria-modal={requestFocusMode ? "true" : undefined}
       className={requestFocusMode ? "composer focus-mode-surface composer-focus-mode" : "composer"}
       ref={composerRef}
       role={requestFocusMode ? "dialog" : undefined}
     >
       <div className="panel-header request-header">
-        <div>
-          <span className="eyebrow">Request</span>
-          <h2>Composer</h2>
-        </div>
+        {/* Not inside focus mode: switching kind would unmount the dialog. */}
+        {!requestFocusMode && kindSwitch}
         <PaneTabs
           label="Request editor"
           value={activeTab}
@@ -277,11 +294,6 @@ export function RequestComposer({
           ]}
         />
         {activeTab !== "messages" ? <div className="request-header-actions">
-          {activeTab === "tools" ? (
-            <button className="text-button header-text-action" type="button" onClick={addProjectTool}>
-              + Add tool
-            </button>
-          ) : null}
           {/* On every tab, not only Messages: a repeat sends whatever the
               composer currently holds, and which tab is open does not change
               that. */}
@@ -301,10 +313,12 @@ export function RequestComposer({
         <StatusChip
           tone="advisory"
           label="Pending branch"
-          detail={<>
-            Branching from run <code>{pendingBranch.parentRunId}</code> at message{" "}
-            <code>{pendingBranch.branchMessageId}</code>. The original trace is unchanged.
-          </>}
+          detail={<span title={`${pendingBranch.parentRunId} · ${pendingBranch.branchMessageId}`}>
+            Branching from {pendingBranch.label.runTitle
+              ? `\u201c${pendingBranch.label.runTitle}\u201d`
+              : "the previous run"} at Message {pendingBranch.label.messageOrdinal} · {pendingBranch.label.role}.
+            {" "}The original trace is unchanged.
+          </span>}
           actions={[
             ...(pendingBranch.parentTraceNeedsSaving
               ? [{ key: "save-trace", label: "Save trace…", onSelect: onSaveParentTrace }]
@@ -327,30 +341,35 @@ export function RequestComposer({
               />
               {/* Outside the panel deliberately: how many tools accompany the
                   request is not one of the inference options, and its blocked
-                  variant must stay readable while the panel is collapsed. */}
-              <p className={selectedToolCount > 0 && !settings.toolsEnabled ? "request-tool-line blocked" : "request-tool-line"} role="status">
-                <span>
-                  {selectedToolCount === 0
-                    ? "No tools attached to this request."
-                    : !settings.toolsEnabled
+                  variant must stay readable while the panel is collapsed.
+                  Absent when nothing is attached: the Tools tab count says 0. */}
+              {selectedToolCount > 0 && (
+                <p className={!settings.toolsEnabled ? "request-tool-line blocked" : "request-tool-line"} role="status">
+                  <span>
+                    {!settings.toolsEnabled
                       ? `${selectedToolCount} attached ${selectedToolCount === 1 ? "tool is" : "tools are"} unavailable because this profile does not allow tool calling.`
                       : requestDraft.requestTools.length > 0
                         ? `${selectedToolCount} ${selectedToolCount === 1 ? "tool" : "tools"} attached; ${requestDraft.requestTools.length} ${requestDraft.requestTools.length === 1 ? "is" : "are"} kept in this tab.`
                         : `${selectedToolCount} ${selectedToolCount === 1 ? "tool" : "tools"} attached to this request.`}
-                </span>
-                <button className="text-button" type="button" onClick={() => setTab("tools")}>
-                  {selectedToolCount === 0 ? "Add tools" : "Review"}
-                </button>
-              </p>
+                  </span>
+                  <button className="text-button" type="button" onClick={() => setTab("tools")}>
+                    Review
+                  </button>
+                </p>
+              )}
             </div>
             <div className="request-composer-toolbar">
               <div className="request-composer-edit-actions">
                 <button className="button secondary" type="button" onClick={templates.addComposerMessage}>
                   + Add message
                 </button>
-                <button className="button secondary" type="button" onClick={() => setPromptInsertionOpen(true)}>
-                  Insert saved prompt…
-                </button>
+                <SavedPromptPicker
+                  templates={insertableTemplates}
+                  onInsert={(templateId, revisionId) =>
+                    insertPrompt(templateId, revisionId, replaceEmptyDraft ? 0 : insertionItemCount, replaceEmptyDraft)}
+                  onMoreOptions={(query, templateId) => setPromptInsertion({ query, ...(templateId ? { templateId } : {}) })}
+                  onOpenPrompts={onOpenPrompts}
+                />
               </div>
               <div className="request-composer-run-actions">
                 <button
@@ -375,8 +394,18 @@ export function RequestComposer({
               {templates.templateWorkbench.composerItems.map((item, index) => {
                 if (item.kind === "template-use") {
                   const template = project?.promptTemplates.find(({ id }) => id === item.use.templateId);
-                  if (!template) return null;
+                  if (!template || template.kind !== "chat") return null;
+                  const recommendation = template.recommendedTarget;
+                  const connection = project?.connectionRequirements.find(({ id }) => id === recommendation?.connectionRequirementId);
                   return <TemplateUseCard key={item.use.id} use={item.use} template={template}
+                    modelRecommendation={recommendation && <PromptModelRecommendation
+                      recommendedModel={recommendation.model}
+                      selectedModel={settings.model}
+                      connectionName={connection?.name}
+                      dismissed={templates.modelWarnings.isDismissed(item.use.id)}
+                      onDismiss={() => templates.modelWarnings.dismiss(item.use.id)}
+                      onChooseModel={() => { modelRef.current?.scrollIntoView({ block: "center" }); modelRef.current?.focus(); }}
+                    />}
                     diagnostics={templates.templateWorkbench.resolution?.diagnostics.filter(({ templateUseId }) => templateUseId === item.use.id) ?? []}
                     runOverrides={templates.templateRunOverrides[item.use.id] ?? {}}
                     importedFrom={project?.externalImports.find((receipt) => receipt.projection.kind === "prompt-template" && receipt.projection.templateRevisionId === item.use.templateRevisionId)}
@@ -384,7 +413,7 @@ export function RequestComposer({
                     onSaveRunValue={(values, runOverrides) => templates.saveTemplateUseRunValue(item.use.id, values, runOverrides)}
                     onRunOverridesChange={(values) => templates.updateTemplateUseOverride(item.use.id, values)}
                     onEditSource={() => onEditPromptSource(item.use.id, item.use.templateId, item.use.templateRevisionId)}
-                    onUpdateLatest={() => templates.updateTemplateUseToLatestRevision(item.use.id)}
+                    onSelectRevision={(revisionId) => templates.setTemplateUseRevision(item.use.id, revisionId)}
                     onDetach={() => templates.detachTemplateUse(item.use.id)}
                     onRemove={() => templates.removeTemplateUse(item.use.id)} />;
                 }
@@ -400,36 +429,62 @@ export function RequestComposer({
                     {importReceipt && <span className="message-import-provenance" title={`Imported from ${importReceipt.source.adapter} execution ${importReceipt.source.execution?.id ?? "unavailable"} with ${importReceipt.fidelity.replaceAll("-", " ")} fidelity.`}>Imported from {importReceipt.source.adapter}{" · "}{importReceipt.fidelity.replaceAll("-", " ")}</span>}
                     <button aria-label={`Remove message ${index + 1}`} className="remove-button" onClick={() => templates.removeComposerMessage(message.id)}>Remove</button>
                   </div>
-                  <textarea aria-label={`Message ${index + 1} content`} value={text} onChange={(event) => templates.updateComposerMessage(message.id, { content: [{ type: "text", text: event.target.value }] })} rows={message.role === "system" ? 4 : 7} />
+                  <textarea aria-label={`Message ${index + 1} content`} ref={(field) => {
+                    if (field) messageFieldsRef.current.set(message.id, field);
+                    else messageFieldsRef.current.delete(message.id);
+                  }} value={text} onChange={(event) => templates.updateComposerMessage(message.id, { content: [{ type: "text", text: event.target.value }] })} rows={message.role === "system" ? 4 : 7} />
                   {message.role === "tool" && <small className="message-metadata">Tool result for {message.name ?? "unnamed tool"} ({message.toolCallId})</small>}
                   {message.role === "assistant" && message.toolCalls?.map((call) => <div className="tool-call-card message-tool-call" key={call.id}><div className="tool-call-heading"><div><span className="eyebrow">Tool call</span><h3>{call.name}</h3></div><span className="provider-pill">Read-only</span></div><label>Arguments<pre>{call.arguments.text || "{}"}</pre></label></div>)}
                 </article>;
               })}
             </div>
-            {requestPreview && <details className="request-preview"><summary>Resolved request preview</summary>{"error" in requestPreview ? <div className="template-diagnostic">{requestPreview.error}</div> : <><>{(templates.templateWorkbench.resolution?.diagnostics.length ?? 0) > 0 && <div className="template-warning" role="status">Preview contains unresolved variables. Running is blocked until they have values.</div>}</><div className="request-preview-tabs"><PaneTabs idPrefix="request-preview" label="Request preview view" value={requestPreviewView} onChange={(value) => setRequestPreviewView(value as "resolved" | "raw")} tabs={[{ id: "resolved", label: "Resolved" }, { id: "raw", label: "Raw" }]} /></div>{requestPreviewView === "resolved" ? <section aria-label="Resolved request" aria-labelledby="request-preview-resolved-tab" id="request-preview-resolved-panel" role="tabpanel"><h3>Resolved messages</h3><div className="request-preview-messages">{requestPreview.messages.map((message, index) => <article className="request-preview-message" key={`${message.role}-${index}`}><span className="eyebrow">{message.role}</span><pre>{conversationMessageText(message)}</pre></article>)}</div></section> : <section className="request-preview-raw" aria-label="Raw OpenAI-compatible request body" aria-labelledby="request-preview-raw-tab" id="request-preview-raw-panel" role="tabpanel"><h3>Raw OpenAI-compatible request body</h3><pre>{JSON.stringify(requestPreview.body, null, 2)}</pre></section>}</>}</details>}
+            {requestPreview && <RequestPreviewDisclosure
+              preview={requestPreview}
+              unresolved={(templates.templateWorkbench.resolution?.diagnostics.length ?? 0) > 0}
+            />}
           </>
         ) : (
-          <ToolsPane tools={requestDraft.tools} requestTools={requestDraft.requestTools} enabledToolIds={requestDraft.enabledToolIds} activeProfileName={activeProfile.name} toolsEnabled={settings.toolsEnabled} onOpenLibrary={onOpenToolLibrary} onOpenConnectionSettings={onOpenConnectionSettings} onAddTool={addProjectTool} newToolId={newToolId} onRemoveTool={requestDraft.removeTool} onMoveTool={requestDraft.moveTool} onUpdateTool={requestDraft.updateTool} onSetToolEnabled={requestDraft.setToolEnabled} mockForTool={requestDraft.mockForTool} onUpdateToolMock={requestDraft.updateToolMock} onRemoveRequestTool={requestDraft.removeRequestTool} onSaveRequestToolToProject={requestDraft.saveRequestToolToProject} commandTools={commandTools} mcpConsents={mcpConsents} onAttachMcpToProject={requestDraft.attachMcpToolToProject} onAttachMcpToRequest={requestDraft.attachMcpToolToRequest} />
+          <ToolsPane tools={requestDraft.tools} requestTools={requestDraft.requestTools} enabledToolIds={requestDraft.enabledToolIds} activeProfileName={activeProfile.name} toolsEnabled={settings.toolsEnabled} onOpenLibrary={onOpenToolLibrary} onOpenConnectionSettings={onOpenConnectionSettings} onAttach={requestDraft.attachTool} onRemoveTool={requestDraft.removeTool} onMoveTool={requestDraft.moveTool} onUpdateTool={requestDraft.updateTool} onSetToolEnabled={requestDraft.setToolEnabled} mockForTool={requestDraft.mockForTool} onUpdateToolMock={requestDraft.updateToolMock} onRemoveRequestTool={requestDraft.removeRequestTool} onUpdateRequestTool={requestDraft.updateRequestTool} onMoveRequestTool={requestDraft.moveRequestTool} onSaveRequestToolToProject={requestDraft.saveRequestToolToProject} commandTools={commandTools} mcpConsents={mcpConsents} />
         )}
       </div>
-      {promptInsertionOpen && (
+      {promptInsertion && (
         <PromptInsertionDialog
-          templates={libraryTemplates.filter(({ archivedAt, id }) =>
-            !archivedAt && !sessionTemplateIds.has(id))}
-          itemCount={templates.activeProjectRevision?.items.length ?? requestDraft.messages.length}
-          replaceEmptyDraft={isEmptyEditableConversationDraft(templates.templateWorkbench.composerItems)}
-          onCancel={() => setPromptInsertionOpen(false)}
+          templates={insertableTemplates}
+          initialQuery={promptInsertion.query}
+          {...(promptInsertion.templateId ? { initialTemplateId: promptInsertion.templateId } : {})}
+          itemCount={insertionItemCount}
+          replaceEmptyDraft={replaceEmptyDraft}
+          onCancel={() => setPromptInsertion(undefined)}
           onOpenPrompts={() => {
-            setPromptInsertionOpen(false);
+            setPromptInsertion(undefined);
             onOpenPrompts();
           }}
-          onInsert={(templateId, revisionId, itemIndex, replaceEmptyDraft) => {
-            templates.insertProjectTemplate(templateId, revisionId, itemIndex, replaceEmptyDraft);
-            setPromptInsertionOpen(false);
-            setPendingInsertedIndex(itemIndex);
-          }}
+          onInsert={insertPrompt}
         />
       )}
     </section>
+  );
+}
+
+/**
+ * The preview repeats the whole resolved request, so its contents mount only
+ * while it is expanded. Kept in the document when collapsed, a large pasted
+ * prompt would be copied into the page again on every keystroke in the composer.
+ * A resolution error is one line and stays rendered either way.
+ */
+function RequestPreviewDisclosure({ preview, unresolved }: { preview: RequestPreview; unresolved: boolean }) {
+  const [open, setOpen] = useState(false);
+  const [view, setView] = useState<"resolved" | "raw">("resolved");
+  return (
+    <details className="request-preview" open={open} onToggle={(event) => setOpen(event.currentTarget.open)}>
+      <summary>Resolved request preview</summary>
+      {"error" in preview ? <div className="template-diagnostic">{preview.error}</div> : open && <>
+        {unresolved && <div className="template-warning" role="status">Preview contains unresolved variables. Running is blocked until they have values.</div>}
+        <div className="request-preview-tabs"><PaneTabs idPrefix="request-preview" label="Request preview view" value={view} onChange={(value) => setView(value as "resolved" | "raw")} tabs={[{ id: "resolved", label: "Resolved" }, { id: "raw", label: "Raw" }]} /></div>
+        {view === "resolved"
+          ? <section aria-label="Resolved request" aria-labelledby="request-preview-resolved-tab" id="request-preview-resolved-panel" role="tabpanel"><h3>Resolved messages</h3><div className="request-preview-messages">{preview.messages.map((message, index) => <article className="request-preview-message" key={`${message.role}-${index}`}><span className="eyebrow">{message.role}</span><pre>{conversationMessageText(message)}</pre></article>)}</div></section>
+          : <section className="request-preview-raw" aria-label="Raw OpenAI-compatible request body" aria-labelledby="request-preview-raw-tab" id="request-preview-raw-panel" role="tabpanel"><h3>Raw OpenAI-compatible request body</h3><pre>{JSON.stringify(preview.body, null, 2)}</pre></section>}
+      </>}
+    </details>
   );
 }

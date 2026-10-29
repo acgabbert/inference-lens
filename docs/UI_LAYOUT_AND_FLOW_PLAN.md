@@ -1,8 +1,27 @@
 # Layout and flow improvement plan
 
-**Status:** proposed; no product implementation authorized by this document.  
+**Status (reviewed October 27, 2026):** partially implemented. Dedicated
+Prompts, read-only Runs browsing/inspection, and optional evaluation preview
+have landed. Remaining desktop validation/polish and deferred mobile work keep
+this plan open. The original proposal below is a historical baseline, not a
+list of features still missing or new implementation authorization.
+
 **Baseline:** `main` at `950f76d`, reviewed September 21, 2026.  
 **Scope:** workspace hierarchy, layout, navigation, and task completion after the recent UI/UX fixes.
+
+## Current delivery status
+
+| Slice | Current evidence | Remaining scope |
+| --- | --- | --- |
+| A: Prompts | [Prompts mode](../app/modes/prompts-mode.client.tsx) owns the dedicated workspace and explicit use/return handoffs; see `prompt-insertion-handoff.spec.ts`. | Do not reopen the settled top-level destination decision. Further discoverability work is in the [follow-on UX plan](UX_DISCOVERABILITY_PLAN.md). |
+| B: Runs | [Runs mode](../app/modes/runs-mode.client.tsx) composes session and folder evidence with read-only selection; `b7dc2c9` closed the Runs workspace slice and retired the drawer. | Broader retention or persistent labels would still need their own design. |
+| C: Evaluations | [Evaluations mode](../app/modes/evaluations-mode.client.tsx) has independent editor/preview regions, hides preview automatically at widths up to 1100px, and supports explicit show/hide. | The original short-height, zoom and usability criteria are not all established by this source-only sweep; adjustable pane widths are not claimed complete here. |
+| D–E: Supporting interactions and validation | Existing shared focus rules, mode navigation and targeted browser specs cover parts of these slices. | Do not treat the broad keyboard/overlay, resizing, large-collection and task-validation criteria as fully closed. |
+| Mobile | Existing responsive behavior remains. | The proposed mobile list/detail redesign stays deferred. |
+
+This status update checked source and delivery history, without rerunning the
+browser suite. The review, screenshots and test counts later in this document
+describe the September baseline. They are not fresh October verification.
 
 ## Direction
 
@@ -171,4 +190,7 @@ Passing characterization scenarios reproduce behavior; they do not declare the l
 
 No product code or tests changed. The full browser suite, build, unit, and Rust checks were not run for this documentation-only change. No new red-to-green regression cycle was performed. Native Tauri, real filesystem permissions/restart, screen readers, other browsers, large collections, 200% zoom, short-height layouts, and hosted providers were not checked in this pass. Dark-mode captures were produced by the existing scenario but not used to establish new visual findings here.
 
-Most useful user review now: choose whether Prompts should become a top-level destination, confirm whether Runs should inspect without changing Compose, and try the proposed edit/source/back sequence against a familiar project. Those decisions materially shape the next implementation; this document leaves them open.
+The original review left the Prompts destination and read-only Runs inspection
+decisions open; both have since been implemented, as recorded above. Remaining
+user review should focus on the delivered edit/source/back workflow and the
+open validation criteria, rather than deciding those destinations again.

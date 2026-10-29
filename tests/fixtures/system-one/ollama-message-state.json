@@ -1,0 +1,46 @@
+{
+  "provenance": {
+    "kind": "captured",
+    "implementation": "Ollama /v1/systemone",
+    "server": "Ollama 0.40.10 on macOS (Ollama.app), keyless, default 2048-token context",
+    "model": "tev1:0.8b (b661d5650816, 752M BF16, mlx runner)",
+    "captured": "2026-10-23",
+    "note": "Chat-message state is accepted and answered."
+  },
+  "request": {
+    "model": "tev1:0.8b",
+    "state": [
+      {
+        "role": "user",
+        "content": "Cancel my subscription"
+      },
+      {
+        "role": "assistant",
+        "content": "Sure, done."
+      }
+    ],
+    "questions": {
+      "resolved": {
+        "type": "noul",
+        "instructions": "Was the request resolved?"
+      }
+    }
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "model": "tev1:0.8b",
+      "answers": {
+        "resolved": {
+          "type": "noul",
+          "noul": 0.918142000292123
+        }
+      },
+      "usage": {
+        "input_tokens": 130,
+        "output_tokens": 0
+      },
+      "prompt_eval_cached_count": 130
+    }
+  }
+}

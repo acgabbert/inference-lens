@@ -4,6 +4,7 @@ import type {
   EvaluationBatchSize,
 } from "../../runner/src/evaluation-batch-limits.ts";
 import type {
+  DecisionEvaluationStartBlocker,
   EvaluationResolvedLocalTarget,
   EvaluationStartBlocker,
 } from "../../runner/src/evaluation-start.ts";
@@ -22,7 +23,7 @@ function describeBatchLimit(limit: EvaluationBatchLimit, size: EvaluationBatchSi
   }
 }
 
-function connection(target: EvaluationResolvedLocalTarget): string {
+function connection(target: Pick<EvaluationResolvedLocalTarget, "requirementId" | "requirementName">): string {
   return `connection "${target.requirementName}" (${target.requirementId})`;
 }
 
@@ -60,6 +61,27 @@ export function describeStartBlocker(blocker: EvaluationStartBlocker): string {
     case "tools_unsupported":
       return `Configuration "${blocker.target.variantName}" exposes tools, but ${connection(blocker.target)} does not enable them. ` +
         "Enable tools in that connection's capabilityOverrides, or remove the tools from the suite.";
+  }
+}
+
+/** The CLI's wording for why a decision suite cannot start (D36). */
+export function describeDecisionStartBlocker(blocker: DecisionEvaluationStartBlocker): string {
+  switch (blocker.kind) {
+    case "suite_diagnostic":
+      return blocker.message;
+    case "no_configuration_selected":
+      return "The suite has no configurations to run.";
+    case "batch_limit":
+      return describeBatchLimit(blocker.limit, blocker.size);
+    case "profile_unmapped":
+      return `No ${connection(blocker.target)} was resolved for configuration "${blocker.target.variantName}".`;
+    case "endpoint_missing":
+      return `The ${connection(blocker.target)} has no endpoint.`;
+    case "model_missing":
+      return `Configuration "${blocker.target.variantName}" has no model.`;
+    case "system_one_undeclared":
+      // Unreachable here: a connection a decision suite names is its declaration (D54).
+      return `The ${connection(blocker.target)} does not serve System One.`;
   }
 }
 

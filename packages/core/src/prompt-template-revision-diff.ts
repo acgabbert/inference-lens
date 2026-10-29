@@ -1,7 +1,7 @@
 import { diffLines, type TextDiff } from "./text-diff.ts";
 import type {
   PromptTemplateMessage,
-  PromptTemplateRevision,
+  ChatPromptTemplateRevision,
 } from "./project.ts";
 
 export type RevisionDiffStatus = "identical" | "added" | "removed" | "changed";
@@ -46,8 +46,8 @@ function statusFor<T>(before: T | undefined, after: T | undefined): RevisionDiff
  * otherwise identical message moved to another turn is a prompt change.
  */
 export function diffPromptTemplateRevisions(
-  before: PromptTemplateRevision,
-  after: PromptTemplateRevision,
+  before: ChatPromptTemplateRevision,
+  after: ChatPromptTemplateRevision,
 ): PromptTemplateRevisionDiff {
   const messages = Array.from(
     { length: Math.max(before.messages.length, after.messages.length) },

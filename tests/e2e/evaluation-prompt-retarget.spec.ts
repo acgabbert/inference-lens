@@ -14,6 +14,7 @@ import {
   updateEvaluationSuiteInput,
 } from "../../packages/core/src/evaluation-suite-authoring";
 import { BUFFERED_FIXTURE_ENDPOINT, importProject, openMode, seedProfile, waitForHydration } from "./support";
+import { expectModalContract } from "./support/modal";
 
 const PROJECT_NAME = "Evaluate in a suite fixture";
 
@@ -91,12 +92,12 @@ test("evaluate-in-a-suite dialog states the pinned revision, and arrival confirm
 
   const dialog = page.getByRole("dialog", { name: "Evaluate in a suite" });
   await expect(dialog.getByText("Nothing runs until you start the evaluation.")).toBeVisible();
-  await expect(dialog.getByText("Support QA — currently Revision 1 → will pin Current")).toBeVisible();
+  await expect(dialog.getByText("Support QA — currently Revision 1 → will pin Revision 2 (current)")).toBeVisible();
   await dialog.getByRole("button", { name: "Use Support QA" }).click();
 
   const evaluationsButton = page.getByRole("navigation", { name: "Application mode" }).getByRole("button", { name: "Evaluations" });
   await expect(evaluationsButton).toHaveAttribute("aria-current", "page");
-  await expect(page.locator(".evaluation-resolution-action", { hasText: "Input pinned to Support reply · Current" })).toBeVisible();
+  await expect(page.locator(".evaluation-resolution-action", { hasText: "Input pinned to Support reply · Revision 2 (current)" })).toBeVisible();
   await expect(page.locator("h2", { hasText: "Support QA" })).toBeVisible();
 
   // The suite now pins the current revision: reopening the dialog on the same
@@ -171,4 +172,60 @@ test("the dialog renders as a real modal overlay, not an unstyled inline block",
 
   await dialog.getByRole("button", { name: "Cancel" }).click();
   await expect(dialog).toHaveCount(0);
+});
+
+test("an edited draft must become a revision before it can be evaluated", async ({ page }) => {
+  const project = createPromptTemplate(baseProject(), {
+    name: "Network explainer",
+    messages: [{ role: "user", content: "Explain {{topic}} with examples." }],
+    variableDefaults: { topic: "networks" },
+    idSuffix: "network-explainer",
+    createdAt: "2026-08-06T12:00:01.000Z",
+  });
+
+  await seedProfile(page, { instanceId: "profile-instance-buffered" });
+  await page.goto("/");
+  await waitForHydration(page);
+  await importProject(page, project, PROJECT_NAME);
+  await openPromptsWorkspace(page);
+
+  const editor = page.locator(".template-editor");
+  await page.locator(".template-list").getByRole("button", { name: /Network explainer/ }).click();
+  const evaluate = editor.getByRole("button", { name: "Evaluate in a suite…" });
+  await expect(evaluate).toBeEnabled();
+
+  // Evaluating now would pin Revision 1, not the edit the author is looking at.
+  await editor.getByLabel("Prompt content").fill("DRAFT CHANGE: contrast {{topic}}.");
+  await expect(evaluate).toBeDisabled();
+  await expect(evaluate).toHaveAccessibleDescription("Create a revision to evaluate these edits.");
+  await expect(editor.getByText("Create a revision to evaluate these edits.")).toBeVisible();
+
+  await editor.getByRole("button", { name: "Create revision", exact: true }).click();
+  await expect(evaluate).toBeEnabled();
+  await expect(editor.getByText("Create a revision to evaluate these edits.")).toHaveCount(0);
+  await evaluate.click();
+
+  const dialog = page.getByRole("dialog", { name: "Evaluate in a suite" });
+  await expect(dialog.getByText("Network explainer · Revision 2 (current)")).toBeVisible();
+  await dialog.getByRole("button", { name: "Create new suite" }).click();
+  await expect(page.locator(".evaluation-resolution-action", { hasText: "Input pinned to Network explainer · Revision 2 (current)" })).toBeVisible();
+});
+
+test("the chat evaluate dialog follows the modal contract", async ({ page }) => {
+  const built = withOutdatedSuite(baseProject(), {
+    templateName: "Support reply",
+    suiteName: "Support QA",
+    templateSuffix: "support-reply",
+    suiteSuffix: "support-qa",
+  });
+  await seedProfile(page, { instanceId: "profile-instance-buffered" });
+  await page.goto("/");
+  await waitForHydration(page);
+  await importProject(page, built.project, PROJECT_NAME);
+  await openPromptsWorkspace(page);
+  await page.locator(".template-list").getByRole("button", { name: /Support reply/ }).click();
+  await expectModalContract(page, {
+    open: page.locator(".template-editor").getByRole("button", { name: "Evaluate in a suite…" }),
+    dialog: page.getByRole("dialog", { name: "Evaluate in a suite" }),
+  });
 });

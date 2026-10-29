@@ -22,12 +22,15 @@ function toolsPane(overrides) {
     toolsEnabled: true,
     onOpenLibrary: () => {},
     onOpenConnectionSettings: () => {},
-    onAddTool: () => {},
+    onAttach: () => "not attached in this render",
     onRemoveTool: () => {},
+    onMoveTool: () => {},
     onUpdateTool: () => {},
     onSetToolEnabled: () => {},
     mockForTool: () => undefined,
     onUpdateToolMock: () => {},
+    onUpdateRequestTool: () => {},
+    onMoveRequestTool: () => {},
     onRemoveRequestTool: () => {},
     commandTools: {
       availability: { kind: "unconfigured", variable: "INFERENCE_LENS_COMMAND_TOOLS" },
@@ -96,7 +99,7 @@ function requestComposer(overrides = {}) {
       updateTemplateUseValues: noop,
       saveTemplateUseRunValue: noop,
       updateTemplateUseOverride: noop,
-      updateTemplateUseToLatestRevision: noop,
+      setTemplateUseRevision: noop,
       detachTemplateUse: noop,
       removeTemplateUse: noop,
       createProjectTemplate: noop,
@@ -147,17 +150,17 @@ test("the extracted composer renders request snapshots without a project", async
   assert.match(html, /Profile default/);
   assert.match(html, /Composer fixture message/);
   assert.match(html, /Open request composer in focus mode/);
-  // The settings panel starts collapsed: every value it will send is named,
-  // delivery included, and none of the controls are rendered.
+  // The model field is always rendered; the settings panel starts collapsed
+  // with the protocol and any departure from the baseline named, and none of
+  // its other controls rendered.
   assert.match(html, /fixture-model/);
   assert.match(html, /Temp 0\.7/);
-  assert.match(html, /Buffered/);
   assert.doesNotMatch(html, /Stream response/);
   assert.match(html, /class="request-settings-card"/);
   assert.doesNotMatch(html, /Override temperature/);
-  // The tool line stays outside the panel, so a blocked tool selection cannot
-  // be hidden by collapsing it.
-  assert.match(html, /No tools attached to this request/);
+  // With nothing attached there is no tool line; the Tools tab count says 0.
+  assert.doesNotMatch(html, /No tools attached to this request/);
+  assert.doesNotMatch(html, /request-tool-line/);
 });
 
 test("the topbar hides ordinary run actions outside the Compose mode", async () => {
@@ -167,15 +170,15 @@ test("the topbar hides ordinary run actions outside the Compose mode", async () 
     profiles: [profile], activeProfile: profile,
     hasCredential: false, projectDirty: false, folderAccessAvailable: false,
     hasDiagnosticCapture: false, hasRunTrace: false, hasProjectWorkspace: false,
-    runHistoryBlocked: false, isRequestActive: false, isExperimentActive: false,
+    runHistoryBlocked: false, composeExecuting: false, isExperimentActive: false,
     mode: "evaluations", onModeChange: noop,
-    awaitingToolResults: false, retryableFailure: false,
-    runDisabled: false, evaluationStartDisabled: false,
+    composePrimary: { kind: "run", label: "Run current conversation", disabled: false, run: noop },
+    evaluationStartDisabled: false,
     onChooseProfile: noop, onOpenConnections: noop, onNewProject: noop,
     onOpenProject: noop, onSaveProject: noop, onImportProject: noop,
     onExportProject: noop, onOpenN8nImport: noop, onDownloadDiagnostics: noop, onDownloadRunTrace: noop,
-    onImportRunTrace: noop, onOpenRunHistory: noop, onStop: noop,
-    onStopExperiment: noop, onRun: noop, onStartEvaluation: noop,
+    onImportRunTrace: noop, onOpenRunHistory: noop,
+    onStopExperiment: noop, onStartEvaluation: noop,
   });
   // One primary action, and it is this mode's own. Compose's run controls and
   // the lifecycle actions that used to crowd beside them are all gone.
@@ -190,15 +193,15 @@ test("the topbar target control names the connection and states no model", async
     profiles: [profile], activeProfile: profile,
     hasCredential: true, projectDirty: false, folderAccessAvailable: false,
     hasDiagnosticCapture: false, hasRunTrace: false, hasProjectWorkspace: false,
-    runHistoryBlocked: false, isRequestActive: false, isExperimentActive: false,
+    runHistoryBlocked: false, composeExecuting: false, isExperimentActive: false,
     mode: "evaluations", onModeChange: noop,
-    awaitingToolResults: false, retryableFailure: false,
-    runDisabled: false, evaluationStartDisabled: false,
+    composePrimary: { kind: "run", label: "Run current conversation", disabled: false, run: noop },
+    evaluationStartDisabled: false,
     onChooseProfile: noop, onOpenConnections: noop, onNewProject: noop,
     onOpenProject: noop, onSaveProject: noop, onImportProject: noop,
     onExportProject: noop, onOpenN8nImport: noop, onDownloadDiagnostics: noop, onDownloadRunTrace: noop,
-    onImportRunTrace: noop, onOpenRunHistory: noop, onStop: noop,
-    onStopExperiment: noop, onRun: noop, onStartEvaluation: noop,
+    onImportRunTrace: noop, onOpenRunHistory: noop,
+    onStopExperiment: noop, onStartEvaluation: noop,
   });
   // The caption is what makes the profile name read as a chosen value, and the
   // credential dot's meaning is stated rather than left to colour alone.
@@ -226,18 +229,21 @@ test("the extracted composer keeps pending-branch and template-error text in the
         parentRunId: "run_parent",
         branchMessageId: "message_1",
         parentTraceNeedsSaving: true,
+        label: { runTitle: "Fixture question", messageOrdinal: 2, role: "user" },
       },
       requestPreview: { error: "The template variable topic is missing." },
     }),
   );
 
   assert.match(html, /Template needs a value/);
-  assert.match(html, /Branching from run/);
+  assert.match(html, /Branching from \u201cFixture question\u201d at Message 2 · user\./);
+  // The IDs are debugging detail, kept off the visible text.
+  assert.doesNotMatch(html.replace(/title="[^"]*"/g, ""), /run_parent|message_1/);
   assert.match(html, /Save trace/);
   assert.match(html, /The template variable topic is missing/);
 });
 
-test("the resolved request preview uses one disclosure without nesting details", async () => {
+test("the collapsed request preview renders only its summary", async () => {
   const html = await render(
     "/app/request/request-composer.client.tsx",
     "RequestComposer",
@@ -249,11 +255,13 @@ test("the resolved request preview uses one disclosure without nesting details",
     }),
   );
 
+  // The preview repeats the whole resolved request. Kept in the document while
+  // collapsed, a large pasted prompt is copied into the page again on every
+  // keystroke.
   assert.match(html, /Resolved request preview/);
-  assert.match(html, /role="tab"/);
-  assert.match(html, />Raw</);
-  assert.equal((html.match(/class="pane-tabs"/g) ?? []).length, 2);
-  assert.doesNotMatch(html, /Raw OpenAI-compatible request body/);
+  assert.doesNotMatch(html, /Resolved fixture/);
+  assert.doesNotMatch(html, /Request preview view/);
+  assert.equal((html.match(/class="pane-tabs"/g) ?? []).length, 1);
   assert.equal((html.match(/<details/g) ?? []).length, 1);
 });
 
@@ -281,8 +289,11 @@ test("an unselected project tool is counted out of the manifest", async () => {
 
   assert.match(html, /No tools attached/);
   assert.doesNotMatch(html, /tool-origin project/);
-  // The definition itself is still editable below the manifest.
-  assert.match(html, /Attach to requests/);
+  // The definition itself is still editable below the manifest, and its
+  // card says it is not attached rather than offering a second control.
+  assert.match(html, /lookup_order · Edit definition/);
+  assert.match(html, /tool-attach-status">Not attached/);
+  assert.doesNotMatch(html, /Attach to requests/);
 });
 
 test("a profile that cannot call tools says so where the tools are listed", async () => {

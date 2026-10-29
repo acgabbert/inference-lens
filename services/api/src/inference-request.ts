@@ -1,8 +1,14 @@
 import type {
   CredentialSelection,
+  DecisionExecutionRequest,
   ModelDiscoveryRequest,
   ProviderTurnRequest,
 } from "../../../packages/contracts/src/index.ts";
+import type { DecisionExecution } from "../../../packages/core/src/decision.ts";
+import {
+  DECISION_WIRE_PROTOCOLS,
+  isDecisionInput,
+} from "../../../packages/core/src/decision.ts";
 import type {
   ResolvedInferenceRequest,
 } from "../../../packages/core/src/types.ts";
@@ -13,7 +19,12 @@ import {
   isProviderCapabilities,
   resolveProviderCapabilities,
 } from "../../../packages/core/src/types.ts";
-import { isProviderWireProtocol } from "../../../packages/core/src/provider-protocols.ts";
+import {
+  isConnectionProtocol,
+  isProviderWireProtocol,
+} from "../../../packages/core/src/provider-protocols.ts";
+import type { ConnectionProtocol } from "../../../packages/core/src/provider-protocols.ts";
+import { isServerConnectionId } from "../../../packages/core/src/server-connection-catalog.ts";
 import type { CredentialStore } from "./credential-store.ts";
 
 function parseCredential(value: unknown): CredentialSelection {
@@ -22,7 +33,11 @@ function parseCredential(value: unknown): CredentialSelection {
   }
   const credential = value as Partial<CredentialSelection>;
   if (credential.kind === "environment-default") {
-    return { kind: "environment-default" };
+    if (credential.connectionId === undefined) return { kind: "environment-default" };
+    if (!isServerConnectionId(credential.connectionId)) {
+      throw new Error("Credential selection is invalid.");
+    }
+    return { kind: "environment-default", connectionId: credential.connectionId };
   }
   if (credential.kind === "none") {
     return { kind: "none" };
@@ -149,10 +164,15 @@ export function resolveProviderTurnRequest(
   };
 }
 
+export interface ResolvedModelDiscoveryRequest
+  extends Pick<ResolvedInferenceRequest, "endpoint" | "apiKey" | "capabilities"> {
+  protocol?: ConnectionProtocol;
+}
+
 export function resolveModelDiscoveryRequest(
   value: unknown,
   credentials: CredentialStore,
-): Pick<ResolvedInferenceRequest, "endpoint" | "apiKey" | "capabilities" | "protocol"> {
+): ResolvedModelDiscoveryRequest {
   if (!value || typeof value !== "object") {
     throw new Error("Request body must be an object.");
   }
@@ -166,9 +186,9 @@ export function resolveModelDiscoveryRequest(
   ) {
     throw new Error("Capabilities must contain only known boolean values.");
   }
-  if (body.protocol !== undefined && !isProviderWireProtocol(body.protocol)) {
+  if (body.protocol !== undefined && !isConnectionProtocol(body.protocol)) {
     throw new Error(
-      "Protocol must be chat completions, Responses, or Anthropic Messages.",
+      "Protocol must be chat completions, Responses, Anthropic Messages, or System One.",
     );
   }
   return {
@@ -177,5 +197,65 @@ export function resolveModelDiscoveryRequest(
     capabilities:
       body.capabilities ?? resolveProviderCapabilities("openai-compatible"),
     apiKey: credentials.resolve(parseCredential(body.credential), body.endpoint),
+  };
+}
+
+function parseDecisionExecution(value: unknown): DecisionExecution {
+  if (!value || typeof value !== "object") {
+    throw new Error("Decision execution must be an object.");
+  }
+  const execution = value as Partial<DecisionExecution>;
+  if (
+    typeof execution.runId !== "string" ||
+    typeof execution.exchangeId !== "string" ||
+    typeof execution.attempt !== "number" ||
+    !Number.isSafeInteger(execution.attempt) ||
+    execution.attempt < 1
+  ) {
+    throw new Error("Decision execution identifiers are invalid.");
+  }
+  const input = execution.input;
+  if (!input || typeof input !== "object") {
+    throw new Error("Decision input is required.");
+  }
+  if (!(DECISION_WIRE_PROTOCOLS as readonly unknown[]).includes(input.target?.protocol)) {
+    throw new Error("Protocol must be System One.");
+  }
+  if (typeof input.target.endpoint !== "string" || !input.target.endpoint.trim()) {
+    throw new Error("Endpoint is required.");
+  }
+  if (typeof input.target.model !== "string" || !input.target.model.trim()) {
+    throw new Error("Model is required.");
+  }
+  if (!isProviderCapabilities(input.target.capabilities)) {
+    throw new Error("Capabilities must contain only known boolean values.");
+  }
+  if (!isDecisionInput(input.decision)) {
+    throw new Error(
+      "A decision needs a state and at least one choice, score, or noul question.",
+    );
+  }
+  return execution as DecisionExecution;
+}
+
+export interface ResolvedDecisionRequest {
+  execution: DecisionExecution;
+  apiKey: string;
+}
+
+/** Parses a stateless decision-exchange contract and resolves its credential. */
+export function resolveDecisionRequest(
+  value: unknown,
+  credentials: CredentialStore,
+): ResolvedDecisionRequest {
+  if (!value || typeof value !== "object") {
+    throw new Error("Request body must be an object.");
+  }
+  const body = value as Partial<DecisionExecutionRequest>;
+  const execution = parseDecisionExecution(body.execution);
+  const credential = parseCredential(body.credential);
+  return {
+    execution,
+    apiKey: credentials.resolve(credential, execution.input.target.endpoint),
   };
 }

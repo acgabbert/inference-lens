@@ -1,5 +1,10 @@
 # UI/UX review: everyday prompt, request, and project workflows
 
+**Historical review:** findings and verification below describe the recorded
+baseline. Later implementations may have resolved them; see the
+[current plan inventory](../README.md#plans-with-open-work) before treating
+these observations as open work.
+
 **Reviewed September 21, 2026 · `main` at `d41eae2` after `git pull --ff-only`.**
 
 This is a fresh task-based expert review of the running UI, with emphasis on using saved prompts, running requests, and saving/reopening work. It is not a measured user study. Product behavior was not changed. The report, screenshots, and five reproducible browser characterization scenarios are the review deliverables. The existing untracked September 20 re-audit was preserved.

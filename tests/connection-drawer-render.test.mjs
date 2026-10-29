@@ -67,12 +67,33 @@ function drawer(overrides) {
     ...overrides,
     activeProfile,
     credential: credential(overrides.credential),
-    serverDefault: {
+    server: {
       loaded: true,
       containerized: true,
-      configured: false,
-      ...overrides.serverDefault,
+      connections: [],
+      ...overrides.server,
     },
+  };
+}
+
+/** The legacy `INFERENCE_LENS_API_*` connection, as the status route reports it. */
+function legacy(overrides) {
+  return {
+    id: "default",
+    name: "Server default",
+    endpoint: "https://api.openai.com/v1",
+    credentialConfigured: true,
+    ...overrides,
+  };
+}
+
+function catalogConnection(overrides) {
+  return {
+    id: "decide",
+    name: "Decision models",
+    endpoint: "https://decide.example.test/v1",
+    credentialConfigured: true,
+    ...overrides,
   };
 }
 
@@ -94,7 +115,7 @@ test("the server-env hint stays out of a non-container deployment", async () => 
   const html = await render(
     DRAWER,
     "ConnectionDrawer",
-    drawer({ serverDefault: { containerized: false } }),
+    drawer({ server: { containerized: false } }),
   );
 
   assert.doesNotMatch(html, /Entering a key every session/);
@@ -104,7 +125,7 @@ test("nothing is claimed about the server before its status is known", async () 
   const html = await render(
     DRAWER,
     "ConnectionDrawer",
-    drawer({ serverDefault: { loaded: false } }),
+    drawer({ server: { loaded: false } }),
   );
 
   assert.doesNotMatch(html, /not configured/);
@@ -116,11 +137,8 @@ test("a configured server default explains what it sends and when", async () => 
     DRAWER,
     "ConnectionDrawer",
     drawer({
-      credential: { webMode: "environment-default" },
-      serverDefault: {
-        configured: true,
-        endpoint: "https://api.openai.com/v1",
-      },
+      credential: { webMode: { server: "default" } },
+      server: { connections: [legacy()] },
     }),
   );
 
@@ -135,11 +153,8 @@ test("selecting the server default for another provider warns before a run does"
     "ConnectionDrawer",
     drawer({
       activeProfile: { endpoint: "https://api.anthropic.com/v1" },
-      credential: { webMode: "environment-default" },
-      serverDefault: {
-        configured: true,
-        endpoint: "https://api.openai.com/v1",
-      },
+      credential: { webMode: { server: "default" } },
+      server: { connections: [legacy()] },
     }),
   );
 
@@ -153,10 +168,9 @@ test("malformed server metadata cannot crash the connection drawer", async () =>
     DRAWER,
     "ConnectionDrawer",
     drawer({
-      credential: { webMode: "environment-default" },
-      serverDefault: {
-        configured: true,
-        endpoint: "not a url?api_key=must-not-render",
+      credential: { webMode: { server: "default" } },
+      server: {
+        connections: [legacy({ endpoint: "not a url?api_key=must-not-render" })],
       },
     }),
   );
@@ -194,7 +208,7 @@ test("a server-provisioned profile locks its endpoint and says why", async () =>
         name: "Server default",
         credentialRef: "environment-default",
       },
-      serverDefault: { configured: true, endpoint: "https://api.openai.com/v1" },
+      server: { connections: [legacy()] },
     }),
   );
 
@@ -299,10 +313,11 @@ test("each protocol the endpoint speaks is a switch on the profile", async () =>
 test("protocols the server declares are locked on its profile", async () => {
   const html = await render(DRAWER, "ConnectionDrawer", drawer({
     activeProfile: { credentialRef: "environment-default" },
-    serverDefault: {
-      configured: true,
-      endpoint: "https://api.anthropic.com/v1",
-      protocols: ["anthropic-messages"],
+    server: {
+      connections: [legacy({
+        endpoint: "https://api.anthropic.com/v1",
+        protocols: ["anthropic-messages"],
+      })],
     },
   }));
   const switches = html.match(/<input data-readiness-control="protocols"[^>]*>/g) ?? [];
@@ -329,4 +344,91 @@ test("the connection heading names the APIs the profile speaks", async () => {
   assert.equal(pill(await render(DRAWER, "ConnectionDrawer", drawer({
     capabilities: only({ responsesApi: true, anthropicMessages: true }),
   }))), "OpenAI compatible + Anthropic");
+});
+
+test("a catalog key is offered only where the server would release it", async () => {
+  const connections = [
+    legacy(),
+    catalogConnection(),
+    catalogConnection({ id: "chat", name: "Chat gateway", endpoint: "https://api.openai.com/v1" }),
+    catalogConnection({ id: "keyless", name: "No key", endpoint: "https://api.openai.com/v1", credentialConfigured: false }),
+  ];
+  const html = await render(DRAWER, "ConnectionDrawer", drawer({ server: { connections } }));
+
+  assert.match(html, /<option value="environment-default:chat">Server: Chat gateway<\/option>/);
+  // Another origin's key could never be sent here, and a keyless one has none.
+  assert.doesNotMatch(html, /Decision models/);
+  assert.doesNotMatch(html, /No key/);
+  // The legacy option keeps its place and label.
+  assert.match(html, /<option value="environment-default">Server default \(\.env\)<\/option>/);
+});
+
+test("a selected catalog key is shown as selected and warned about once it no longer fits", async () => {
+  const html = await render(DRAWER, "ConnectionDrawer", drawer({
+    credential: { webMode: { server: "decide" } },
+    server: { connections: [catalogConnection()] },
+  }));
+
+  assert.match(html, /<option value="environment-default:decide" selected="">Server: Decision models<\/option>/);
+  assert.match(html, /credential for &quot;Decision models&quot; is bound to https:\/\/decide\.example\.test/);
+});
+
+test("a catalog profile locks its endpoint and names the catalog for its protocols", async () => {
+  const html = await render(DRAWER, "ConnectionDrawer", drawer({
+    activeProfile: {
+      id: "server-decide",
+      endpoint: "https://decide.example.test/v1",
+      credentialRef: "environment-default:decide",
+    },
+    credential: { webMode: { server: "decide" } },
+    server: { connections: [catalogConnection({ protocols: [], systemOne: true })] },
+  }));
+
+  assert.match(html, /Managed by server configuration/);
+  assert.match(html, /<code>INFERENCE_LENS_CONNECTIONS<\/code>/);
+  assert.match(html, /&quot;decide&quot; entry/);
+  assert.doesNotMatch(html, /INFERENCE_LENS_API_PROTOCOLS/);
+  const switches = html.match(/<input data-readiness-control="protocols"[^>]*>/g) ?? [];
+  assert.ok(switches.every((input) => / disabled=""/.test(input)));
+});
+
+test("a catalog connection whose key is unavailable says so on its profile", async () => {
+  const html = await render(DRAWER, "ConnectionDrawer", drawer({
+    activeProfile: {
+      id: "server-decide",
+      endpoint: "https://decide.example.test/v1",
+      credentialRef: "environment-default:decide",
+    },
+    server: {
+      connections: [catalogConnection({
+        credentialConfigured: false,
+        problem: "Its key file could not be read.",
+      })],
+    },
+  }));
+
+  assert.match(html, /holds no key for this connection: Its key file could not be read\./);
+});
+
+test("a catalog connection's ignored protocol list is reported on its own profile", async () => {
+  const html = await render(DRAWER, "ConnectionDrawer", drawer({
+    activeProfile: {
+      id: "server-decide",
+      endpoint: "https://decide.example.test/v1",
+      credentialRef: "environment-default:decide",
+    },
+    server: { connections: [catalogConnection({ unrecognizedProtocols: ["assistants"] })] },
+  }));
+
+  assert.match(html, /protocol list for &quot;decide&quot; was ignored: it names &quot;assistants&quot;/);
+  assert.doesNotMatch(html, /INFERENCE_LENS_API_PROTOCOLS/);
+});
+
+test("any held key, not only the legacy one, makes the env hint unnecessary", async () => {
+  const html = await render(DRAWER, "ConnectionDrawer", drawer({
+    server: { connections: [catalogConnection()] },
+  }));
+
+  assert.doesNotMatch(html, /Set <code>INFERENCE_LENS_API_KEY<\/code>/);
+  assert.match(html, /<option value="environment-default" disabled="">Server default \(\.env\) — not configured<\/option>/);
 });

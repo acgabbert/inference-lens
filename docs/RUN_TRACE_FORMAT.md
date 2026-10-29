@@ -1,6 +1,8 @@
 # Run trace format
 
-New traces use schema version 7. Versions 1 through 6 remain importable.
+New traces use schema version 8, which covers both chat runs and decision
+(System One) runs; see [Decision traces](#decision-traces). Chat versions 1
+through 7 remain importable.
 Versions 1 and 2 gain an empty `input.templateResolutions` collection during
 migration; Versions 1 through 3 gain `responseMode: "streaming"` on the run,
 turn events, and attempt projections. Version 5 replaces fragment-shaped
@@ -31,7 +33,7 @@ accepted as a valid Inference Lens run. Version 1 and 2 compatibility remains
 unchanged because those formats contain no template provenance.
 
 Inference Lens run traces are immutable, credential-free diagnostic artifacts.
-Version 7 uses deterministic JSON and is stored as `traces/<runId>.json` when a
+Version 8 uses deterministic JSON and is stored as `traces/<runId>.json` when a
 run belongs to an open project folder. A terminal ad hoc run can be exported
 from the Project menu, and older traces can be imported for
 inspection.
@@ -110,12 +112,13 @@ when the stored projections disagree.
 
 ## Compatibility and immutability
 
-The root `schemaVersion` is currently `7`. Version 1 is accepted with its
+The root `schemaVersion` is currently `8`. Version 1 is accepted with its
 original strict root schema; Version 2 adds the optional `branchedFrom` field,
 Version 3 adds required template provenance, Version 4 adds the required
 run-level response mode, Version 5 stores template provenance as messages, and
 Version 6 adds the required `toolExecutions` collection, and Version 7 adds the
-`assistant.continuation` event. The response mode is:
+`assistant.continuation` event. A version 8 chat trace is otherwise identical
+to version 7 and has no `kind`. The response mode is:
 
 ```ts
 "streaming" | "buffered"
@@ -123,7 +126,7 @@ Version 6 adds the required `toolExecutions` collection, and Version 7 adds the
 
 The mode is copied into each provider-turn input, so retries and tool-driven
 continuation turns preserve how the run was executed. New serialization always
-writes Version 7.
+writes Version 8.
 
 ## Provider continuation
 
@@ -164,3 +167,41 @@ Trace writes are write-once by run ID. Writing identical contents again is
 idempotent; writing different contents to an existing filename fails. Future
 schema versions must use explicit parsers or migrations rather than silently
 reinterpreting Version 1 evidence.
+
+## Decision traces
+
+A decision run (System One) is saved in the same `traces/` folder under the
+same filename rule, with `schemaVersion: 8` and `kind: "decision"`. A trace with
+no `kind` is a chat trace; any `kind` other than `"decision"` is rejected, and so
+is a decision trace that claims a version below 8.
+
+A decision trace stores the terminal run itself rather than an event log, since
+a decision exchange has a single frame: `runId`, the resolved `input` (target
+and authored decision, no credential), the terminal `status`, the `attempts`,
+the `exchanges` keyed by exchange ID, `startedAt`, and `endedAt`. Import
+validates the shape and that the parts agree, then uses the run as stored. It
+does not re-normalize raw bodies, so a later adapter rule cannot reject a trace
+that was valid when it was saved. It rejects, naming the path:
+
+- attempts not numbered 1…n, or no attempts at all;
+- an attempt whose exchange is missing or shared, or an exchange no attempt
+  made, stored under another ID, or recorded for another attempt;
+- an attempt before the last that did not fail, since only a failure is
+  retried, or an attempt still `running`;
+- a status that disagrees with the last attempt, a failed status whose error
+  is not the last attempt's, or a status time other than `endedAt`;
+- a completed attempt without a result, or whose answer IDs and types differ
+  from the input's questions; a failed attempt without an error; a cancelled
+  attempt holding either;
+- an exchange with more than one frame, or a frame not at index 0.
+
+Key order under `decision` and `result` is authored order (questions, options,
+answers, probabilities) and is kept when serializing. Caller-chosen question
+IDs, `__proto__` included, are stored as ordinary keys.
+
+`packages/core/src/run-trace.ts` owns the envelope, dispatch by `kind`, and
+serialization: `parseSavedRunTrace` returns either kind, and
+`parseRunTraceFile` stays chat-only, refusing a decision trace with a readable
+message. `packages/core/src/decision-trace.ts` owns what a decision trace must
+hold. Run history lists decision runs by question count, model, attempts, and
+status; opening one arrives with Decision Compose.

@@ -12,15 +12,24 @@ import {
 import { PROVIDER_WIRE_PROTOCOLS } from "../packages/core/src/run-kernel/types";
 import type { ProviderWireProtocol } from "../packages/core/src/run-kernel/types";
 import type { ProviderCapabilities } from "../packages/core/src/types";
+import { servesSystemOne } from "./profile-store.client";
 import type {
   StoredInferenceProfile,
   StoredInferenceProfilePatch,
 } from "./profile-store.client";
-import type {
-  ProfileCredentialHandle,
-  ServerDefaultStatus,
-} from "./use-connection-profiles.client";
-import { serverManagesProtocols } from "./use-connection-profiles.client";
+import type { ProfileCredentialHandle } from "./use-connection-profiles.client";
+import {
+  managingConnectionId,
+  serverConnectionFor,
+  serverManagesProtocols,
+} from "./server-connection-profiles";
+import type { ServerConnection, ServerStatus } from "./server-connection-profiles";
+import {
+  serverConnectionOfMode,
+  webCredentialModeFromStorage,
+  webCredentialModeToStorage,
+} from "./web-credential-mode";
+import { DEFAULT_SERVER_CONNECTION_ID } from "../packages/core/src/server-connection-catalog";
 import { SideDrawer } from "./workbench-shell.client";
 import type { ReadinessDestination } from "./run-readiness.client";
 
@@ -66,6 +75,24 @@ function providerFamilies(capabilities: ProviderCapabilities): string | undefine
   return families.size === 0 ? undefined : [...families].join(" + ");
 }
 
+/**
+ * The server keys a user-made profile may choose from: each connection that
+ * holds one and would release it to this endpoint (decision 7). Another
+ * origin's key could never be sent here, so offering it would only offer a
+ * failure. `default` is not among them; it keeps its own, always-listed option.
+ */
+function catalogKeyOptions(
+  connections: readonly ServerConnection[],
+  endpoint: string,
+): ServerConnection[] {
+  return connections.filter(
+    (connection) =>
+      connection.id !== DEFAULT_SERVER_CONNECTION_ID &&
+      connection.credentialConfigured &&
+      matchesServerOrigin(endpoint, connection.endpoint),
+  );
+}
+
 /** Names the variables to set, in the one place the absence is felt. */
 function ServerCredentialHint() {
   return (
@@ -84,7 +111,7 @@ interface ConnectionDrawerProps {
   activeProfile: StoredInferenceProfile;
   capabilities: ProviderCapabilities;
   credential: ProfileCredentialHandle;
-  serverDefault: ServerDefaultStatus;
+  server: ServerStatus;
   isDesktopRuntime: boolean;
   onSelectProfile(profileId: string): void;
   onAddProfile(): void;
@@ -92,6 +119,8 @@ interface ConnectionDrawerProps {
   /** Absent when the active profile can be deleted; otherwise why it cannot. */
   deleteProfileRefusal?: string;
   onUpdateProfile(patch: StoredInferenceProfilePatch): void;
+  /** The device-local System One declaration (D9-B). */
+  onSystemOneChange(enabled: boolean): void;
   onCapabilityChange(key: keyof ProviderCapabilities, enabled: boolean): void;
   /** Portable requirements in the open project and their device-local joins. */
   connectionRequirements?: readonly ConnectionRequirement[];
@@ -190,13 +219,14 @@ export function ConnectionDrawer({
   activeProfile,
   capabilities,
   credential,
-  serverDefault,
+  server,
   isDesktopRuntime,
   onSelectProfile,
   onAddProfile,
   onDeleteProfile,
   deleteProfileRefusal,
   onUpdateProfile,
+  onSystemOneChange,
   onCapabilityChange,
   connectionRequirements = [],
   mappedProfileIds,
@@ -213,28 +243,66 @@ export function ConnectionDrawer({
   const mappingRefs = useRef(new Map<string, HTMLSelectElement>());
   const projectEndpointRefs = useRef(new Map<string, HTMLButtonElement>());
   const keychainActive = isDesktopRuntime && credential.status.canPersist;
-  const serverDefaultActive =
-    !isDesktopRuntime && activeProfile.credentialRef === "environment-default";
-  const usingServerDefault = credential.webMode === "environment-default";
+  // Locked whenever the profile is the server's, reported or not: a profile
+  // whose connection has not answered is held, never handed back early.
+  const serverProfileActive =
+    !isDesktopRuntime && managingConnectionId(activeProfile) !== undefined;
+  const activeServerConnection = isDesktopRuntime
+    ? undefined
+    : serverConnectionFor(activeProfile, server);
+  const selectedServerKey = serverConnectionOfMode(credential.webMode);
+  const usingServerKey = selectedServerKey !== undefined;
+  const selectedConnection = server.connections.find(
+    ({ id }) => id === selectedServerKey,
+  );
+  const selectedCatalogUnavailable =
+    selectedServerKey !== undefined &&
+    selectedServerKey !== DEFAULT_SERVER_CONNECTION_ID &&
+    !selectedConnection;
+  const selectedCatalogName = managingConnectionId(activeProfile) === selectedServerKey
+    ? activeProfile.name
+    : selectedServerKey;
+  const unavailableCatalogDetail = server.catalogProblem
+    ? "The server's connection catalog was refused. This credential selection is kept; fix the catalog and reload this page."
+    : !server.loaded
+      ? "The server has not reported this connection. This credential selection is kept until it answers."
+      : "This server no longer holds that connection's credential. Choose another authentication mode.";
+  const defaultConnection = server.connections.find(
+    ({ id }) => id === DEFAULT_SERVER_CONNECTION_ID,
+  );
+  const defaultKeyConfigured = defaultConnection?.credentialConfigured === true;
+  // The selected key stays listed even when it no longer qualifies, so the
+  // control shows what is chosen and the warning below explains why it fails.
+  const catalogOptions = catalogKeyOptions(server.connections, activeProfile.endpoint);
+  if (
+    selectedConnection &&
+    selectedConnection.id !== DEFAULT_SERVER_CONNECTION_ID &&
+    !catalogOptions.includes(selectedConnection)
+  ) {
+    catalogOptions.push(selectedConnection);
+  }
   // Withheld until the probe answers, so an unconfigured server and an
   // unanswered one are never presented as the same thing. Containers only: a
   // `npm run dev` user has .env.example open beside them already.
   const offerServerCredentialHint =
     !isDesktopRuntime &&
-    serverDefault.loaded &&
-    serverDefault.containerized &&
-    !serverDefault.configured;
+    server.loaded &&
+    server.containerized &&
+    !server.catalogProblem &&
+    !server.connections.some(({ credentialConfigured }) => credentialConfigured);
   const serverOriginMismatch =
-    usingServerDefault &&
-    !matchesServerOrigin(activeProfile.endpoint, serverDefault.endpoint);
-  const serverOrigin = configuredServerOrigin(serverDefault.endpoint);
+    usingServerKey &&
+    !matchesServerOrigin(activeProfile.endpoint, selectedConnection?.endpoint);
+  const serverOrigin = configuredServerOrigin(selectedConnection?.endpoint);
+  const selectedIsDefault = selectedServerKey === DEFAULT_SERVER_CONNECTION_ID;
   const providerFamily = providerFamilies(capabilities);
   // Locked the way the endpoint is; see `serverManagesProtocols`.
   const protocolsManaged = serverManagesProtocols(
     activeProfile,
-    serverDefault,
+    server,
     isDesktopRuntime,
   );
+
 
   useEffect(() => {
     if (!open || pendingDestination?.surface !== "connections") return;
@@ -334,9 +402,9 @@ export function ConnectionDrawer({
               onUpdateProfile({ endpoint: event.target.value })
             }
             spellCheck={false}
-            disabled={serverDefaultActive}
+            disabled={serverProfileActive}
           />
-          {serverDefaultActive && (
+          {serverProfileActive && (
             <span className="credential-status">
               Managed by server configuration. Create a profile for another provider.
             </span>
@@ -346,12 +414,11 @@ export function ConnectionDrawer({
           <label>
             Authentication
             <select
-              value={credential.webMode}
-              onChange={(event) =>
-                credential.setWebMode(
-                  event.target.value as typeof credential.webMode,
-                )
-              }
+              value={webCredentialModeToStorage(credential.webMode)}
+              onChange={(event) => {
+                const mode = webCredentialModeFromStorage(event.target.value);
+                if (mode) credential.setWebMode(mode);
+              }}
             >
               <option value="none">No authentication</option>
               {/* Kept visible but unselectable when unconfigured: an option
@@ -359,25 +426,50 @@ export function ConnectionDrawer({
                   where a hidden one leaves the user to find it in the docs. */}
               <option
                 value="environment-default"
-                disabled={serverDefault.loaded && !serverDefault.configured}
+                disabled={server.loaded && !defaultKeyConfigured}
               >
                 Server default (.env)
-                {serverDefault.loaded && !serverDefault.configured
+                {server.loaded && !defaultKeyConfigured
                   ? " — not configured"
                   : ""}
               </option>
+              {catalogOptions.map((connection) => (
+                <option
+                  key={connection.id}
+                  value={webCredentialModeToStorage({ server: connection.id })}
+                >
+                  Server: {connection.name}
+                </option>
+              ))}
+              {selectedCatalogUnavailable && (
+                <option
+                  value={webCredentialModeToStorage(credential.webMode)}
+                  disabled
+                >
+                  Server: {selectedCatalogName} — unavailable
+                </option>
+              )}
               <option value="session">Session key</option>
             </select>
-            {usingServerDefault && !serverOriginMismatch && (
+            {usingServerKey && !serverOriginMismatch && (
               <span className="credential-status">
                 The server sends its credential only to its configured origin.
               </span>
             )}
             {serverOriginMismatch && (
               <span className="credential-status credential-status-error">
-                {serverOrigin
-                  ? `The server's credential is bound to ${serverOrigin} and will not be sent to this endpoint. Choose another authentication mode, or point this profile at the configured provider.`
-                  : "This server holds no default credential to send. Choose another authentication mode."}
+                {selectedCatalogUnavailable
+                  ? unavailableCatalogDetail
+                  : serverOrigin
+                    ? `The server's credential${selectedIsDefault ? "" : ` for "${selectedConnection!.name}"`} is bound to ${serverOrigin} and will not be sent to this endpoint. Choose another authentication mode, or point this profile at the configured provider.`
+                    : selectedIsDefault
+                      ? "This server holds no default credential to send. Choose another authentication mode."
+                      : "This server no longer holds that connection's credential. Choose another authentication mode."}
+              </span>
+            )}
+            {activeServerConnection?.problem && (
+              <span className="credential-status credential-status-error" role="status">
+                The server holds no key for this connection: {activeServerConnection.problem}
               </span>
             )}
             {offerServerCredentialHint && <ServerCredentialHint />}
@@ -390,12 +482,12 @@ export function ConnectionDrawer({
             value={credential.draft}
             onChange={(event) => credential.setDraft(event.target.value)}
             onBlur={credential.commit}
-            disabled={!isDesktopRuntime && usingServerDefault}
+            disabled={!isDesktopRuntime && usingServerKey}
             placeholder={
               keychainActive && credential.status.isApprovedForEndpoint
                 ? "Stored securely — enter a replacement"
-                : !isDesktopRuntime && usingServerDefault
-                  ? "Server default selected"
+                : !isDesktopRuntime && usingServerKey
+                  ? "Server key selected"
                   : "Enter a key for this endpoint"
             }
             autoComplete="off"
@@ -438,16 +530,48 @@ export function ConnectionDrawer({
               </label>
             );
           })}
-          {protocolsManaged && (
+          {/*
+            Device-local, outside the portable snapshot (D9-B): it decides
+            only which connections Compose → Decision offers. The server
+            locks it with the chat APIs when it declares its list (D9a).
+          */}
+          <label className="capability-toggle">
+            <input
+              type="checkbox"
+              checked={servesSystemOne(activeProfile)}
+              disabled={protocolsManaged}
+              onChange={(event) => onSystemOneChange(event.target.checked)}
+            />
+            <span>
+              {protocolLabel("systemone")} <code>{protocolPath("systemone")}</code>
+              <small>Decision requests: choice, score, and true/false questions. Offered in Compose → Decision.</small>
+            </span>
+          </label>
+          {protocolsManaged && activeServerConnection && (
             <span className="credential-status">
-              Managed by <code>INFERENCE_LENS_API_PROTOCOLS</code>. Enabling
-              another API means changing that variable on the server.
+              {activeServerConnection.id === DEFAULT_SERVER_CONNECTION_ID ? (
+                <>
+                  Managed by <code>INFERENCE_LENS_API_PROTOCOLS</code>. Enabling
+                  another API means changing that variable on the server.
+                </>
+              ) : (
+                <>
+                  Managed by the server&apos;s connection catalog
+                  (<code>INFERENCE_LENS_CONNECTIONS</code>). Enabling another
+                  API means changing its &quot;{activeServerConnection.id}&quot; entry.
+                </>
+              )}
             </span>
           )}
-          {serverDefaultActive && serverDefault.unrecognizedProtocols && (
+          {activeServerConnection?.unrecognizedProtocols && (
             <span className="credential-status" role="status">
-              <code>INFERENCE_LENS_API_PROTOCOLS</code> was ignored: it names{" "}
-              {serverDefault.unrecognizedProtocols.map((name) => `"${name}"`).join(", ")},
+              {activeServerConnection.id === DEFAULT_SERVER_CONNECTION_ID ? (
+                <code>INFERENCE_LENS_API_PROTOCOLS</code>
+              ) : (
+                <>The protocol list for &quot;{activeServerConnection.id}&quot;</>
+              )}{" "}
+              was ignored: it names{" "}
+              {activeServerConnection.unrecognizedProtocols.map((name) => `"${name}"`).join(", ")},
               which the server does not recognize.
             </span>
           )}

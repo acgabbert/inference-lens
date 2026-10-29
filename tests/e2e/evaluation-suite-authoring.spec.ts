@@ -175,6 +175,7 @@ test("every offered check kind is addable in the running editor", async ({ page 
     "Contains text",
     "Regex",
     "Valid JSON",
+    "JSON Schema",
     "Maximum characters",
     "Maximum duration",
     "Maximum tokens",
@@ -218,7 +219,7 @@ test("every offered check kind is addable in the running editor", async ({ page 
     }
   }
   expect(failures).toEqual([]);
-  await expect(editor.locator(".evaluation-case-check-count")).toHaveText("11");
+  await expect(editor.locator(".evaluation-case-check-count")).toHaveText("12");
   await expect(editor).not.toContainText(/NaN|Infinity|undefined|\[object Object\]/);
 });
 
