@@ -628,12 +628,6 @@ label.file-button {
   display: none;
 }
 
-.workspace {
-  min-height: calc(100vh - 72px);
-  display: grid;
-  grid-template-columns: 244px minmax(380px, 1fr) minmax(420px, 1.12fr);
-}
-
 .configuration,
 .composer,
 .result {
@@ -5442,15 +5436,6 @@ pre {
 }
 
 @media (max-width: 1050px) {
-  .workspace {
-    grid-template-columns: 220px 1fr;
-  }
-
-  .result {
-    grid-column: 1 / -1;
-    border-top: 1px solid var(--border-default);
-  }
-
   /* Seven items: reorder, Name, Type, Required, then Description on a line of
      its own and Default beside Remove, all under the fields above. */
   .schema-property-row {
@@ -5478,12 +5463,7 @@ pre {
     justify-content: flex-end;
   }
 
-  .workspace {
-    display: block;
-  }
-
-  .configuration,
-  .composer {
+  .configuration {
     border-right: 0;
     border-bottom: 1px solid var(--border-default);
   }
