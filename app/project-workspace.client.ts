@@ -1,5 +1,39 @@
 "use client";
 
+/**
+ * Project folder storage for both hosts. The rules below are the ones review
+ * keeps rediscovering; `tests/project-workspace-invariants.test.ts` and lint
+ * hold the ones that can be checked mechanically, and the use-site rules are
+ * in `use-project-workspace.client.ts`.
+ *
+ * W1. A handle is one read, not a folder. A `ProjectWorkspaceHandle`'s
+ *     storage expects the manifest contents it was opened with, so reopening
+ *     always mints a new handle and never revives an old one. Compare handles
+ *     with `===` only to ask "is this still the same read/write session"
+ *     (queued writes, async continuations). To ask "is this the same project
+ *     folder" — selection, navigation, links, anything the user would expect
+ *     to survive an editor handover — use `isSameProjectWorkspace`.
+ *
+ * W2. Manifest reads of an adopted workspace take the project's write scope.
+ *     `reopenProjectWorkspace` reads inside `coordinateProjectWrites`, so it
+ *     never sees a save half-way and can check the project ID under the same
+ *     lock; any later read goes through it. The only reads outside the scope
+ *     happen before the project ID is known — picking, creating, resuming and
+ *     inspecting a link candidate — and they precede adoption.
+ *
+ * W3. Manifest writes are checked against the last read. `save` re-reads the
+ *     file inside the write scope and throws `ProjectManifestConflictError`
+ *     when it differs from what this handle last read or wrote. Tab
+ *     coordination narrows who writes; this check is still the only
+ *     protection against other origins, the desktop app and other machines.
+ *
+ * W4. The last-project record is written only by
+ *     `rememberAcceptedProjectWorkspace`, after the project owner accepts a
+ *     workspace, and only when the folder changes. Its `recordId` is a
+ *     compare-and-delete token, so rewriting the record for the same folder
+ *     silently disarms "Forget location".
+ */
+
 import {
   PROJECT_FILE_NAME,
   projectGitignoreContents,

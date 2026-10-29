@@ -178,6 +178,26 @@ export type ProjectDocumentAdoption = "replace" | "refresh";
  * The caller supplies the currently editable request draft and applies a
  * loaded draft, keeping session-only run configuration and run state outside
  * this persistence boundary.
+ *
+ * Storage rules W1–W4 live in `project-workspace.client.ts`. The rules for
+ * using it from here:
+ *
+ * U1. Only the editor tab writes the manifest, through
+ *     `writeProjectWorkspace`'s single queue. Each queued write re-checks the
+ *     role when it runs, not when it was queued, and is fenced on still
+ *     holding the editor lock.
+ * U2. Becoming editor reloads from disk through `adoptEditorRoleFromDisk`;
+ *     it never promotes this tab's in-memory document to the base for writing.
+ *     The reload is a `keepTabRole` refresh, so it neither re-coordinates tabs
+ *     nor rewrites the last-project record (W4).
+ * U3. Every asynchronous workflow re-checks that it is still current after
+ *     each await (acquisition counter, coordinator, handle) before it applies
+ *     anything. A result that arrives for a superseded workspace is dropped.
+ * U4. A run link in the URL outranks restoring the last project: restore waits
+ *     while a `#/run/` fragment is present and retries when it is cleared.
+ *     Clearing a fragment goes through `clearRunLinkFragment`, which replaces
+ *     the history entry, so Back cannot replay a dismissed link; lint keeps
+ *     `history` calls inside the run-link modules.
  */
 export function useProjectWorkspace(input: {
   activeProfile: ProfileIdentity;
