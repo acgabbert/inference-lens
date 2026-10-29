@@ -13,10 +13,12 @@ const text = (bytes: Uint8Array) => new TextDecoder().decode(bytes);
 const encode = (value: string) => new TextEncoder().encode(value);
 
 interface Faults {
-  manifest?: "error-before-write" | "error-after-write" | "read-back-mismatch";
+  manifest?: "error-before-write" | "error-after-write" | "read-back-mismatch" | "failed-but-activated";
   failActivation?: { destination: string; phase: "write" | "read-back" };
   unprotected?: boolean;
   beforeExecute?: (storage: Host) => void;
+  /** Return internal buffers from read(), as a host reusing its storage buffers would. */
+  liveReads?: boolean;
 }
 class Host implements MigrationCompletionStorage {
   manifest: Uint8Array | null = source();
@@ -26,7 +28,8 @@ class Host implements MigrationCompletionStorage {
   faults: Faults;
   constructor(faults: Faults = {}) { this.faults = faults; }
   async read(): Promise<MigrationSnapshot> {
-    return { manifest: this.manifest && new Uint8Array(this.manifest), files: [...this.files].map(([path, bytes]) => this.unreadable.has(path) ? { path, error: "unreadable" } : { path, bytes: new Uint8Array(bytes) }) };
+    const out = (bytes: Uint8Array) => this.faults.liveReads ? bytes : new Uint8Array(bytes);
+    return { manifest: this.manifest && out(this.manifest), files: [...this.files].map(([path, bytes]) => this.unreadable.has(path) ? { path, error: "unreadable" } : { path, bytes: out(bytes) }) };
   }
   async execute(plan: MigrationCompletionPlan): Promise<MigrationCompletionHostResult> {
     this.faults.beforeExecute?.(this);
@@ -37,6 +40,11 @@ class Host implements MigrationCompletionStorage {
     if (!same) return { kind: "stale-plan" };
     if (this.faults.unprotected) return { kind: "blocked", reason: "protection", message: "Protection is missing." };
     let manifest: "written" | "already-shared" | "failed" = "already-shared";
+    // Contract violation: personal records written although the shared write failed.
+    if (this.faults.manifest === "failed-but-activated") {
+      for (const item of plan.activations) this.files.set(item.destination, new Uint8Array(item.bytes));
+      return { kind: "executed", manifest: "failed", activated: plan.activations.map(item => item.destination) };
+    }
     if (sameMigrationBytes(this.manifest, plan.source)) {
       if (this.faults.manifest === "error-before-write") return { kind: "executed", manifest: "failed", activated: [], stopped: { destination: "project.json", phase: "write", message: "write failed" } };
       this.manifest = new Uint8Array(plan.shared);
@@ -271,13 +279,14 @@ test("unreadable inventory under the operation or a stale previous inspection is
   assert.equal(setup.host.executions.length, 0);
 });
 
-test("the plan handed to the host is independent of later mutation of storage buffers", async () => {
-  const setup = await staged();
-  assertCompleted(await complete(setup.host, setup.prepared));
-  const [plan] = setup.host.executions;
-  const shared = new Uint8Array(plan.shared);
-  setup.host.manifest!.fill(0);
-  assert.deepEqual(plan.shared, shared);
+test("the plan's expected snapshot is independent of storage buffers mutated between read and execute", async () => {
+  const setup = await staged({ liveReads: true });
+  const execute = setup.host.execute.bind(setup.host);
+  // `storage.execute` is evaluated before its argument, so this runs after core's read and before the plan is handed over.
+  Object.defineProperty(setup.host, "execute", { get: () => { setup.host.manifest!.fill(32, 0, 1); return execute; } });
+  const outcome = await complete(setup.host, setup.prepared);
+  assert.deepEqual(outcome, { kind: "stale-plan" });
+  assert.equal(setup.host.files.has("selections.json"), false);
 });
 
 test("no application or CLI code path references the completion capability", async () => {
@@ -297,4 +306,47 @@ test("no application or CLI code path references the completion capability", asy
   };
   walk(root);
   assert.deepEqual(offenders, [], "completion stays opt-in until reconciliation ships");
+});
+
+test("a misnamed valid draft at a candidate destination is unavailable, not a pending competitor", async () => {
+  const setup = await staged();
+  const [first] = setup.drafts;
+  const misnamed = { ...JSON.parse(text(setup.bytes(first.candidate))), draftId: "draft_elsewhere" };
+  setup.host.files.set(first.destination, encode(serializeWorkbenchRecord(misnamed)));
+  const outcome = assertCompleted(await complete(setup.host, setup.prepared));
+  assert.equal(outcome.personal.candidates.find(item => item.candidate === first.candidate)?.disposition, "unavailable");
+  assert.equal(setup.host.files.has(setup.drafts[1].destination), false, "a misnamed draft prevents ruling out ownership");
+  assert.equal(outcome.personal.candidates.find(item => item.candidate === setup.drafts[1].candidate)?.disposition, "unavailable");
+});
+
+test("a misnamed valid draft elsewhere makes absent draft candidates unavailable, as the workbench store would", async () => {
+  const setup = await staged();
+  const [first] = setup.drafts;
+  const record = JSON.parse(text(setup.bytes(first.candidate)));
+  setup.host.files.set("drafts/draft_misnamed.json", encode(serializeWorkbenchRecord({ ...record, draftId: "draft_other", asset: { ...record.asset, id: "template_unrelated" } })));
+  const outcome = assertCompleted(await complete(setup.host, setup.prepared));
+  for (const draft of setup.drafts) {
+    assert.equal(outcome.personal.candidates.find(item => item.candidate === draft.candidate)?.disposition, "unavailable");
+    assert.equal(setup.host.files.has(draft.destination), false);
+  }
+  assert.deepEqual(setup.host.files.get("selections.json"), setup.selections);
+});
+
+test("when reinspection after execution is blocked, no candidate is reported as eligible", async () => {
+  const setup = await staged({ manifest: "read-back-mismatch" });
+  const outcome = assertCompleted(await complete(setup.host, setup.prepared));
+  assert.equal(outcome.shared, "uncertain");
+  for (const item of outcome.personal.candidates) {
+    assert.equal(item.disposition, "unavailable", item.candidate);
+    assert.match(item.reason ?? "", /manifest-diverged/);
+  }
+});
+
+test("activations reported after a failed shared write stop the batch as a host contract violation", async () => {
+  const setup = await staged({ manifest: "failed-but-activated" });
+  const outcome = assertCompleted(await complete(setup.host, setup.prepared));
+  assert.equal(outcome.shared, "uncertain");
+  assert.equal(outcome.personal.status, "stopped");
+  assert.equal(outcome.personal.stopped?.destination, "selections.json");
+  assert.match(outcome.personal.stopped?.message ?? "", /shared write/);
 });

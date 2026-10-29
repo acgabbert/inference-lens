@@ -4,6 +4,8 @@ import {
 } from "./migration-journal.ts";
 import type { MigrationFile, MigrationInspection, MigrationSnapshot } from "./migration-journal.ts";
 import { parseWorkbenchRecordJson } from "./personal-workbench.ts";
+import type { WorkbenchRecordV1 } from "./personal-workbench.ts";
+import { assertWorkbenchRecordPath, workbenchRecordPath } from "./workbench-store.ts";
 
 export type CandidateDisposition = "present" | "activate" | "existing-selections" | "pending-draft" | "unavailable";
 export interface CandidateAssessment {
@@ -57,6 +59,14 @@ const copySnapshot = (snapshot: MigrationSnapshot): MigrationSnapshot => ({
 });
 const isActiveRecordPath = (path: string) => path === SELECTIONS || /^drafts\/[^/]+$/.test(path);
 
+/** The workbench store's checks: a record whose identity does not match its filename is unavailable. */
+function parseActiveRecord(path: string, bytes: Uint8Array, projectId: ProjectId): WorkbenchRecordV1 {
+  assertWorkbenchRecordPath(path);
+  const record = parseWorkbenchRecordJson(decode(bytes), projectId);
+  if (workbenchRecordPath(record) !== path) throw new Error("Record identity does not match its filename.");
+  return record;
+}
+
 interface Verified { projectId: ProjectId; sharedBytes: Uint8Array; sourceBytes: Uint8Array; candidates: { kind: "selections" | "draft"; candidate: string; destination: string; assetId?: string; bytes: Uint8Array }[]; state: "ready" | "shared-written" }
 
 /** Reconstructs everything from preserved source; neither journal hashes nor a previous staged result are trusted. */
@@ -91,7 +101,7 @@ function assess(snapshot: MigrationSnapshot, verified: Verified): CandidateAsses
     if (!path.startsWith("drafts/")) continue;
     try {
       if (!("bytes" in file)) throw new Error(file.error);
-      const record = parseWorkbenchRecordJson(decode(file.bytes), verified.projectId);
+      const record = parseActiveRecord(path, file.bytes, verified.projectId);
       if (record.kind === "draft") assets.add(record.asset.id); else throw new Error("Not a draft record.");
     } catch { draftUnavailable = true; }
   }
@@ -103,12 +113,12 @@ function assess(snapshot: MigrationSnapshot, verified: Verified): CandidateAsses
     if (item.kind === "selections") {
       if (!file) return { ...base, disposition: "activate" };
       try {
-        if (parseWorkbenchRecordJson(decode(file.bytes), verified.projectId).kind === "selections") return { ...base, disposition: "existing-selections", reason: "Existing selections are preserved." };
+        if (parseActiveRecord(item.destination, file.bytes, verified.projectId).kind === "selections") return { ...base, disposition: "existing-selections", reason: "Existing selections are preserved." };
       } catch { /* falls through */ }
       return { ...base, disposition: "unavailable", reason: "Active selections are corrupt or unrecognized." };
     }
     if (file) {
-      try { parseWorkbenchRecordJson(decode(file.bytes), verified.projectId); } catch { return { ...base, disposition: "unavailable", reason: "Active draft is corrupt or unrecognized." }; }
+      try { parseActiveRecord(item.destination, file.bytes, verified.projectId); } catch { return { ...base, disposition: "unavailable", reason: "Active draft is corrupt or unrecognized." }; }
       return { ...base, disposition: "pending-draft", reason: "A different draft occupies the destination." };
     }
     if (item.assetId !== undefined && assets.has(item.assetId)) return { ...base, disposition: "pending-draft", reason: "Another draft already names this asset." };
@@ -148,12 +158,23 @@ export async function completeSharedProjectMigration(storage: MigrationCompletio
     const shared: SharedOutcome = result.manifest === "failed" ? "uncertain"
       : sameMigrationBytes(after.manifest, verified.sharedBytes) ? "confirmed-shared"
         : sameMigrationBytes(after.manifest, verified.sourceBytes) ? "unchanged-source" : "diverged";
-    const final = await verify(after, projectId, operationId).catch(() => undefined);
-    const finalCandidates = final && !("blocked" in final) ? assess(after, final) : candidates;
+    const final = await verify(after, projectId, operationId).catch((error: unknown) => error instanceof Error ? error : new Error(String(error)));
+    // A blocked reinspection must not fall back to pre-write dispositions, which could still read as eligible.
+    const finalCandidates = final instanceof Error || "blocked" in final
+      ? candidates.map(({ kind, candidate, destination }): CandidateAssessment => ({
+        kind, candidate, destination, disposition: "unavailable",
+        reason: final instanceof Error ? `Reinspection after execution failed: ${final.message}`
+          : `Reinspection after execution was blocked: ${final.blocked.kind}${final.blocked.message ? ` (${final.blocked.message})` : ""}.`,
+      }))
+      : assess(after, final);
     const activated = result.activated.filter(destination => finalCandidates.some(item => item.destination === destination && item.disposition === "present"));
     const unresolved = finalCandidates.some(item => item.disposition === "pending-draft" || item.disposition === "unavailable" || item.disposition === "activate");
-    const status = result.stopped ? "stopped" : unresolved || shared !== "confirmed-shared" ? "recovery-pending" : "complete";
-    return { kind: "completed", shared, personal: { status, candidates: finalCandidates, activated, ...(result.stopped ? { stopped: result.stopped } : {}) } };
+    // Activation requires a confirmed shared write; a host reporting otherwise broke the contract.
+    const stopped = result.stopped ?? (result.manifest === "failed" && result.activated.length
+      ? { destination: result.activated[0], phase: "write" as const, message: "Host reported activations after a failed shared write." }
+      : undefined);
+    const status = stopped ? "stopped" : unresolved || shared !== "confirmed-shared" ? "recovery-pending" : "complete";
+    return { kind: "completed", shared, personal: { status, candidates: finalCandidates, activated, ...(stopped ? { stopped } : {}) } };
   } catch (error) {
     return { kind: "blocked", reason: "failed", message: error instanceof Error ? error.message : String(error) };
   }
