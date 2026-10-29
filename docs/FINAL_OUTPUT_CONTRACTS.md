@@ -53,6 +53,15 @@ shared format stays v17 in code until environments land, then becomes v18.
 Taking v16 rather than v17 avoids B's skipped-version cost. If environments
 merge first after all, the two features swap numbers rather than skip one.
 
+**Revised 2026-10-29: numbers swapped.** Environments are implemented first,
+so the two features swap numbers as the paragraph above allows. Final output
+now takes active **Project v17, RunTrace v10 and ExperimentPlan v7**;
+[prompt environments](PROMPT_ENVIRONMENTS_PLAN.md#format-version) take Project
+v16, RunTrace v9 and ExperimentPlan v6. The staged shared format stays v17
+when environments land and carries them. When this feature's PR 2 lands active
+v17, the staged format renumbers to v18 and derives from active v17, the same
+mechanical renumber as before. No version is skipped.
+
 ### D2. Where the adopted message's attribution lives
 
 The agreed policy materializes a "clearly attributed" assistant message when a
@@ -407,16 +416,16 @@ so it uses `effectiveAnswer` and needs no materialization.
 
 ## Artifact compatibility
 
-Version numbers are from D1.
+Version numbers are from D1, as revised.
 
-- **Project v16.** `ProjectConversationRevision.finalOutput?` is added in a
+- **Project v17.** `ProjectConversationRevision.finalOutput?` is added in a
   strict new version. Older documents upgrade with no contract. A document from the
   new version is rejected by old readers with a version error.
-- **RunTrace v9.** `ResolvedRunInput.finalOutput?`, the two events, the
+- **RunTrace v10.** `ResolvedRunInput.finalOutput?`, the two events, the
   `final_output_error` code and replay validation are added. Older traces
   parse unchanged, get no inferred finalization, and keep `effectiveAnswer`
   equal to `finalAssistantOutput`.
-- **ExperimentPlan v6.** `commonInput` and evaluation case inputs embed
+- **ExperimentPlan v7.** `commonInput` and evaluation case inputs embed
   `ResolvedRunInput`, so they gain `finalOutput?` in a new plan version.
   Execution hashes include it.
 - **ExperimentResult.** No bump. Its shape does not change, and the only runs

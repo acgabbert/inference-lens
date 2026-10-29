@@ -56,12 +56,11 @@ approval UI or scheduler behavior; otherwise keep the MVP tool-free.
 Current formats: active Project v15, RunTrace v8, ExperimentPlan v5, and
 ExperimentResult v6. [`shared-project.ts`](../packages/core/src/shared-project.ts)
 also defines a **staged** shared format that app/CLI do not yet use, renumbered
-to v17 on 2026-10-29. The same day,
-[final output](FINAL_OUTPUT_CONTRACTS.md#d1-format-version-allocation) claimed
-active Project v16, RunTrace v9 and ExperimentPlan v6, and
-[prompt environments](PROMPT_ENVIRONMENTS_PLAN.md#format-version) moved to
+to v17 on 2026-10-29. [Prompt environments](PROMPT_ENVIRONMENTS_PLAN.md#format-version)
+take active Project v16, RunTrace v9 and ExperimentPlan v6, and
+[final output](FINAL_OUTPUT_CONTRACTS.md#d1-format-version-allocation) takes
 Project v17, RunTrace v10 and ExperimentPlan v7; the staged format becomes v18
-when environments land. Coordinate schema allocation with that
+when final output lands. Coordinate schema allocation with that
 migration, environments, and the
 [final-output tool plan](N8N_FINAL_OUTPUT_TOOL_PLAN.md); neither is a dependency
 that this feature should accidentally turn on.

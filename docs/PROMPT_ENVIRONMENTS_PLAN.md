@@ -1,10 +1,11 @@
 # Prompt environments
 
 **Status:** Decision table, limits and format versions accepted 2026-10-29;
-the staged shared format is renumbered to v17. Format numbers revised the same
-day: [final output](FINAL_OUTPUT_CONTRACTS.md#d1-format-version-allocation)
-took Project v16 and RunTrace v9, so environments take Project v17, RunTrace
-v10 and ExperimentPlan v7 (see [Format version](#format-version)). No runtime
+the staged shared format is renumbered to v17. Environments are implemented
+before final output, so they keep Project v16 and take RunTrace v9 and
+ExperimentPlan v6; [final output](FINAL_OUTPUT_CONTRACTS.md#d1-format-version-allocation)
+moves to Project v17, RunTrace v10 and ExperimentPlan v7 (see
+[Format version](#format-version)). Contract slice in progress; no runtime
 implementation yet.
 **Date:** 2026-10-29. **Inspected baseline:** `main` at `406cb03`.
 
@@ -167,6 +168,15 @@ in code until environments land. That change renumbers it to v18, derived from
 active v17, the same mechanical renumber as before. Nothing reads the staged
 format today, so the two v17s never meet in a reader. If environments land
 before final output, the two features swap numbers rather than skip one.
+
+**Revised again 2026-10-29: numbers swapped back.** Environments are
+implemented first, so they take active **Project v16, RunTrace v9 and
+ExperimentPlan v6**, and
+[final output](FINAL_OUTPUT_CONTRACTS.md#d1-format-version-allocation) takes
+Project v17, RunTrace v10 and ExperimentPlan v7. This restores option A as
+first accepted: the staged shared format stays v17, carries environments, and
+derives from active v16 when environments land. It renumbers to v18 only when
+final output lands active v17.
 
 ## Feature owners and user experience
 
