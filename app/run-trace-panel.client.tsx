@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 
 import {
   createRunTrace,
+  isTerminalRunStatus,
 } from "../packages/core/src/run-kernel";
 import type {
   ResolvedTemplateUse,
@@ -403,7 +404,7 @@ export function RunTracePanel({
       onOpenChange={onOpenChange}
       summary={<>
         <RunInspectionSummary summary={summary} />
-        {onPromoteTrace && runState && ["completed", "failed", "cancelled"].includes(runState.status.kind) && (
+        {onPromoteTrace && runState && isTerminalRunStatus(runState.status) && (
           <button className="text-button" type="button" onClick={() => onPromoteTrace(createRunTrace(runState, { branchedFrom }))}>Promote to case…</button>
         )}
       </>}

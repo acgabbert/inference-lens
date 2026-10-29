@@ -12,7 +12,7 @@ import { decisionRunTrace } from "../../core/src/decision-trace.ts";
 import type { DecisionRunTrace } from "../../core/src/decision-trace.ts";
 import { materializeParsedDecisionCellInput } from "../../core/src/experiment.ts";
 import type { DecisionEvaluationExperimentPlan, ExperimentCell } from "../../core/src/experiment.ts";
-import type { TerminalRunStatus } from "../../core/src/run-kernel/index.ts";
+import { isTerminalRunStatus, type TerminalRunStatus } from "../../core/src/run-kernel/index.ts";
 import type { CellContext, CellExecutor } from "./cell-executor.ts";
 
 export interface DecisionCellExecutorOptions {
@@ -67,10 +67,7 @@ export class DecisionCellExecutor implements CellExecutor<ResolvedDecisionRunInp
   }
 
   terminalStatus(run: DecisionRun): TerminalRunStatus | undefined {
-    const { status } = run;
-    return status.kind === "completed" || status.kind === "failed" || status.kind === "cancelled"
-      ? status
-      : undefined;
+    return isTerminalRunStatus(run.status) ? run.status : undefined;
   }
 
   trace(run: DecisionRun): DecisionRunTrace {

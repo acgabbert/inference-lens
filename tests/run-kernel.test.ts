@@ -15,6 +15,8 @@ import {
   createRunState,
   createRunTrace,
   isRetryableRunError,
+  isTerminalRunStatus,
+  isTerminalRunStatusKind,
   reduceRunEvent,
   RunCoordinator,
   RunInvariantError,
@@ -1227,4 +1229,26 @@ test("a turn's provider continuation rides the next turn's input and survives th
   assert.ok(trace.events.some(({ type }) => type === "assistant.continuation"));
   const imported = runStateFromTrace(parseRunTraceJson(serializeRunTrace(trace)));
   assert.deepEqual(transcriptFromRunState(imported), transcript);
+});
+
+test("only completed, cancelled and failed are terminal run statuses", () => {
+  const kinds = [
+    "not_started",
+    "starting",
+    "streaming",
+    "awaiting_tool_results",
+    "paused",
+    "running",
+    "completed",
+    "cancelled",
+    "failed",
+  ];
+  assert.deepEqual(
+    kinds.filter(isTerminalRunStatusKind),
+    ["completed", "cancelled", "failed"],
+  );
+  assert.deepEqual(
+    kinds.filter((kind) => isTerminalRunStatus({ kind })),
+    ["completed", "cancelled", "failed"],
+  );
 });

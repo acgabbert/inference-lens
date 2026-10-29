@@ -6,6 +6,7 @@ import {
   createSingleTurnRunExecution,
   createRunEventFactory,
   createRunState,
+  isTerminalRunStatus,
   reduceRunEvent,
 } from "../packages/core/src/run-kernel/index.ts";
 import type {
@@ -14,14 +15,6 @@ import type {
   RunState,
 } from "../packages/core/src/run-kernel/index.ts";
 import { randomUUID } from "../packages/core/src/random-id.ts";
-
-function isTerminal(state: RunState): boolean {
-  return (
-    state.status.kind === "completed" ||
-    state.status.kind === "cancelled" ||
-    state.status.kind === "failed"
-  );
-}
 
 function newFailedRunState(
   request: InferenceRequest | RichInferenceRequest,
@@ -56,7 +49,7 @@ export function preserveRunFailure(
   occurredAt = new Date().toISOString(),
 ): RunState {
   if (!current?.input) return newFailedRunState(request, identity, message);
-  if (isTerminal(current)) return current;
+  if (isTerminalRunStatus(current.status)) return current;
 
   const lastElapsedMs = current.events.at(-1)?.elapsedMs ?? 0;
   const elapsedMs = current.startedAt
