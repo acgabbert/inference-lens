@@ -347,14 +347,14 @@ function DecisionTemplateContent(
           )}
         </div>
         <p className="template-editor-note">
-          <small className="template-draft-status" role="status">
+          <span className="template-draft-status" role="status">
             {draftStatus({
               invalid,
               readOnly,
               sessionOwned: props.sessionOwned,
               persistenceStatus: props.persistenceStatus,
             })}
-          </small>
+          </span>
         </p>
       </header>
       {duplicateName && (

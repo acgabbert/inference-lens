@@ -588,13 +588,13 @@ export function ChatPromptTemplateEditor({
                 {readOnly ? (
                   <>
                     <span className="provider-pill">Read-only revision</span>
-                    <small id={editHintId}>
+                    <span id={editHintId}>
                       Copies this revision into an editable draft. Nothing
                       changes until you save.
-                    </small>
+                    </span>
                   </>
                 ) : (
-                  <small aria-live="polite" className={`template-draft-status ${persistenceStatus}`}>
+                  <span aria-live="polite" className={`template-draft-status ${persistenceStatus}`}>
                     {sessionOwned
                       ? "Session draft — not saved after closing."
                       : persistenceStatus === "saving"
@@ -606,10 +606,10 @@ export function ChatPromptTemplateEditor({
                           : persistenceStatus === "secondary"
                             ? "Draft kept in this tab only — another tab is editing this project."
                             : "Draft autosaved."}
-                  </small>
+                  </span>
                 )}
                 {!sessionOwned && onEvaluateRevision && draftChanged && (
-                  <small id={evaluateHintId}>Create a revision to evaluate these edits.</small>
+                  <span id={evaluateHintId}>Create a revision to evaluate these edits.</span>
                 )}
               </p>}
             </header>

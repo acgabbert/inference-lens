@@ -48,12 +48,6 @@
   margin-bottom: 0;
 }
 
-.template-editor-header label,
-.template-revision-field-heading {
-  min-height: 22px;
-  line-height: 22px;
-}
-
 .template-name-field {
   grid-area: name;
 }
@@ -71,7 +65,6 @@
   display: block;
   height: 32px;
   padding-block: 0;
-  line-height: normal;
 }
 
 /* Reads as the header's other labels, with the rename action on the same line
@@ -137,10 +130,6 @@
   color: var(--text-muted);
   line-height: var(--leading-tight);
   text-align: right;
-}
-
-.template-editor-note small {
-  font-size: inherit;
 }
 
 .template-editor-note .provider-pill {
