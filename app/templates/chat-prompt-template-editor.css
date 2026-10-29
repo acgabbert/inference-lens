@@ -23,12 +23,19 @@
   color: var(--text-muted);
 }
 
+/* One row of labels over one row of 32px controls, and one line of notes under
+   the actions. Named areas let the narrower layouts below move the actions
+   beside the note instead of giving each a row. An absent revision name leaves
+   its auto track empty. */
 .template-editor-header {
   padding: var(--space-md) var(--space-lg);
   border-bottom: 1px solid var(--border-default);
   display: grid;
-  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) auto;
-  gap: var(--space-sm);
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) auto auto;
+  grid-template-areas:
+    "name revision revision-name actions"
+    "note note note note";
+  gap: var(--space-xs) var(--space-sm);
   align-items: end;
   background: var(--surface-panel);
 }
@@ -41,8 +48,23 @@
   margin-bottom: 0;
 }
 
-.template-editor-header .provider-pill {
-  margin-bottom: var(--space-sm);
+.template-name-field {
+  grid-area: name;
+}
+
+.template-revision-field {
+  grid-area: revision;
+}
+
+.template-revision-name-field {
+  grid-area: revision-name;
+  width: 210px;
+}
+
+.template-editor-header input:not([type="range"]) {
+  display: block;
+  height: 32px;
+  padding-block: 0;
 }
 
 /* Reads as the header's other labels, with the rename action on the same line
@@ -52,7 +74,6 @@
 }
 
 .template-revision-field-heading {
-  min-height: 22px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -71,12 +92,14 @@
   gap: var(--space-xs);
 }
 
-/* Matches the select it replaces, so the header does not shift. */
-input.template-revision-rename {
-  height: 32px;
+.field-optional {
+  margin-left: var(--space-2xs);
+  color: var(--text-muted);
+  font-weight: var(--weight-regular);
 }
 
 .template-editor-actions {
+  grid-area: actions;
   display: flex;
   align-items: center;
   justify-content: flex-end;
@@ -89,50 +112,32 @@ input.template-revision-rename {
 }
 
 .template-editor-actions .button {
-  padding: var(--space-xs) var(--space-sm);
+  height: 32px;
+  padding: 0 var(--space-sm);
   line-height: 1.2;
   white-space: nowrap;
 }
 
-.template-revision-edit-action {
-  display: grid;
-  justify-items: end;
-  gap: var(--space-2xs);
-}
-
-.template-revision-create-action {
-  display: grid;
-  grid-template-columns: minmax(170px, 230px) auto;
-  align-items: end;
+.template-editor-note {
+  grid-area: note;
+  justify-self: end;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   gap: var(--space-2xs) var(--space-sm);
-}
-
-.template-revision-create-action label {
-  display: grid;
-  gap: var(--space-2xs);
-}
-
-.template-revision-create-action .field-optional {
-  color: var(--text-muted);
-  font-weight: var(--weight-regular);
-}
-
-.template-draft-status {
-  grid-column: 1 / -1;
   color: var(--text-muted);
   line-height: var(--leading-tight);
   text-align: right;
+}
+
+.template-editor-note .provider-pill {
+  margin: 0;
 }
 
 .template-draft-status.error {
   color: var(--danger);
-}
-
-.template-revision-edit-action small {
-  max-width: 230px;
-  color: var(--text-muted);
-  line-height: var(--leading-tight);
-  text-align: right;
 }
 
 .template-notices {
@@ -359,11 +364,41 @@ input.template-revision-rename {
    revision controls inside the resizable composer pane. */
 @container (max-width: 1120px) {
   .template-editor-header {
-    grid-template-columns: minmax(160px, 1.4fr) minmax(160px, 1fr);
+    grid-template-columns: minmax(160px, 1.4fr) minmax(160px, 1fr) auto;
+    grid-template-areas:
+      "name revision revision-name"
+      "note actions actions";
+    row-gap: var(--space-sm);
+    align-items: center;
   }
 
-  .template-editor-actions {
-    grid-column: 1 / -1;
+  .template-name-field,
+  .template-revision-field,
+  .template-revision-name-field {
+    align-self: end;
+  }
+
+  .template-editor-note {
+    justify-self: start;
+    justify-content: flex-start;
+    text-align: left;
+  }
+}
+
+
+/* The actions keep one line; the revision select, which carries a date, takes
+   the width they need. */
+@container (max-width: 640px) {
+  .template-editor-header {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "name revision"
+      "revision-name actions"
+      "note note";
+  }
+
+  .template-revision-name-field {
+    width: auto;
   }
 }
 
@@ -391,6 +426,7 @@ input.template-revision-rename {
 @container (max-width: 430px) {
   .template-editor-header {
     grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "name" "revision" "revision-name" "actions" "note";
   }
 
   .template-insert-label {

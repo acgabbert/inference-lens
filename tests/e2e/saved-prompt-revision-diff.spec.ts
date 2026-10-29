@@ -277,6 +277,74 @@ test("the prompt header keeps its metadata controls usable beside revision actio
   );
 });
 
+test("the prompt header lines up its fields at one height and stays short", async ({ page }) => {
+  let project = createProjectFile({
+    name: "Saved prompt header rhythm fixture",
+    request: {
+      provider: "openai-compatible",
+      endpoint: BUFFERED_FIXTURE_ENDPOINT,
+      model: "buffered-test-model",
+      messages: [{ role: "user", content: "Hello" }],
+    },
+    idSuffix: "saved-prompt-header-rhythm",
+    createdAt: "2026-08-06T12:00:00.000Z",
+  });
+  project = createPromptTemplate(project, {
+    name: "Incident triage",
+    messages: [{ role: "user", content: "Triage {{incident}}." }],
+    variableDefaults: { incident: "timeout" },
+    idSuffix: "triage",
+    createdAt: "2026-08-06T12:00:01.000Z",
+  });
+
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await seedProfile(page, { instanceId: "profile-instance-buffered" });
+  await page.goto("/");
+  await waitForHydration(page);
+  await importProject(page, project, "Saved prompt header rhythm fixture");
+  await openMode(page, "Prompts");
+
+  const editor = page.locator(".template-editor");
+  // An edit puts every header element on screen: the revision name, the
+  // disabled Evaluate with its hint, and the draft status.
+  await editor.getByLabel("Prompt content").fill("Triage {{incident}} quickly.");
+  await expect(editor.getByText("Create a revision to evaluate these edits.")).toBeVisible();
+
+  const header = editor.locator(".template-editor-header");
+  const promptName = editor.getByLabel("Prompt name");
+  const revision = editor.getByLabel("Revision", { exact: true });
+  const revisionName = editor.getByRole("textbox", { name: "Revision name" });
+  const fields = [promptName, revision, revisionName];
+  const buttons = [
+    editor.getByRole("button", { name: "Create revision", exact: true }),
+    editor.getByRole("button", { name: "Evaluate in a suite…" }),
+    editor.getByRole("button", { name: "Archive" }),
+  ];
+
+  // "Optional" qualifies the label on its own line, not on a line below it.
+  const optionalOffset = await editor
+    .locator("label")
+    .filter({ has: page.getByRole("textbox", { name: "Revision name" }) })
+    .evaluate((label) => {
+      const range = document.createRange();
+      range.selectNodeContents(label.firstChild!);
+      const text = range.getBoundingClientRect();
+      const optional = label.querySelector(".field-optional")!.getBoundingClientRect();
+      return Math.abs(optional.top + optional.height / 2 - (text.top + text.height / 2));
+    });
+  expect(optionalOffset).toBeLessThanOrEqual(2);
+
+  const fieldBoxes = await Promise.all(fields.map((field) => field.boundingBox()));
+  const buttonBoxes = await Promise.all(buttons.map((button) => button.boundingBox()));
+  const heights = [...fieldBoxes, ...buttonBoxes].map((box) => Math.round(box!.height));
+  expect(new Set(heights).size, `control heights ${heights.join(", ")}`).toBe(1);
+  const tops = fieldBoxes.map((box) => Math.round(box!.y));
+  expect(new Set(tops).size, `field tops ${tops.join(", ")}`).toBe(1);
+
+  const headerBox = await header.boundingBox();
+  expect(headerBox!.height).toBeLessThanOrEqual(130);
+});
+
 // A long system prompt edited in two places, so the diff has long unchanged
 // stretches between and around the changes.
 function longPromptProject(idSuffix: string) {
