@@ -62,6 +62,13 @@ when environments land and carries them. When this feature's PR 2 lands active
 v17, the staged format renumbers to v18 and derives from active v17, the same
 mechanical renumber as before. No version is skipped.
 
+**Revised 2026-10-30: Project v18.** [External prompt file imports](SHARED_ASSETS_PERSONAL_WORKBENCH_PLAN.md#external-prompt-sources)
+landed first and took active Project v17, so this feature takes active
+**Project v18**. RunTrace v10 and ExperimentPlan v7 are unchanged, because file
+imports did not need them. The staged shared format is now v18 in code; when
+PR 2 lands active v18, it renumbers to v19 and derives from active v18. No
+version is skipped.
+
 ### D2. Where the adopted message's attribution lives
 
 The agreed policy materializes a "clearly attributed" assistant message when a
@@ -418,7 +425,7 @@ so it uses `effectiveAnswer` and needs no materialization.
 
 Version numbers are from D1, as revised.
 
-- **Project v17.** `ProjectConversationRevision.finalOutput?` is added in a
+- **Project v18.** `ProjectConversationRevision.finalOutput?` is added in a
   strict new version. Older documents upgrade with no contract. A document from the
   new version is rejected by old readers with a version error.
 - **RunTrace v10.** `ResolvedRunInput.finalOutput?`, the two events, the
