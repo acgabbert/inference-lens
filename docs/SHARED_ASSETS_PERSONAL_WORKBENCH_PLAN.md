@@ -500,6 +500,8 @@ not promise arbitrary field-level sharing.
 Initial scope is assets inside a self-contained project and deliberate copies
 between projects. Live references into other repositories, package registries,
 or remotely synchronized libraries require a separate dependency/version design.
+[External prompt sources](#external-prompt-sources) proposes that design for
+prompt files tracked from another repository.
 
 ### Writes, external changes, and compatibility
 
@@ -548,6 +550,129 @@ or remotely synchronized libraries require a separate dependency/version design.
   The application never guesses which revision should become current.
 - Browser, native, and CLI read the same asset graph; interrupted multi-file saves
   and migrations are detectable and recoverable.
+
+## External prompt sources
+
+**Status:** Proposed October 30, 2026; its decisions were settled the same day
+and are recorded below. The slice order awaits confirmation, and no slice is
+approved for implementation.
+
+Some teams keep n8n workflows in Git with each agent prompt extracted to its own
+`.md` or `.txt` file. A sync step using the n8n API detects drift between those
+files and the workflow JSON n8n stores and, when everything matches, rewrites
+in either direction. The files contain n8n expressions in the form the n8n
+editor shows them, without the leading `=` and without JSON escaping.
+
+This section proposes how a project uses such files as prompt sources. It is
+the separate design that Level 3 defers for live references into other
+repositories, scoped to prompt text.
+
+### User input (October 30, 2026)
+
+- IL never writes to files outside the project bundle. Editing a template in
+  IL changes the template only; the source file is unchanged.
+- The browser, including the Docker deployment, is the priority host. Tauri
+  follows.
+- Source files may contain n8n expressions, as described above.
+- The proposed order is file import with a recorded source, then linked files,
+  then fitting both into Level 3. Other orders are open.
+
+### Proposed principles
+
+1. **Track, don't mirror.** A file is a source a template tracks, never the
+   template itself. Template revisions stay immutable and pinned by uses,
+   suites and traces. A changed file produces a new revision only when the user
+   pulls it.
+2. **Runs never read the file.** A tracked template carries the text it last
+   pulled, so a clone without the source repository, the CLI and historical
+   traces all work without it. The link drives drift detection and pulling
+   only. For Level 3, the source file is therefore not part of an asset's
+   dependency closure; a missing source means the template cannot be
+   refreshed, not that it is incomplete.
+3. **Provenance through existing receipts.** Each import or pull records an
+   `ExternalImportReceipt` (`packages/core/src/project.ts`) with a new `file`
+   adapter beside `n8n`: source identity, `sourceDigest`, authored text,
+   expression bindings and the projection onto native variables.
+4. **One expression projection.** File text is read as an n8n expression-mode
+   field, as if it carried the leading `=`, through the projection the n8n
+   importer already uses (`packages/core/src/external-prompt-project.ts`). So
+   `{{ $json.chatInput }}` becomes a native variable with a recorded mapping
+   rather than an invalid native token. Without an n8n execution there are no
+   resolved values; bindings are `user-supplied`.
+5. **Stable variables across pulls.** A pull reuses the previous receipt's
+   expression-to-variable mapping, so suite input bindings and saved values
+   that target those variables survive. Only new expressions allocate names.
+6. **IL compares against the file only.** It reports "file changed since the
+   last pull" and "template has revisions not pulled from the file"
+   separately; both can hold at once. Drift between the files and n8n remains
+   the sync step's job.
+
+### Proposed sequence
+
+| Slice | Deliverable | Depends on |
+| --- | --- | --- |
+| E1 | **Import from file.** Drop one or more files, or use a menu item, to create templates. The browser exposes a file's name but not its path, so the receipt records filename and digest. Each file becomes one message whose role is chosen in the import dialog. | Nothing in Levels 2–3 |
+| E2 | **Update from file.** Drop or choose a file for an existing template. IL compares it with the template's receipts, shows the change in the existing revision diff, and on confirmation appends a revision with a new receipt. The user acts as the link, so no folder access is needed. | E1 |
+| E3 | **Linked sources.** The project declares a portable source-root requirement (a name such as `n8n-workflows`); each tracked template records that name and a relative path. Each deployment maps the name to a real folder (an operator-mounted root first; see Decisions), the way connection requirements map to local profiles. The Prompts library shows drift, and Pull appends a revision. Needs a project format version, sequenced with the formats already queued. | E2; fields designed with Level 3's per-asset files in view |
+| E4 | **CLI and CI.** The CLI takes a source root on the command line, reports drift, and can run a suite against the working-tree text as a run-only override, without writing definitions. CI in the workflow repository can then evaluate a pull request that edits a prompt file. | E3 |
+| L3 | Links and receipts live in the prompt's asset file; source-root requirements become an asset kind like connection requirements. | E3 and Level 3 |
+
+E1 and E2 deliver the sync loop by hand and need neither folder access nor a
+format change, because decision 1 below reuses the current receipt. E3 does not need to wait for
+Level 3, but Level 3's asset format must have room for what E3 adds.
+
+A later possibility: an n8n execution import could be matched to a tracked
+file by content (the node's authored text without its leading `=` equals the
+file text), attaching real execution values to the tracked template.
+
+### Decisions
+
+Decided October 30, 2026:
+
+- **One message per file.** Each file becomes exactly one template message,
+  with its role chosen at import. No front matter or multi-message
+  conventions.
+- **Server-mounted source roots first.** The operator mounts read-only roots
+  into the container and declares them; the API serves reads confined to
+  those roots. This works in every browser and suits the CLI, following the
+  operator-declared model of [command tools](COMMAND_TOOLS.md). A browser
+  folder grant (File System Access API only, as folder projects already need)
+  and Tauri's native file access are later additions, not part of E3.
+- **Copy as n8n text.** Write-back stays ruled out. A template tracked from a
+  file offers a read-only copy of its current text with each native variable
+  turned back into the n8n expression its receipt mapped it from, for the user
+  to apply to the file. A variable with no recorded expression has no n8n
+  form: the copy names each such variable rather than passing it off as an
+  n8n expression.
+
+Recommended and approved October 30, 2026:
+
+1. **Reuse the current receipt; no format change for E1 and E2.** The
+   receipt already separates the source (`source.resource`, for n8n the
+   workflow) from the field within it that held the prompt (`invocation`, for
+   n8n the node). A file has exactly one such field, so the fit is direct:
+
+   | Receipt field | File import |
+   | --- | --- |
+   | `source.adapter` | `file` |
+   | `source.resource` | `kind: "file"`; `id` and `name` are the filename (E1, E2) or the path relative to its source root (E3) |
+   | `invocation` | the whole-file field: `type: "file"`, `id: "content"`, `name` the filename without its extension |
+   | `authored` | one field, path `content`, with the chosen role and the file text |
+   | `fidelity` | `authored-only` |
+
+   The source-root link that E3 adds is current state, not a record of one
+   import, so it belongs on the template rather than in the receipt. E3's
+   format change then never touches existing receipts, and E1 and E2 ship on
+   the current project format instead of joining the queued format versions.
+2. **Read files as expression mode, with a plain-text override.** Expression
+   mode is the right reading for any file whose `{{ }}` spans are n8n
+   expressions. The import preview shows each span that becomes a variable,
+   and a per-import "Treat as plain text" option covers a fixed-mode field
+   that contains a literal `{{`. The receipt records which reading was used.
+   Still worth checking: the rule the sync step uses to decide whether to
+   restore the leading `=` when writing back to n8n. If it adds `=` whenever
+   the text contains `{{`, the files are expression mode by construction and
+   the override is only a safety valve.
 
 ## Implementation ownership and sequence
 
@@ -631,6 +756,8 @@ review covers slice 2a; Level 3 decisions remain deferred.
    operations, plus old-reader/writer and export compatibility. Include how
    bundles created with the Level 1 definitions policy come to share new asset
    files.
+5. Confirm the [external prompt source](#external-prompt-sources) slice order
+   before slice E1. Its contract decisions are recorded.
 
 The target is fewer incidental conflicts, explicit intentional contributions,
 and selective sharing with understandable dependencies. Same-asset edits still
