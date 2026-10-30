@@ -564,8 +564,8 @@ designed. E1 then took Project v17 and gained a re-import warning
 approved. E3's [contracts](#e3-implementation-contracts-approved-october-30-2026)
 were approved and implemented the same day, taking Project v18
 ([evidence](#e3-delivery-evidence-october-30-2026)). E4's
-[contracts](#e4-implementation-contracts-proposed-october-30-2026) are proposed
-and await approval; later slices need separate approval.
+[contracts](#e4-implementation-contracts-approved-october-30-2026) were
+approved as proposed the same day; later slices need separate approval.
 
 Some teams keep n8n workflows in Git with each agent prompt extracted to its own
 `.md` or `.txt` file. A sync step using the n8n API detects drift between those
@@ -1122,11 +1122,13 @@ describes the mount.
   should check the link dialog, the library's drift line and the Docker
   instructions against a real prompt folder.
 
-### E4 implementation contracts (proposed October 30, 2026)
+### E4 implementation contracts (approved October 30, 2026)
 
 The user chose to record file provenance in RunTrace and asked for
-recommendations on the rest; these are those recommendations, for approval
-together. They let the CLI run a suite against the text in a linked prompt's
+recommendations on the rest; these are those recommendations. The user
+approved all eight as written on October 30: the plan snapshot and trace
+field, the all-or-nothing override, drift exiting 1 on any changed, missing
+or unreadable file, and contracts 3, 5, 7 and 8 with the ownership below. They let the CLI run a suite against the text in a linked prompt's
 file without saving a revision, and report drift for CI. The principle
 throughout: ordinary runs never read a file, so reading one is an explicit
 opt-in, and a CI run never quietly tests something other than the file.
@@ -1313,7 +1315,8 @@ review covers slice 2a; Level 3 decisions remain deferred.
 5. Specify the bounded [external prompt source review details](#accepted-review-recommendations-october-30-2026)
    before their affected slices. E1 → E2 → E3 is approved, with E2's mapping
    continuity designed alongside E1. E1–E3 are approved and delivered under
-   the bounded contracts above; E4 and later slices need separate approval.
+   the bounded contracts above; E4's contracts are approved; later slices
+   need separate approval.
 
 The target is fewer incidental conflicts, explicit intentional contributions,
 and selective sharing with understandable dependencies. Same-asset edits still
