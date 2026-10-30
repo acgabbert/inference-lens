@@ -200,6 +200,25 @@ test("ExperimentPlan v6 opens as v7 with no file source, and a v6 or inconsisten
   assert.throws(() => parseExperimentPlanFile(otherDigest), /file source/);
 });
 
+test("file snapshot defaults must match every resolved use, independently of case values", async () => {
+  const { project, templateId } = await linkedPromptProject({ endpoint: ENDPOINT });
+  const sources = await snapshots(project, templateId, "Describe {{ $json.topic }}.");
+  sources[0]!.variableDefaults = { topic: "default topic" };
+  const built = plan(project, sources);
+  const resolution = built.suite.cases[0]!.inputs[0]!.templateResolutions[0]!;
+  assert.deepEqual(resolution.variableDefaults, { topic: "default topic" });
+  assert.equal(resolution.values.topic, "addition", "case values still override matching defaults");
+  assert.deepEqual(parseExperimentPlanJson(serializeExperimentPlan(built)), built);
+
+  const differentSnapshot = structuredClone(built);
+  differentSnapshot.suite.promptSources![0]!.variableDefaults.topic = "never used";
+  assert.throws(() => parseExperimentPlanFile(differentSnapshot), /file source/);
+
+  const differentUse = structuredClone(built);
+  differentUse.suite.cases[0]!.inputs[0]!.templateResolutions[0]!.variableDefaults = {};
+  assert.throws(() => parseExperimentPlanFile(differentUse), /file source/);
+});
+
 test("names are reused as a pull would reuse them, and a new expression needs a value", async () => {
   const { project, templateId } = await linkedPromptProject({ endpoint: ENDPOINT });
   const [snapshot] = await snapshots(project, templateId, "In a {{ $json.tone }} voice, explain {{ $json.topic }}.");

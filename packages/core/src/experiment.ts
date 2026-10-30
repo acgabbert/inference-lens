@@ -1421,7 +1421,8 @@ function assertPromptFileSources(plan: EvaluationExperimentPlan): void {
         if (
           resolution.templateRevisionId !== snapshot.baseTemplateRevisionId ||
           !same(resolution.fileSource, expected) ||
-          !same(resolution.messages, snapshot.messages)
+          !same(resolution.messages, snapshot.messages) ||
+          !same(resolution.variableDefaults, snapshot.variableDefaults)
         ) {
           throw new ExperimentValidationError(
             `Evaluation case ${evaluationCase.caseId}: template use ${resolution.templateUseId} does not match the file source recorded for its prompt.`,
