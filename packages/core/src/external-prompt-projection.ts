@@ -16,17 +16,32 @@ export function externalPromptProjectedMessages(
 ): Array<PromptTemplateMessages[number] | undefined> {
   return authored.map((field) => {
     if (!field.role) return undefined;
-    const indexed = bindings.map((binding, index) => ({ binding, index }))
+    const indexed = bindings
+      .map((binding, index) => ({ binding, index }))
       .filter(({ binding }) => binding.authoredPath === field.path);
-    const whole = indexed.find(({ binding }) => binding.source.kind === "whole-field");
-    if (whole) return { role: field.role, content: `{{${variableByBindingIndex.get(whole.index) ?? ""}}}` };
+    const whole = indexed.find(
+      ({ binding }) => binding.source.kind === "whole-field",
+    );
+    if (whole) {
+      return {
+        role: field.role,
+        content: `{{${variableByBindingIndex.get(whole.index) ?? ""}}}`,
+      };
+    }
+    const spans = indexed
+      .flatMap(({ binding, index }) =>
+        binding.source.kind === "expression-span"
+          ? [{ source: binding.source, index }]
+          : [],
+      )
+      .sort((left, right) => left.source.startOffset - right.source.startOffset);
     let cursor = field.contentSpan?.startOffset ?? 0;
     const end = field.contentSpan?.endOffset ?? field.text.length;
     const parts: string[] = [];
-    const spans = indexed.flatMap(({ binding, index }) => binding.source.kind === "expression-span"
-      ? [{ source: binding.source, index }] : []).sort((a, b) => a.source.startOffset - b.source.startOffset);
     for (const { source, index } of spans) {
-      parts.push(escapeExternalPromptLiteral(field.text.slice(cursor, source.startOffset), adapter));
+      parts.push(
+        escapeExternalPromptLiteral(field.text.slice(cursor, source.startOffset), adapter),
+      );
       parts.push(`{{${variableByBindingIndex.get(index) ?? ""}}}`);
       cursor = source.endOffset;
     }

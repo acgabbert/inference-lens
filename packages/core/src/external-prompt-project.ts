@@ -228,16 +228,40 @@ export function projectExternalPromptTemplate(
       variableName,
     ]),
   );
+  const isFile = candidate.source.adapter === "file";
   for (const field of candidate.authored) {
-    const bindings = candidate.bindings.filter((binding) => binding.authoredPath === field.path);
-    if (field.syntax === "external-expression" && bindings.length === 0 && candidate.source.adapter !== "file") {
-      throw new Error(`Authored field "${field.path}" has no safely parsed expression bindings.`);
+    const bindings = candidate.bindings.filter(
+      (binding) => binding.authoredPath === field.path,
+    );
+    // A whole file may hold no expressions; other adapters must have found one.
+    if (
+      field.syntax === "external-expression" &&
+      bindings.length === 0 &&
+      !isFile
+    ) {
+      throw new Error(
+        `Authored field "${field.path}" has no safely parsed expression bindings.`,
+      );
     }
-    if (candidate.source.adapter === "file" && bindings.some((binding) => binding.source.kind === "expression-span" && field.text[binding.source.startOffset - 1] === "\\")) {
-      throw new Error("An expression immediately after a backslash cannot be represented safely. Use plain text or remove the preceding backslash.");
+    if (
+      isFile &&
+      bindings.some(
+        (binding) =>
+          binding.source.kind === "expression-span" &&
+          field.text[binding.source.startOffset - 1] === "\\",
+      )
+    ) {
+      throw new Error(
+        "An expression immediately after a backslash cannot be represented safely. Use plain text or remove the preceding backslash.",
+      );
     }
   }
-  const messages = externalPromptProjectedMessages(candidate.authored, candidate.bindings, variableByBindingIndex, candidate.source.adapter);
+  const messages = externalPromptProjectedMessages(
+    candidate.authored,
+    candidate.bindings,
+    variableByBindingIndex,
+    candidate.source.adapter,
+  );
 
   const values: Record<string, string> = {};
   for (const variableName of usedNames) {
@@ -259,10 +283,14 @@ export function projectExternalPromptTemplate(
     }
   }
 
+  // A file's resource name is its filename, which the invocation name already
+  // carries without the extension.
+  let name = candidate.invocation.name;
+  if (!isFile && candidate.source.resource.name) {
+    name = `${candidate.source.resource.name} — ${candidate.invocation.name}`;
+  }
   return {
-    name: candidate.source.adapter === "file" ? candidate.invocation.name : candidate.source.resource.name
-      ? `${candidate.source.resource.name} — ${candidate.invocation.name}`
-      : candidate.invocation.name,
+    name,
     messages: messages as PromptTemplateMessages,
     values,
     variables,
@@ -379,20 +407,27 @@ export async function importExternalPromptCandidate(
   };
 }
 
+export interface ExternalPromptLibraryAddition {
+  template: ProjectFile["promptTemplates"][number];
+  receipt: ExternalImportReceipt;
+  projection: ExternalPromptTemplateProjection;
+  /** Derived against the project the addition was built for; callers reuse it for related IDs. */
+  suffix: string;
+}
+
 /**
- * Projects authored external expression regions into a project-owned native
- * template. External syntax remains receipt evidence and is never executable.
+ * Builds one saved template and its receipt without touching the request.
+ * Template import adds a conversation use on top; file import adds only this.
  */
-export async function importExternalPromptTemplateCandidate(
-  projectValue: ProjectFile,
+export async function externalPromptLibraryAddition(
+  project: ProjectFile,
   candidateValue: ExternalPromptCandidate,
   {
     importedAt = new Date().toISOString(),
     importerVersion = EXTERNAL_PROMPT_IMPORTER_VERSION,
     recommendModel = false,
   }: ImportExternalPromptTemplateOptions = {},
-): Promise<ImportedExternalPromptTemplate> {
-  const project = parseProjectFile(projectValue);
+): Promise<ExternalPromptLibraryAddition> {
   const candidate = parseExternalPromptCandidate(candidateValue);
   const expectedDigest = await computeExternalPromptSourceDigest(candidate);
   if (candidate.sourceDigest !== expectedDigest) {
@@ -401,32 +436,16 @@ export async function importExternalPromptTemplateCandidate(
     );
   }
   const projection = projectExternalPromptTemplate(candidate);
-  const activeRevision = project.conversationRevisions.find(
-    ({ id }) => id === project.defaults.conversationRevisionId,
-  );
-  if (!activeRevision) {
-    throw new Error("Project has no active conversation revision.");
-  }
-
-  const messageCount = projection.messages.length;
   const suffix = templateCollisionSafeSuffix(
     project,
     candidate.sourceDigest,
-    messageCount,
+    projection.messages.length,
   );
   const externalImportId = createEntityId("external-import", suffix);
-  const conversationRevisionId = createEntityId(
-    "revision",
-    `import-${suffix}`,
-  );
   const templateId = createEntityId("template", `import-${suffix}`);
   const templateRevisionId = createEntityId(
     "template-revision",
     `import-${suffix}-1`,
-  );
-  const templateUseId = createEntityId("template-use", `import-${suffix}`);
-  const messageIds = Array.from({ length: messageCount }, (_, index) =>
-    createEntityId("message", `import-${suffix}-${index + 1}`),
   );
   const receipt: ExternalImportReceipt = {
     id: externalImportId,
@@ -446,35 +465,63 @@ export async function importExternalPromptTemplateCandidate(
       variables: structuredClone(projection.variables),
     },
   };
-  const imported = parseProjectFile({
-    ...project,
-    promptTemplates: [
-      ...project.promptTemplates,
-      {
-        id: templateId,
-        kind: "chat",
-        name: projection.name,
-        currentRevisionId: templateRevisionId,
-        ...(recommendModel && candidate.resolved?.model
-          ? {
-              recommendedTarget: {
-                connectionRequirementId:
-                  project.defaults.target.connectionRequirementId,
-                model: candidate.resolved.model,
-              },
-            }
-          : {}),
-        revisions: [
-          {
-            id: templateRevisionId,
-            createdAt: importedAt,
-            messages: structuredClone(projection.messages),
-            variableDefaults: {},
-            externalImportId,
+  const template: ProjectFile["promptTemplates"][number] = {
+    id: templateId,
+    kind: "chat",
+    name: projection.name,
+    currentRevisionId: templateRevisionId,
+    ...(recommendModel && candidate.resolved?.model
+      ? {
+          recommendedTarget: {
+            connectionRequirementId:
+              project.defaults.target.connectionRequirementId,
+            model: candidate.resolved.model,
           },
-        ],
+        }
+      : {}),
+    revisions: [
+      {
+        id: templateRevisionId,
+        createdAt: importedAt,
+        messages: structuredClone(projection.messages),
+        variableDefaults: {},
+        externalImportId,
       },
     ],
+  };
+  return { template, receipt, projection, suffix };
+}
+
+/**
+ * Projects authored external expression regions into a project-owned native
+ * template. External syntax remains receipt evidence and is never executable.
+ */
+export async function importExternalPromptTemplateCandidate(
+  projectValue: ProjectFile,
+  candidateValue: ExternalPromptCandidate,
+  options: ImportExternalPromptTemplateOptions = {},
+): Promise<ImportedExternalPromptTemplate> {
+  const project = parseProjectFile(projectValue);
+  const activeRevision = project.conversationRevisions.find(
+    ({ id }) => id === project.defaults.conversationRevisionId,
+  );
+  if (!activeRevision) {
+    throw new Error("Project has no active conversation revision.");
+  }
+  const { template, receipt, projection, suffix } =
+    await externalPromptLibraryAddition(project, candidateValue, options);
+  const conversationRevisionId = createEntityId(
+    "revision",
+    `import-${suffix}`,
+  );
+  const templateUseId = createEntityId("template-use", `import-${suffix}`);
+  const messageIds = Array.from(
+    { length: projection.messages.length },
+    (_, index) => createEntityId("message", `import-${suffix}-${index + 1}`),
+  );
+  const imported = parseProjectFile({
+    ...project,
+    promptTemplates: [...project.promptTemplates, template],
     externalImports: [...project.externalImports, receipt],
     conversationRevisions: [
       ...project.conversationRevisions,
@@ -487,14 +534,14 @@ export async function importExternalPromptTemplateCandidate(
             kind: "template-use",
             use: {
               id: templateUseId,
-              templateId,
-              templateRevisionId,
+              templateId: template.id,
+              templateRevisionId: template.currentRevisionId,
               values: projection.values,
               outputMessageIds: messageIds,
             },
           },
         ],
-        createdAt: importedAt,
+        createdAt: receipt.importedAt,
       },
     ],
     defaults: {
@@ -504,10 +551,10 @@ export async function importExternalPromptTemplateCandidate(
   });
   return {
     project: imported,
-    externalImportId,
+    externalImportId: receipt.id,
     conversationRevisionId,
-    templateId,
-    templateRevisionId,
+    templateId: template.id,
+    templateRevisionId: template.currentRevisionId,
     templateUseId,
     messageIds,
   };

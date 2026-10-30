@@ -103,3 +103,23 @@ test("file plain text preserves literal tokens and existing backslashes through 
   assert.deepEqual(rendered.diagnostics, []);
   assert.deepEqual(rendered.variables, []);
 });
+
+test("copy refuses edited expression-mode text that n8n would read as different expressions", async () => {
+  const expression = await createFilePromptCandidate({ filename: "agent.md", text: "Hi {{ $json.name }}", role: "user", plainText: false });
+  const { project } = await importFilePromptCandidates(projectFixture(), [expression]);
+  const literal = String.raw`Hi {{name}} see \{{ $json.secret }}`;
+  assert.deepEqual(copyFilePromptAsN8nText([{ role: "user", content: literal }], project.externalImports), {
+    ok: false,
+    message: "n8n would read this text as different expressions than its variables. Remove literal {{ before copying as n8n text.",
+  });
+  assert.deepEqual(copyFilePromptAsN8nText([{ role: "user", content: "Hi {{name}}}, again" }], project.externalImports), {
+    ok: true, text: "Hi {{ $json.name }}}, again",
+  });
+
+  // A plain-text file has no n8n expressions, so its literal braces copy back as written.
+  const plain = await createFilePromptCandidate({ filename: "literal.txt", text: "Keep {{x}}", role: "user", plainText: true });
+  const plainProject = await importFilePromptCandidates(projectFixture(), [plain]);
+  assert.deepEqual(copyFilePromptAsN8nText([{ role: "user", content: String.raw`Keep \{{x}} and more` }], plainProject.project.externalImports), {
+    ok: true, text: "Keep {{x}} and more",
+  });
+});

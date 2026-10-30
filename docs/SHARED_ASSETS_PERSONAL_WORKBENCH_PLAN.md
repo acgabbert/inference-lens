@@ -553,11 +553,12 @@ prompt files tracked from another repository.
 
 ## External prompt sources
 
-**Status:** E1 implemented October 30, 2026; its decisions and subsequent review
-recommendations were approved the same day and are recorded below. The approved
-order is E1 → E2 → E3, with Level 3 separate. Design E2's mapping continuity
-alongside E1. E1 implementation and the bounded contracts below were approved
-in the October 30 implementation session. E2 and later slices remain separate.
+**Status:** E1 implemented October 30, 2026, under the decisions, review
+recommendations and bounded contracts recorded below, all approved that day.
+The order is E1 → E2 → E3, with Level 3 separate; E2's mapping continuity is
+designed. E1's project version number and the re-import behavior await
+confirmation ([open items](#e1-review-follow-ups-october-30-2026)). E2 and later
+slices need separate approval.
 
 Some teams keep n8n workflows in Git with each agent prompt extracted to its own
 `.md` or `.txt` file. A sync step using the n8n API detects drift between those
@@ -685,8 +686,8 @@ receipt and projection code. These settle the direction; the bounded details
 identified below must be specified before the affected implementation slice.
 
 1. **Delivery order.** Proceed in the order E1 → E2 → E3, keeping Level 3
-   separate. E1 is the next proposed implementation slice, and E2's mapping
-   continuity must be designed alongside it so the initial import does not
+   separate. E1 is implemented, and E2's mapping
+   continuity was designed alongside it so the initial import does not
    constrain later updates incorrectly. E4 remains a follow-up to E3.
 2. **Pulling after local edits.** Show an explicit replacement preview and
    preserve existing local revisions and open drafts. Existing template uses
@@ -748,6 +749,9 @@ identified below must be specified before the affected implementation slice.
 - Decode strict UTF-8, remove one initial BOM, and preserve line endings. E2
   compares the retained decoded authored text separately from the receipt digest;
   filename, role and interpretation changes do not establish text drift.
+  Approved October 30: the comparison normalizes CRLF and lone CR to LF on both
+  sides, so a checkout with different line endings (for example
+  `core.autocrlf`) is not drift. The receipt keeps the original text unchanged.
 - Escape every literal opening `{{` with one additional backslash in native
   content, preserving pre-existing backslashes through native rendering. File
   receipt validation reproduces that projection. Existing adapters retain their
@@ -762,6 +766,10 @@ identified below must be specified before the affected implementation slice.
   native escapes decoded and recorded variables replaced by their expressions.
   Unmapped or ambiguous variables are named and block copying. No source file
   is written. Multiple messages cannot be copied as a single file prompt.
+  For an expression-mode file, the copied text must scan back to exactly the
+  recorded expressions in order; an escaped literal `{{` added in the editor
+  would come back as a live n8n expression, so it blocks copying. A plain-text
+  file copies its unescaped literals as written.
 - E2 mapping continuity will use all retained file receipts for the same
   template, in import order, using the existing expression identity rules.
   Reserve every historical mapped name and locally authored variable name;
@@ -809,6 +817,34 @@ identified below must be specified before the affected implementation slice.
   synchronization and hosted providers were not exercised. Human review should
   check the import preview, plain-text wording and copy preview against a real
   prompt file. E2 update/publication behavior remains unimplemented.
+
+### E1 review follow-ups (October 30, 2026)
+
+- **Fixed: Copy as n8n text could make a literal live.** Editing an
+  expression-mode template to add `\{{ $json.secret }}` copied as
+  `{{ $json.secret }}`, a live n8n expression. The regression test in
+  `tests/file-prompt-import.test.ts` failed on that actual output before the
+  fix. Copying now applies the round-trip rule in the contracts above.
+- **Refactored: batch import adds only library entries.**
+  `externalPromptLibraryAddition` builds one template and its receipt. Template
+  import adds its conversation use on top, and file import uses the builder
+  alone, rather than discarding a conversation revision and defaults after
+  the fact.
+- **Approved, number open: new project version.** The user approved a project
+  version bump so that builds without E1 report a newer project rather than
+  rejecting escaped file receipts. Project v17 is already allocated to
+  [final output](FINAL_OUTPUT_CONTRACTS.md#d1-format-version-allocation), and
+  the staged shared format is v17 in code. The number must be allocated before
+  the bump is implemented; until then the compatibility note in the contracts
+  above still applies.
+- **Recommended, awaiting confirmation: warn on re-import.** A file's identity
+  is its bare filename, without path or repository, so blocking would stop
+  distinct files that share a name, such as two workflows' `system.md`. The
+  preview warns and names the saved prompts already imported from that
+  filename; importing still creates an independent template and receipt. E2
+  pulls into a chosen template, so duplicates are not ambiguous there. E3's
+  linked sources must establish stronger identity before relying on one file
+  per template.
 
 ## Implementation ownership and sequence
 
