@@ -555,7 +555,7 @@ prompt files tracked from another repository.
 
 ## External prompt sources
 
-**Status:** E1 and E2 implemented October 30, 2026, under the decisions, review
+**Status:** E1–E3 implemented October 30, 2026, under the decisions, review
 recommendations and bounded contracts recorded below, all approved that day.
 The order is E1 → E2 → E3, with Level 3 separate; E2's mapping continuity is
 designed. E1 then took Project v17 and gained a re-import warning
@@ -1205,9 +1205,8 @@ review covers slice 2a; Level 3 decisions remain deferred.
    files.
 5. Specify the bounded [external prompt source review details](#accepted-review-recommendations-october-30-2026)
    before their affected slices. E1 → E2 → E3 is approved, with E2's mapping
-   continuity designed alongside E1. E1 and E2 are approved and delivered
-   under the bounded contracts above, and E3's contracts are approved; E4 and
-   later slices need separate approval.
+   continuity designed alongside E1. E1–E3 are approved and delivered under
+   the bounded contracts above; E4 and later slices need separate approval.
 
 The target is fewer incidental conflicts, explicit intentional contributions,
 and selective sharing with understandable dependencies. Same-asset edits still
