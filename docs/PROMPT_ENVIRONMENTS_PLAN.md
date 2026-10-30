@@ -183,6 +183,9 @@ final output lands active v17.
 active Project v17 first, so the staged shared format is now v18 and carries
 both. Final output takes Project v18, and the staged format renumbers to v19
 when it lands. Environments keep Project v16, RunTrace v9 and ExperimentPlan v6.
+Later that day [linked prompt sources](SHARED_ASSETS_PERSONAL_WORKBENCH_PLAN.md#e3-implementation-contracts-approved-october-30-2026)
+took Project v18, so final output takes Project v19 and the staged format is
+now v19.
 
 ### Contract slice proposal
 

@@ -9,14 +9,15 @@ Revised October 27 (browser save coordination, completion capability ownership,
 under "Required implementation evidence": core, browser adapter, then native. No
 application caller is approved; App/CLI remain on v15.
 
-**Approval condition.** Pending drafts may coexist with a v18 manifest only while
+**Approval condition.** Pending drafts may coexist with a v19 manifest only while
 completion has no application caller. Add a test or guard asserting that no
 app/CLI code path imports or calls the completion capability, and require
 reconciliation to ship before the integration slice enables it.
 
-**Renumbered 2026-10-30:** the staged shared format is now **v18**. Active
-v16 went to [prompt environments](PROMPT_ENVIRONMENTS_PLAN.md) on October 29
-and active v17 to [external prompt file imports](SHARED_ASSETS_PERSONAL_WORKBENCH_PLAN.md#external-prompt-sources); v18 carries both.
+**Renumbered 2026-10-30:** the staged shared format is now **v19**. Active
+v16 went to [prompt environments](PROMPT_ENVIRONMENTS_PLAN.md) on October 29,
+active v17 to [external prompt file imports](SHARED_ASSETS_PERSONAL_WORKBENCH_PLAN.md#external-prompt-sources)
+and active v18 to [linked prompt sources](SHARED_ASSETS_PERSONAL_WORKBENCH_PLAN.md#e3-implementation-contracts-approved-october-30-2026); v19 carries all three.
 Dated verification records and archived documents keep the number that was
 current when they were written.
 
@@ -24,7 +25,7 @@ current when they were written.
 
 Recommend a bounded, opt-in completion capability for an already staged
 migration, with browser and native adapters. It completes the filesystem
-foundation before feature owners enable v18. Application migration UI, ordinary
+foundation before feature owners enable v19. Application migration UI, ordinary
 publication, request/scratch arms and execution provenance remain subsequent
 work; enabling the capability from an opening/save path is outside this slice.
 
@@ -47,7 +48,7 @@ power loss or writes by another process in a check/write window.
 Core owns a new `migration-completion.ts` module alongside
 [migration-journal.ts](../packages/core/src/migration-journal.ts). It reuses
 strict preparation, exact-byte verification and the workbench v1 codecs. It
-does not change v18, workbench v1 or migration-journal v1 serialization.
+does not change v19, workbench v1 or migration-journal v1 serialization.
 Provider representations and historical evidence formats stay outside this API.
 
 Proposed public operations:
@@ -181,7 +182,7 @@ Otherwise the result has two independent dimensions:
 | Exact shared snapshot and some exact active candidates | Treat those as present; continue eligible absent candidates without duplicates. |
 | Exact shared snapshot but active drafts differ or compete | Preserve them; report recovery pending. |
 | Source/shared manifest with damaged staging or foreign identity | Block completion, even if active records look complete. |
-| Manifest differs from both snapshots, including a later valid v18 edit | Diverged; no automatic commit or activation. Retain candidates for later explicit reconciliation. |
+| Manifest differs from both snapshots, including a later valid v19 edit | Diverged; no automatic commit or activation. Retain candidates for later explicit reconciliation. |
 | Manifest missing, partial or unreadable | Diverged or unavailable; no automatic source restoration. |
 
 Inspection reports manifest equality separately from recovery integrity. Equal
@@ -193,11 +194,11 @@ recognized. Browser saves reject through a shared handle validity flag; native
 saves reject through workspace registration state. The browser flag shares the
 `save` closure, so the browser completion capability is constructed inside the
 workspace storage factory alongside `workbench` and `migration`, not as a
-standalone factory over the directory handle. They must not adopt v18 into
+standalone factory over the directory handle. They must not adopt v19 into
 the old handle's `lastContents`/`last_contents` expectation. This prevents a
 stale v15 caller from saving through the handle after an uncertain attempt that
 left source bytes unchanged. Evidence reads/writes remain independent. A future
-v18 application owner explicitly reopens/adopts a validated v18 session; this
+v19 application owner explicitly reopens/adopts a validated v19 session; this
 slice adds no such caller. Other stale handles still fail their expected-manifest
 check when shared bytes changed. Cross-host races retain the approved limits.
 
@@ -207,7 +208,7 @@ the safer choice and has no user impact while no caller exists, but it is a UX
 constraint the later application owner must design for.
 
 Likewise, pending or unavailable candidates not blocking the shared write means
-a project can reach v18 with drafts reported as pending and no reconciliation
+a project can reach v19 with drafts reported as pending and no reconciliation
 UI. That is acceptable only while this capability stays opt-in with no caller;
 application integration must provide reconciliation before enabling completion.
 
@@ -215,7 +216,7 @@ application integration must provide reconciliation before enabling completion.
 
 Write tests first and run an actual incorrect outcome red before implementing
 the coordinator. A no-write scaffold can establish actual unchanged v15 bytes
-where exact v18 bytes are expected; a missing import is not red evidence.
+where exact v19 bytes are expected; a missing import is not red evidence.
 
 - Core: both prompt kinds, no drafts, all legacy source versions, ordered JSON,
   sparse/empty values, independent plan snapshots, every disposition above,
@@ -232,7 +233,7 @@ where exact v18 bytes are expected; a missing import is not red evidence.
   manifest formatting-only divergence and later valid shared edits.
 - Real Git repository without bundle ignore rules: stage actual adapter output;
   only the intended shared manifest change is tracked, never recovery content.
-- Compatibility: app/CLI paths still use v15, reject v18 and never call completion
+- Compatibility: app/CLI paths still use v15, reject v19 and never call completion
   automatically. A native/browser capability test is not application migration.
 
 Run affected unit/adapter tests, core/app type checks, lint and Rust tests/checks.

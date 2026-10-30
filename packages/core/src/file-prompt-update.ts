@@ -17,6 +17,7 @@ import { stableJsonValue } from "./stable-json.ts";
 import { discoverTemplateVariables } from "./template-engine.ts";
 import type { PromptTemplateId, PromptTemplateRevisionId } from "./run-kernel/types.ts";
 import { n8nExpressionIdentity } from "../../n8n/src/expression-naming.ts";
+import { sourceFileBasename } from "./source-root-rules.ts";
 
 export interface FilePromptUpdateVariable extends ExternalTemplateVariableProjection {
   /** True when an earlier pull already gave this expression its name. */
@@ -69,7 +70,7 @@ function variableNames(messages: PromptTemplateMessages): Set<string> {
 }
 
 /** A checkout's line endings are not drift: CRLF and lone CR compare as LF. */
-function comparableText(text: string): string {
+export function comparableText(text: string): string {
   return text.replace(/\r\n?/g, "\n");
 }
 
@@ -194,7 +195,9 @@ export function planFilePromptUpdate(
     textChanged: comparableText(authored.text) !== comparableText(lastAuthored.text),
     roleChanged: authored.role !== lastAuthored.role,
     interpretationChanged: candidate.invocation.version !== lastReceipt.invocation.version,
-    filenameChanged: candidate.source.resource.id !== lastReceipt.source.resource.id,
+    // Basenames, so a linked pull after a bare-filename import does not warn.
+    filenameChanged:
+      sourceFileBasename(candidate.source.resource.id) !== sourceFileBasename(lastReceipt.source.resource.id),
     wouldChange:
       !sameJson(comparableMessages(projection.messages), comparableMessages(current.messages)) ||
       !sameJson(variableDefaults, current.variableDefaults),

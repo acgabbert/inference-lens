@@ -8,22 +8,23 @@ import {
 import type {
   ChatPromptTemplate,
   DecisionPromptTemplate,
-  ProjectFileV17,
+  ProjectFileV18,
 } from "./project.ts";
 
 /**
- * Staged format: the application and CLI use the active ProjectFileV17, which
- * carries prompt environments (v16, docs/PROMPT_ENVIRONMENTS_PLAN.md) and
- * whole-file prompt imports (v17). This format derives from it and carries both.
+ * Staged format: the application and CLI use the active ProjectFileV18, which
+ * carries prompt environments (v16, docs/PROMPT_ENVIRONMENTS_PLAN.md),
+ * whole-file prompt imports (v17) and linked prompt sources (v18). This format
+ * derives from it and carries all three.
  */
-export const SHARED_PROJECT_SCHEMA_VERSION = 18;
+export const SHARED_PROJECT_SCHEMA_VERSION = 19;
 
 export type SharedPromptTemplate =
   | Omit<ChatPromptTemplate, "draft">
   | Omit<DecisionPromptTemplate, "draft">;
 
-export interface SharedProjectFileV18 extends Omit<ProjectFileV17, "schemaVersion" | "promptTemplates"> {
-  schemaVersion: 18;
+export interface SharedProjectFileV19 extends Omit<ProjectFileV18, "schemaVersion" | "promptTemplates"> {
+  schemaVersion: 19;
   promptTemplates: SharedPromptTemplate[];
 }
 
@@ -33,11 +34,11 @@ const record = (value: unknown): Record<string, unknown> | undefined =>
   typeof value === "object" && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
 
 /**
- * Strict v18 only. Reuse v17's unchanged saved-content and reference validation
- * after fencing out drafts. This is not a public v18-to-v17 export operation.
+ * Strict v19 only. Reuse v18's unchanged saved-content and reference validation
+ * after fencing out drafts. This is not a public v19-to-v18 export operation.
  * Legacy input must go through the migration planner so drafts cannot be lost.
  */
-export function parseSharedProjectFile(value: unknown): SharedProjectFileV18 {
+export function parseSharedProjectFile(value: unknown): SharedProjectFileV19 {
   const gated = versionGate.safeParse(value);
   if (!gated.success) throw new ProjectValidationError(gated.error.issues);
   const issues: z.core.$ZodIssue[] = [];
@@ -47,12 +48,12 @@ export function parseSharedProjectFile(value: unknown): SharedProjectFileV18 {
       if (record(template) && "draft" in record(template)!) {
         issues.push({
           code: "custom", path: ["promptTemplates", index, "draft"],
-          message: "Personal prompt drafts are not shared Project v18 fields.",
+          message: "Personal prompt drafts are not shared Project v19 fields.",
         });
       }
     });
   }
-  // v17 checks these provider options but stops at arrays; v18 does not.
+  // v18 checks these provider options but stops at arrays; v19 does not.
   const providerOptions: Array<[unknown, Array<string | number>]> = [
     [record(record(record(gated.data.defaults)?.options))?.providerOptions, ["defaults", "options", "providerOptions"]],
   ];
@@ -65,11 +66,11 @@ export function parseSharedProjectFile(value: unknown): SharedProjectFileV18 {
     }
   }
   if (issues.length) throw new ProjectValidationError(issues);
-  const parsed = parseProjectFile({ ...gated.data, schemaVersion: 17 });
+  const parsed = parseProjectFile({ ...gated.data, schemaVersion: 18 });
   return structuredClone({ ...parsed, schemaVersion: SHARED_PROJECT_SCHEMA_VERSION });
 }
 
-export function parseSharedProjectJson(text: string): SharedProjectFileV18 {
+export function parseSharedProjectJson(text: string): SharedProjectFileV19 {
   let value: unknown;
   try {
     value = JSON.parse(text);
@@ -79,10 +80,10 @@ export function parseSharedProjectJson(text: string): SharedProjectFileV18 {
   return parseSharedProjectFile(value);
 }
 
-export function serializeSharedProjectFile(project: SharedProjectFileV18): string {
+export function serializeSharedProjectFile(project: SharedProjectFileV19): string {
   const validated = parseSharedProjectFile(project);
   // Preserve the existing deterministic field order and authored subtrees.
-  const ordered = JSON.parse(serializeProjectFile({ ...validated, schemaVersion: 17 }));
+  const ordered = JSON.parse(serializeProjectFile({ ...validated, schemaVersion: 18 }));
   ordered.schemaVersion = SHARED_PROJECT_SCHEMA_VERSION;
   return `${JSON.stringify(ordered, null, 2)}\n`;
 }

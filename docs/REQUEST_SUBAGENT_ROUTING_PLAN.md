@@ -56,11 +56,12 @@ approval UI or scheduler behavior; otherwise keep the MVP tool-free.
 Current formats: active Project v15, RunTrace v8, ExperimentPlan v5, and
 ExperimentResult v6. [`shared-project.ts`](../packages/core/src/shared-project.ts)
 also defines a **staged** shared format that app/CLI do not yet use, renumbered
-to v18 on 2026-10-30. [Prompt environments](PROMPT_ENVIRONMENTS_PLAN.md#format-version)
+to v19 on 2026-10-30. [Prompt environments](PROMPT_ENVIRONMENTS_PLAN.md#format-version)
 take active Project v16, RunTrace v9 and ExperimentPlan v6,
-[external prompt file imports](SHARED_ASSETS_PERSONAL_WORKBENCH_PLAN.md#external-prompt-sources) take Project v17, and
+[external prompt file imports](SHARED_ASSETS_PERSONAL_WORKBENCH_PLAN.md#external-prompt-sources) take Project v17,
+linked prompt sources take Project v18, and
 [final output](FINAL_OUTPUT_CONTRACTS.md#d1-format-version-allocation) takes
-Project v18, RunTrace v10 and ExperimentPlan v7; the staged format becomes v19
+Project v19, RunTrace v10 and ExperimentPlan v7; the staged format becomes v20
 when final output lands. Coordinate schema allocation with that
 migration, environments, and the
 [final-output tool plan](N8N_FINAL_OUTPUT_TOOL_PLAN.md); neither is a dependency
@@ -214,7 +215,7 @@ neither source prompts nor local credentials, and never reruns children.
 Historical parent traces remain inspectable with zero children. Unsupported
 new formats must fail explicitly in old readers rather than run as ordinary
 unbound tools. Allocate actual format versions after environments and the
-staged v18 work; update both the active path and staged compatibility tests as needed.
+staged v19 work; update both the active path and staged compatibility tests as needed.
 
 Show parent-only metrics and an explicitly labelled combined request/token
 summary. Do not add child tokens to parent provider usage events, double-count
@@ -302,7 +303,7 @@ Required coverage:
   served serially, parent final answer, child failure/retry, stop, source changes
   during a run, combined usage with missing values, export/import and history
   reopen after source removal. Reject corrupted links and over-limit artifacts.
-- Compatibility: old projects/traces retain behavior; staged v18 validation does
+- Compatibility: old projects/traces retain behavior; staged v19 validation does
   not discard new definitions; batch/CLI fail preflight before network activity
   until supported. After that slice, prove app/CLI evidence and check parity.
 

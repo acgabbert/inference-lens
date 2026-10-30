@@ -3,7 +3,7 @@
 **Status:** Level 1 implemented October 25, 2026; verification recorded below.
 Level 2 design choices were approved October 25, 2026, as recorded below.
 On October 26, the user approved a bounded first implementation slice: isolated
-v18/workbench v1 core codecs and an in-memory migration planner. That
+v19/workbench v1 core codecs and an in-memory migration planner. That
 [core foundation](SHARED_ASSETS_LEVEL_TWO_DESIGN.md#first-core-slice-october-26-2026)
 is implemented. The subsequent approved
 [recovery-store foundation](archive/SHARED_ASSETS_RECOVERY_STORE_SLICE.md) implements
@@ -22,9 +22,10 @@ Inference Lens is a personal workbench for potentially shared assets. Approved
 choices are distinguished from the remaining schema and recovery mechanics that
 still need design review.
 
-**Renumbered 2026-10-30:** the staged shared format is now **v18**. Active
-v16 went to [prompt environments](PROMPT_ENVIRONMENTS_PLAN.md) on October 29
-and active v17 to [external prompt file imports](#external-prompt-sources); v18 carries both.
+**Renumbered 2026-10-30:** the staged shared format is now **v19**. Active
+v16 went to [prompt environments](PROMPT_ENVIRONMENTS_PLAN.md) on October 29,
+active v17 to [external prompt file imports](#external-prompt-sources) and
+active v18 to [linked prompt sources](#e3-implementation-contracts-approved-october-30-2026); v19 carries all three.
 Dated verification records and archived documents keep the number that was
 current when they were written.
 
@@ -298,11 +299,11 @@ The [slice 2a review](SHARED_ASSETS_LEVEL_TWO_DESIGN.md) inventories the v15
 fields after System One saved prompts/evaluations, supplies concrete before/after
 JSON, and proposes contracts for review. Review revised it on October 26, 2026:
 best-effort write safety (choice 7 above), publication intent kept in the draft
-record, an explicit launch-default writer, the reason for the v18 bump, and a
+record, an explicit launch-default writer, the reason for the v19 bump, and a
 delivery order that limits slice 2b to the arms migration and trial runs need.
 No checklist item below is approved merely by that proposal.
 
-The subsequent core-slice approval covers the shared v18 shape, extracted prompt
+The subsequent core-slice approval covers the shared v19 shape, extracted prompt
 draft and copied-selection v1 records, and pure migration planning while the
 application stays on v15. It does not approve the full 2b persistence contracts
 below. See the [implemented API boundary](SHARED_ASSETS_LEVEL_TWO_DESIGN.md#first-core-slice-october-26-2026).
@@ -994,7 +995,7 @@ needs no file picker.
    reinterpreted.
 2. **What the format stores.**
    - `ProjectFile.sourceRoots: SourceRootRequirement[]`, each
-     `{ id: "sourceroot_…", name }`, like `ConnectionRequirement`. `name` is
+     `{ id: "source-root_…", name }`, like `ConnectionRequirement`. `name` is
      the portable name a deployment maps: lowercase letters, digits and `-`,
      starting with a letter or digit, at most 63 characters, unique within the
      project.
@@ -1068,7 +1069,7 @@ unresolved persistence, compatibility, or dependency policy during coding.
 | --- | --- | --- |
 | 1 | Creation presets, exact ignore policy, documentation | Core bundle policy; creation dialog; browser/native creation adapters |
 | 2a | Complete field inventory, approved ownership and migration examples | Core shared-definition and personal-state contracts |
-| 2b, core foundation | Isolated v18/workbench v1 codecs and pure migration plan; app remains v15 (implemented October 26) | Core codecs; no workspace integration |
+| 2b, core foundation | Isolated v19/workbench v1 codecs and pure migration plan; app remains v15 (implemented October 26) | Core codecs; no workspace integration |
 | 2b, recovery-store foundation | Protected storage for existing prompt-draft and selections records (implemented October 26); app remains v15 | Core typed store; opt-in browser/native workspace adapters |
 | 2b, integration | Recovery store, migration, prompt/request drafts and scratch inputs, selections, explicit publication and launch defaults | Workspace adapters; personal-workbench, prompt, request, decision and execution-setting owners; compatible app/CLI loaders |
 | 2c | Suite/tool/mock drafts and import staging; explicit saves | Evaluation, tool and import feature owners |

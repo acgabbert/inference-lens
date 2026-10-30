@@ -2,8 +2,8 @@
 
 Inference Lens projects use a visible `<name>.inference-lens/` directory bundle
 containing one canonical, portable JSON document named `project.json`. New
-saves use schema version 17. The parser also opens versions 10, 11, 12, 13, 14,
-15 and 16 and upgrades them on load. From v10, the protocol it kept on each connection
+saves use schema version 18. The parser also opens versions 10, 11, 12, 13, 14,
+15, 16 and 17 and upgrades them on load. From v10, the protocol it kept on each connection
 requirement (always chat completions) moves onto every execution target that
 names that requirement — the project default and each suite's
 `execution.target` — and the requirement loses the field. See
@@ -22,7 +22,9 @@ IDs, drafts, defaults, provenance and suite pins preserved. v16 adds
 [prompt environments](#prompt-environments); a v15 document opens with none, and
 one that already holds or selects any is rejected. v17 adds
 [whole-file prompt imports](#file-prompt-imports); a v16 document opens
-unchanged, and one that already holds a file receipt is rejected. Earlier project
+unchanged, and one that already holds a file receipt is rejected. v18 adds
+[linked prompt sources](#linked-prompt-sources); a v17 document opens with no
+source roots, and one that already declares a root or a link is rejected. Earlier project
 formats, including v5–v9, and the proof-of-concept request export are rejected
 with a version error rather than upgraded on load.
 Every schema is strict, so a reader rejects a document it does not understand
@@ -257,6 +259,21 @@ revision anchored to one more file receipt for the same template, so a
 template may hold several, in `externalImports` order; this needs no new
 version. See the
 [external prompt sources plan](SHARED_ASSETS_PERSONAL_WORKBENCH_PLAN.md#external-prompt-sources).
+
+### Linked prompt sources
+
+From v18, `sourceRoots` lists the portable folder names a project's prompts
+are linked into, each `{ id: "source-root_…", name }`. A name uses lowercase
+letters, digits and `-`, starts with a letter or digit, has at most 63
+characters, and is unique in the project. A deployment maps each name to a
+real folder; see [Docker](DOCKER.md#linked-prompt-source-folders). A chat
+prompt with at least one file receipt may carry
+`fileSource: { sourceRootId, path }`, where `path` is relative to the root,
+`/`-separated, with no empty, `.`, `..` or hidden segment, at most 1,024
+characters, and ends in `.md` or `.txt`. At most one prompt links to a given
+root and path, archived prompts included. A link is not a revision: linking
+and unlinking change only these fields, and a pull through a link records the
+relative path as its receipt's `source.resource.id` and `name`.
 
 ## Template authoring session
 
