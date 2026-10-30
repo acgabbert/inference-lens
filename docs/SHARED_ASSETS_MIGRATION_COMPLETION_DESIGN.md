@@ -345,3 +345,6 @@ core and browser tests rather than here.
 
 **Remaining.** No application caller is approved. Enabling completion needs the
 reconciliation UI and a v19 application owner, per the approval condition.
+Their design is approved as
+[integration decisions D4–D8](SHARED_ASSETS_LEVEL_TWO_DESIGN.md#integration-decisions-approved-october-30-2026);
+the guard lifts with the gate (D2).
