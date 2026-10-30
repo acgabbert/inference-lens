@@ -290,13 +290,28 @@ export function TemplateProvenance({
             <span className="event-dot run.completed" />
             <span>{resolution.templateName}</span>
             <span>{resolution.templateRevisionId}</span>
+            {resolution.fileSource && (
+              <span>
+                From file {resolution.fileSource.sourceRootName}/{resolution.fileSource.path} · digest{" "}
+                {resolution.fileSource.sourceDigest.slice(0, 12)}
+              </span>
+            )}
           </summary>
+          {resolution.fileSource && (
+            // A CI run's text is the file's, not the pinned revision's; say so
+            // before the evidence, so the revision ID is not read as what ran.
+            <p>
+              Read from {resolution.fileSource.sourceRootName}/{resolution.fileSource.path} in place of revision{" "}
+              {resolution.fileSource.baseTemplateRevisionId}, which this run did not send.
+            </p>
+          )}
           <pre>
             {JSON.stringify(
               {
                 templateUseId: resolution.templateUseId,
                 templateId: resolution.templateId,
                 templateRevisionId: resolution.templateRevisionId,
+                ...(resolution.fileSource ? { fileSource: resolution.fileSource } : {}),
                 values: resolution.values,
                 ...(resolution.valueSources ? { valueSources: resolution.valueSources } : {}),
                 variableDefaults: resolution.variableDefaults,

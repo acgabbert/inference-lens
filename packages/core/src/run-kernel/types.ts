@@ -390,7 +390,24 @@ export interface ResolvedTemplateUse {
    * from.
    */
   valueSources?: Record<string, TemplateValueSource>;
+  /**
+   * Present when `messages` came from a linked prompt's file rather than from
+   * the pinned revision (trace v10, plan v7). `templateRevisionId` still names
+   * the revision the use pins, which the file's text replaced for this run.
+   */
+  fileSource?: ResolvedTemplateFileSource;
   outputMessageIds: MessageId[];
+}
+
+/** Where a run-only file override's text came from; never a host path. */
+export interface ResolvedTemplateFileSource {
+  sourceRootName: string;
+  /** Relative to the source root, `/`-separated. */
+  path: string;
+  /** The file receipt digest the text would have had as a pull. */
+  sourceDigest: string;
+  /** The revision the file's text replaced; equals the use's `templateRevisionId`. */
+  baseTemplateRevisionId: PromptTemplateRevisionId;
 }
 
 /** The environment a run rendered against, as it was when the run was prepared. */
@@ -723,7 +740,7 @@ export interface RunState {
 }
 
 export interface RunTrace {
-  schemaVersion: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9;
+  schemaVersion: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10;
   runId: RunId;
   input: ResolvedRunInput;
   status: TerminalRunStatus;

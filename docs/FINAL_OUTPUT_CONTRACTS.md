@@ -75,6 +75,13 @@ landed first and took active Project v18, so this feature takes active
 shared format is now v19 in code; when PR 2 lands active v19, it renumbers to
 v20 and derives from active v19.
 
+**Revised 2026-10-30: RunTrace v11 and ExperimentPlan v8.** [Linked prompt
+files in the CLI](SHARED_ASSETS_PERSONAL_WORKBENCH_PLAN.md#e4-implementation-contracts-approved-october-30-2026)
+(E4) landed first and took active RunTrace v10 and ExperimentPlan v7, under
+the rule that whichever lands first takes the next number. This feature
+therefore takes **RunTrace v11 and ExperimentPlan v8**; Project v19 is
+unchanged. No version is skipped.
+
 ### D2. Where the adopted message's attribution lives
 
 The agreed policy materializes a "clearly attributed" assistant message when a
@@ -434,11 +441,11 @@ Version numbers are from D1, as revised.
 - **Project v19.** `ProjectConversationRevision.finalOutput?` is added in a
   strict new version. Older documents upgrade with no contract. A document from the
   new version is rejected by old readers with a version error.
-- **RunTrace v10.** `ResolvedRunInput.finalOutput?`, the two events, the
+- **RunTrace v11.** `ResolvedRunInput.finalOutput?`, the two events, the
   `final_output_error` code and replay validation are added. Older traces
   parse unchanged, get no inferred finalization, and keep `effectiveAnswer`
   equal to `finalAssistantOutput`.
-- **ExperimentPlan v7.** `commonInput` and evaluation case inputs embed
+- **ExperimentPlan v8.** `commonInput` and evaluation case inputs embed
   `ResolvedRunInput`, so they gain `finalOutput?` in a new plan version.
   Execution hashes include it.
 - **ExperimentResult.** No bump. Its shape does not change, and the only runs

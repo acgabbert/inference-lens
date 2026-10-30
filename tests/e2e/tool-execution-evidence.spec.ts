@@ -168,7 +168,7 @@ test("a mocked tool call records who executed it, and the evidence survives the 
   );
 
   const trace = await savedTrace(page);
-  expect(trace.schemaVersion).toBe(9);
+  expect(trace.schemaVersion).toBe(10);
   expect(
     trace.events
       .map(({ type }) => type)

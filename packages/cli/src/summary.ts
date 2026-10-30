@@ -64,6 +64,19 @@ export interface HeadlessConfigurationSummary {
   cases: HeadlessCaseSummary[];
 }
 
+/** One overridden prompt in `run`'s summary. Additive on summary v1. */
+export interface HeadlessPromptSourceSummary {
+  templateId: string;
+  name: string;
+  sourceRoot: string;
+  path: string;
+  sourceDigest: string;
+  /** The file's projected text differs from the pinned revision it replaced. */
+  textChanged: boolean;
+  /** The pinned revision is not the last one pulled from the file. */
+  replacedLocalRevisions: boolean;
+}
+
 /** How much of the suite ran. A verdict describes what ran, not the whole suite. */
 export interface HeadlessScope {
   cases: { selected: number; total: number };
@@ -97,6 +110,11 @@ export interface HeadlessSummaryV1 {
   concurrency?: ExperimentConcurrency;
   /** Whether a 429 was retried, and how often per provider turn. Absent when no result was written. */
   retryPolicy?: ExperimentRetryPolicy;
+  /**
+   * Added after the first release (E4): present only with
+   * `--prompts-from-files`, one entry per linked prompt read from its file.
+   */
+  promptSources?: HeadlessPromptSourceSummary[];
   configurations: HeadlessConfigurationSummary[];
 }
 
@@ -136,6 +154,7 @@ export function createHeadlessSummary(input: {
   resultPath?: string;
   /** Traces that were actually written, by run ID. */
   tracePaths: ReadonlyMap<string, string>;
+  promptSources?: HeadlessPromptSourceSummary[];
 }): HeadlessSummaryV1 {
   const { plan, result, assessment } = input;
   return {
@@ -158,6 +177,7 @@ export function createHeadlessSummary(input: {
       ...(input.resultPath ? { result: input.resultPath } : {}),
     },
     ...(result ? { concurrency: result.concurrency, retryPolicy: result.retryPolicy } : {}),
+    ...(input.promptSources ? { promptSources: input.promptSources } : {}),
     configurations: assessment.variants.map((variant) => ({
       variantId: variant.variant.variantId,
       name: variant.variant.name,
@@ -196,6 +216,20 @@ export function createHeadlessSummary(input: {
   };
 }
 
+export function formatPromptSourceLines(sources: readonly HeadlessPromptSourceSummary[]): string[] {
+  if (sources.length === 0) return [];
+  return [
+    `Read ${sources.length} ${sources.length === 1 ? "prompt" : "prompts"} from files:`,
+    ...sources.map((source) => {
+      const notes = [
+        source.textChanged ? "text differs from the pinned revision" : "same text as the pinned revision",
+        ...(source.replacedLocalRevisions ? ["replaced a revision not pulled from the file"] : []),
+      ];
+      return `  ${source.name} ← ${source.sourceRoot}/${source.path} (${notes.join("; ")})`;
+    }),
+  ];
+}
+
 const CLASSIFICATION_WORDS: Record<EvaluationRepetitionClassification, string> = {
   passed: "passed",
   "check-failed": "check failed",
@@ -232,6 +266,7 @@ export function formatHeadlessSummary(summary: HeadlessSummaryV1): string {
   if (summary.stop) {
     lines.push(`Stopped because tool ${summary.stop.toolId} became unavailable.`);
   }
+  lines.push(...formatPromptSourceLines(summary.promptSources ?? []));
   for (const configuration of summary.configurations) {
     const { caseCounts } = configuration;
     lines.push("");

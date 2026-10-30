@@ -838,12 +838,13 @@ export function reduceRunEvents(
 }
 
 /**
- * Version 9 records where every template value came from. An input whose
- * template uses lack that record, because it was read from an older trace, is
- * written as version 8 rather than given sources nobody observed.
+ * Version 9 records where every template value came from, and version 10 may
+ * record that a use's text came from a linked prompt's file. An input whose
+ * template uses lack value sources, because it was read from an older trace,
+ * is written as version 8 rather than given sources nobody observed.
  */
-export function runTraceSchemaVersionFor(input: Pick<ResolvedRunInput, "templateResolutions">): 8 | 9 {
-  return input.templateResolutions.every(({ valueSources }) => valueSources !== undefined) ? 9 : 8;
+export function runTraceSchemaVersionFor(input: Pick<ResolvedRunInput, "templateResolutions">): 8 | 10 {
+  return input.templateResolutions.every(({ valueSources }) => valueSources !== undefined) ? 10 : 8;
 }
 
 export function createRunTrace(

@@ -1,7 +1,7 @@
 # Run trace format
 
-New chat traces use schema version 9. Decision (System One) runs use version
-8; see [Decision traces](#decision-traces). Chat versions 1 through 8 remain
+New chat traces use schema version 10. Decision (System One) runs use version
+8; see [Decision traces](#decision-traces). Chat versions 1 through 9 remain
 importable.
 Versions 1 and 2 gain an empty `input.templateResolutions` collection during
 migration; Versions 1 through 3 gain `responseMode: "streaming"` on the run,
@@ -33,7 +33,7 @@ accepted as a valid Inference Lens run. Version 1 and 2 compatibility remains
 unchanged because those formats contain no template provenance.
 
 Inference Lens run traces are immutable, credential-free diagnostic artifacts.
-Version 9 uses deterministic JSON and is stored as `traces/<runId>.json` when a
+Version 10 uses deterministic JSON and is stored as `traces/<runId>.json` when a
 run belongs to an open project folder. A terminal ad hoc run can be exported
 from the Project menu, and older traces can be imported for
 inspection.
@@ -112,7 +112,7 @@ when the stored projections disagree.
 
 ## Compatibility and immutability
 
-The root `schemaVersion` is currently `9`. Version 1 is accepted with its
+The root `schemaVersion` is currently `10`. Version 1 is accepted with its
 original strict root schema; Version 2 adds the optional `branchedFrom` field,
 Version 3 adds required template provenance, Version 4 adds the required
 run-level response mode, Version 5 stores template provenance as messages, and
@@ -125,7 +125,16 @@ that supplied each value (`template-default`, `environment`, `authored-use`,
 `run-override` or `case`). `input.environment`, when present, records the
 environment's ID and name and the resolved entries the run `consumed`. Those
 must be exactly the values some template use took from the environment. A
-version 8 or older trace cannot carry `environment`. The response mode is:
+version 8 or older trace cannot carry `environment`. Version 10 adds an
+optional `fileSource` to a template resolution
+([E4](SHARED_ASSETS_PERSONAL_WORKBENCH_PLAN.md#e4-implementation-contracts-approved-october-30-2026)):
+`{ sourceRootName, path, sourceDigest, baseTemplateRevisionId }`, present when
+the CLI's `run --prompts-from-files` sent a linked prompt's file text in place
+of its pinned revision's. `templateRevisionId` still names the pinned revision,
+`baseTemplateRevisionId` must equal it, and `messages` hold the file's
+projected text, so the trace explains itself after the file changes. The path
+is relative to the source root; no host path is recorded. A version 9 or older
+trace cannot carry `fileSource`. The response mode is:
 
 ```ts
 "streaming" | "buffered"
@@ -133,7 +142,7 @@ version 8 or older trace cannot carry `environment`. The response mode is:
 
 The mode is copied into each provider-turn input, so retries and tool-driven
 continuation turns preserve how the run was executed. New serialization writes
-Version 9. The exception is a trace read from an older file whose template
+Version 10. The exception is a trace read from an older file whose template
 resolutions have no `valueSources`: it is written as Version 8, because its
 value sources cannot be inferred.
 

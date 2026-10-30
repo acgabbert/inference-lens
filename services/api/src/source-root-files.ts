@@ -87,6 +87,26 @@ export function readSourceRootCatalog(
   }
 }
 
+/**
+ * A catalog built from name-to-folder mappings rather than from a file, for a
+ * host that takes them another way (the CLI's `--source-root`). A relative
+ * path resolves against `base`. Reads through it are confined exactly as the
+ * server's are.
+ */
+export function sourceRootCatalogFromMappings(
+  mappings: Iterable<{ name: string; path: string; label?: string }>,
+  base: string,
+): SourceRootCatalogSource {
+  return {
+    available: true,
+    roots: [...mappings].map(({ name, path, label }) => ({
+      name,
+      ...(label ? { label } : {}),
+      path: isAbsolute(path) ? path : resolve(base, path),
+    })),
+  };
+}
+
 function inside(rootRealPath: string, candidate: string): boolean {
   const offset = relative(rootRealPath, candidate);
   return offset !== "" && !offset.startsWith(`..${sep}`) && offset !== ".." && !isAbsolute(offset);

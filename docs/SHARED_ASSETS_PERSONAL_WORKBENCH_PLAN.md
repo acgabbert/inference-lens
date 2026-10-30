@@ -555,7 +555,7 @@ prompt files tracked from another repository.
 
 ## External prompt sources
 
-**Status:** E1–E3 implemented October 30, 2026, under the decisions, review
+**Status:** E1–E4 implemented October 30, 2026, under the decisions, review
 recommendations and bounded contracts recorded below, all approved that day.
 The order is E1 → E2 → E3, with Level 3 separate; E2's mapping continuity is
 designed. E1 then took Project v17 and gained a re-import warning
@@ -564,8 +564,10 @@ designed. E1 then took Project v17 and gained a re-import warning
 approved. E3's [contracts](#e3-implementation-contracts-approved-october-30-2026)
 were approved and implemented the same day, taking Project v18
 ([evidence](#e3-delivery-evidence-october-30-2026)). E4's
-[contracts](#e4-implementation-contracts-proposed-october-30-2026) are proposed
-and await approval; later slices need separate approval.
+[contracts](#e4-implementation-contracts-approved-october-30-2026) were
+approved as proposed and implemented the same day, taking RunTrace v10 and
+ExperimentPlan v7 ([evidence](#e4-delivery-evidence-october-30-2026)); later
+slices need separate approval.
 
 Some teams keep n8n workflows in Git with each agent prompt extracted to its own
 `.md` or `.txt` file. A sync step using the n8n API detects drift between those
@@ -1122,11 +1124,13 @@ describes the mount.
   should check the link dialog, the library's drift line and the Docker
   instructions against a real prompt folder.
 
-### E4 implementation contracts (proposed October 30, 2026)
+### E4 implementation contracts (approved October 30, 2026)
 
 The user chose to record file provenance in RunTrace and asked for
-recommendations on the rest; these are those recommendations, for approval
-together. They let the CLI run a suite against the text in a linked prompt's
+recommendations on the rest; these are those recommendations. The user
+approved all eight as written on October 30: the plan snapshot and trace
+field, the all-or-nothing override, drift exiting 1 on any changed, missing
+or unreadable file, and contracts 3, 5, 7 and 8 with the ownership below. They let the CLI run a suite against the text in a linked prompt's
 file without saving a revision, and report drift for CI. The principle
 throughout: ordinary runs never read a file, so reading one is an explicit
 opt-in, and a CI run never quietly tests something other than the file.
@@ -1228,6 +1232,85 @@ The trace panel change is user-visible: run its render test and an e2e spec
 that opens a CI-produced trace, plus the related specs. A real CI job in a
 workflow repository is not exercised by the suite; record that.
 
+### E4 delivery evidence (October 30, 2026)
+
+- **Implementation notes.** These settle details the contracts left open:
+  - A file is read with its last pull's role and interpretation, as the Pull
+    dialog defaults them. The snapshot's variable defaults are the ones a Pull
+    would give the new revision: the current revision's, for the names the file
+    uses.
+  - A linked prompt pinned at more than one revision in the suite's
+    conversation is a setup error naming it, since one snapshot replaces one
+    revision. A decision suite with `--prompts-from-files` is a setup error.
+  - Preflight runs against the file's text. A finding about a use whose text
+    came from a file is prefixed with the prompt and its file, which is how an
+    unbound new variable names the prompt.
+  - Every new chat trace is written as v10, as every new trace was v9 before;
+    only an overridden use carries `fileSource`. A v9 or older trace, and a v6
+    or older plan, opens unchanged and cannot carry the new fields.
+  - Drift's JSON adds `outcome` (`matches`, `drift` or `nothing-linked`)
+    beside the per-prompt states, so CI can read the result without counting.
+  - `services/api` gained `sourceRootCatalogFromMappings`; the CLI layers
+    `--source-root` over `INFERENCE_LENS_SOURCE_ROOTS` and reads through the
+    unchanged `readSourceRootFiles`.
+  - In the app, `PromptFileSources` (`app/evaluations/prompt-file-sources.client.tsx`)
+    names each file in the evaluation results pane, inside its scroll area, and
+    `TemplateProvenance` names the file and digest beside the pinned revision.
+  - Final output now takes RunTrace v11 and ExperimentPlan v8
+    ([D1](FINAL_OUTPUT_CONTRACTS.md#d1-format-version-allocation)).
+- **Tests first.** `tests/prompt-file-override.test.ts` and
+  `tests/cli-prompt-sources.test.ts` were written before the code. The core
+  test first failed on the missing `prompt-file-override.ts` module, which
+  only shows the feature was absent. Run through `runCli`, the CLI test failed
+  on an unknown `--prompts-from-files` option, which also only shows absence.
+  So the evaluation API was driven directly with the new options against the
+  unchanged code. It exited 0 having sent `"Tell me about addition."`, the
+  saved revision's text, where `"Describe addition in detail."` was expected.
+  That is the red on the actual wrong value, and the test now commits that
+  case. A `drift` run against the unchanged code exited 2 as an unknown command
+  rather than 0, so its red also shows only absence. The render tests for
+  `TemplateProvenance` and the results pane failed on the missing file note,
+  with their fixture plan accepted by the v7 parser.
+- **Coverage.** Version migrations and rejections for both formats. Plan
+  consistency rejections: a use with no file source, other text, other digest.
+  A v6 document carrying only `promptSources`. Every flag usage error. Through
+  the CLI: confinement (a symlink out, over 1 MiB, invalid UTF-8), a missing
+  file and an unmapped root. A suite with no linked prompt. Name reuse across a
+  pull, and a new unbound expression. A pull the dialog would block. A pinned
+  older or locally edited revision. A trace that still explains itself after
+  the file changes. The catalog and flag precedence. Drift's four states,
+  local revisions, and exit codes 0, 1 and 2.
+- **Commands.** `npm run test:core` passed 1,748 tests, including the CLI
+  tests. `npm run lint` (the four pre-existing warnings), `npm run typecheck`,
+  `npm run typecheck:core` and `git diff --check` passed. `node --test
+  tests/run-trace-panel-render.test.mjs tests/run-trace-panel-interaction.test.mjs
+  tests/evaluation-results-render.test.mjs tests/evaluation-results-interaction.test.mjs`
+  passed 22 tests. Older fixtures that wrote plan version 6 or asserted trace
+  version 9 as current now say 7 and 10.
+- **Browser.** `tests/e2e/ci-prompt-file-run.spec.ts` spawns the real CLI
+  with `--prompts-from-files` against the buffered provider fixture. It then
+  opens the folder in the app and checks three things: the results pane names
+  the file, digest and replaced revision; the transcript shows the file's text;
+  the Templates tab names the file. It also checks that the pane fits at the
+  layout audit's sizes. The spec was written after the UI. Reverting both app
+  changes made it fail on the missing "Prompts read from files" region, so it
+  is not vacuous. Its closing layout audit first failed with Run details open
+  at 390×844: the selected run's output and trace scrollers were starved (68
+  and 82 px). The same failure occurs with this change's trace-panel edit
+  reverted, so it predates E4. Any open Run details on a phone does it. The
+  spec closes Run details before it ends rather than exempting the elements.
+  It passed with these related specs, 55 tests in all: `experiment-history`,
+  `linked-prompt-sources`, `run-attempt-diff`, `pr2-workbench`,
+  `evaluation-suite-authoring`, `evaluation-baseline-comparison`,
+  `evaluation-case-promotion`, `evaluation-reassessment`,
+  `evaluation-results-dismissal`, `evaluation-configuration-results` and
+  `file-prompt-update`.
+- Not run: the full browser suite and CI. Rust is unchanged. A real CI job in
+  a workflow repository, the Docker image, a real n8n workflow repository and
+  its sync step were not exercised. Human review should check the wording of
+  the results-pane note and the Templates tab, the CLI's text output, and the
+  starved Run details layout on a phone, which is a separate fix.
+
 ## Implementation ownership and sequence
 
 Before each behavior-changing slice, approve its material contracts from the
@@ -1313,7 +1396,8 @@ review covers slice 2a; Level 3 decisions remain deferred.
 5. Specify the bounded [external prompt source review details](#accepted-review-recommendations-october-30-2026)
    before their affected slices. E1 → E2 → E3 is approved, with E2's mapping
    continuity designed alongside E1. E1–E3 are approved and delivered under
-   the bounded contracts above; E4 and later slices need separate approval.
+   the bounded contracts above, and E4 is delivered under its approved
+   contracts; later slices need separate approval.
 
 The target is fewer incidental conflicts, explicit intentional contributions,
 and selective sharing with understandable dependencies. Same-asset edits still
