@@ -127,7 +127,7 @@ function legacyProject() {
   project = createPromptTemplate(project, { name: "Prompt", idSuffix: "legacy", revisionIdSuffix: "legacy", messages: [{ role: "user", content: "{{topic}}" }] });
   return updatePromptTemplateDraft(project, { templateId: "template_legacy", sourceRevisionId: "template-revision_legacy", messages: [{ role: "user", content: "Explain {{topic}}" }], variableDefaults: { topic: "" } });
 }
-for (const version of [10, 11, 12, 13, 14, 15, 16] as const) {
+for (const version of [10, 11, 12, 13, 14, 15, 16, 17] as const) {
   test(`preparation and verified restart preserve legacy v${version}`, async () => {
     const current = legacyProject();
     const legacy: Record<string, unknown> = { ...(version < 15 ? legacyContent(current) : current), schemaVersion: version };
@@ -144,9 +144,9 @@ for (const version of [10, 11, 12, 13, 14, 15, 16] as const) {
     assert.deepEqual(prepared.files[0].bytes, bytes);
     assert.equal(JSON.parse(new TextDecoder().decode(prepared.files[1].bytes)).sourceVersion, version);
     assert.equal((await inspectSharedProjectMigration({ manifest: bytes, files: prepared.files }, prepared.projectId, prepared.operationId)).kind, "ready");
-    assert.equal(PROJECT_SCHEMA_VERSION, 16);
+    assert.equal(PROJECT_SCHEMA_VERSION, 17);
     assert.ok(parseProjectJson(new TextDecoder().decode(bytes)).promptTemplates[0].draft);
-    assert.throws(() => parseProjectJson(new TextDecoder().decode(prepared.files[2].bytes)), /schema v17 is not supported/);
+    assert.throws(() => parseProjectJson(new TextDecoder().decode(prepared.files[2].bytes)), /schema v18 is not supported/);
   });
 }
 test("compact migration identities use UTF-16 code units and remain stable for long or unusual IDs", async () => {

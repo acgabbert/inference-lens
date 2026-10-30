@@ -3,7 +3,7 @@
 **Status:** Level 1 implemented October 25, 2026; verification recorded below.
 Level 2 design choices were approved October 25, 2026, as recorded below.
 On October 26, the user approved a bounded first implementation slice: isolated
-v17/workbench v1 core codecs and an in-memory migration planner. That
+v18/workbench v1 core codecs and an in-memory migration planner. That
 [core foundation](SHARED_ASSETS_LEVEL_TWO_DESIGN.md#first-core-slice-october-26-2026)
 is implemented. The subsequent approved
 [recovery-store foundation](archive/SHARED_ASSETS_RECOVERY_STORE_SLICE.md) implements
@@ -22,10 +22,11 @@ Inference Lens is a personal workbench for potentially shared assets. Approved
 choices are distinguished from the remaining schema and recovery mechanics that
 still need design review.
 
-**Renumbered 2026-10-29:** the staged shared format is now **v17**; v16 went
-to the active format for [prompt environments](PROMPT_ENVIRONMENTS_PLAN.md),
-which v17 will carry. Dated verification records and archived documents keep
-the number that was current when they were written.
+**Renumbered 2026-10-30:** the staged shared format is now **v18**. Active
+v16 went to [prompt environments](PROMPT_ENVIRONMENTS_PLAN.md) on October 29
+and active v17 to [external prompt file imports](#external-prompt-sources); v18 carries both.
+Dated verification records and archived documents keep the number that was
+current when they were written.
 
 ## Intended experience
 
@@ -297,11 +298,11 @@ The [slice 2a review](SHARED_ASSETS_LEVEL_TWO_DESIGN.md) inventories the v15
 fields after System One saved prompts/evaluations, supplies concrete before/after
 JSON, and proposes contracts for review. Review revised it on October 26, 2026:
 best-effort write safety (choice 7 above), publication intent kept in the draft
-record, an explicit launch-default writer, the reason for the v17 bump, and a
+record, an explicit launch-default writer, the reason for the v18 bump, and a
 delivery order that limits slice 2b to the arms migration and trial runs need.
 No checklist item below is approved merely by that proposal.
 
-The subsequent core-slice approval covers the shared v17 shape, extracted prompt
+The subsequent core-slice approval covers the shared v18 shape, extracted prompt
 draft and copied-selection v1 records, and pure migration planning while the
 application stays on v15. It does not approve the full 2b persistence contracts
 below. See the [implemented API boundary](SHARED_ASSETS_LEVEL_TWO_DESIGN.md#first-core-slice-october-26-2026).
@@ -553,9 +554,12 @@ prompt files tracked from another repository.
 
 ## External prompt sources
 
-**Status:** Proposed October 30, 2026; its decisions were settled the same day
-and are recorded below. The slice order awaits confirmation, and no slice is
-approved for implementation.
+**Status:** E1 implemented October 30, 2026, under the decisions, review
+recommendations and bounded contracts recorded below, all approved that day.
+The order is E1 → E2 → E3, with Level 3 separate; E2's mapping continuity is
+designed. E1 then took Project v17 and gained a re-import warning
+([follow-ups](#e1-review-follow-ups-october-30-2026)). E2 and later slices need
+separate approval.
 
 Some teams keep n8n workflows in Git with each agent prompt extracted to its own
 `.md` or `.txt` file. A sync step using the n8n API detects drift between those
@@ -583,12 +587,14 @@ repositories, scoped to prompt text.
    template itself. Template revisions stay immutable and pinned by uses,
    suites and traces. A changed file produces a new revision only when the user
    pulls it.
-2. **Runs never read the file.** A tracked template carries the text it last
+2. **Ordinary runs never read the file.** A tracked template carries the text it last
    pulled, so a clone without the source repository, the CLI and historical
    traces all work without it. The link drives drift detection and pulling
    only. For Level 3, the source file is therefore not part of an asset's
    dependency closure; a missing source means the template cannot be
-   refreshed, not that it is incomplete.
+   refreshed, not that it is incomplete. E4's explicit working-tree override
+   reads and freezes source text during preparation; execution consumes that
+   snapshot and records its provenance rather than rereading a mutable file.
 3. **Provenance through existing receipts.** Each import or pull records an
    `ExternalImportReceipt` (`packages/core/src/project.ts`) with a new `file`
    adapter beside `n8n`: source identity, `sourceDigest`, authored text,
@@ -674,6 +680,188 @@ Recommended and approved October 30, 2026:
    the text contains `{{`, the files are expression mode by construction and
    the override is only a safety valve.
 
+### Accepted review recommendations (October 30, 2026)
+
+The user approved the following recommendations after review against the current
+receipt and projection code. These settle the direction; the bounded details
+identified below must be specified before the affected implementation slice.
+
+1. **Delivery order.** Proceed in the order E1 → E2 → E3, keeping Level 3
+   separate. E1 is implemented, and E2's mapping
+   continuity was designed alongside it so the initial import does not
+   constrain later updates incorrectly. E4 remains a follow-up to E3.
+2. **Pulling after local edits.** Show an explicit replacement preview and
+   preserve existing local revisions and open drafts. Existing template uses
+   remain pinned; pulling must not silently move them to the new revision.
+   Before E2, specify the new revision's base, whether and how confirmation
+   makes it current, and how an open draft retains its base and edits when the
+   current revision changes. The two drift indicators alone do not settle
+   these publication and draft contracts.
+3. **Content comparison is distinct from receipt identity.** The existing
+   `sourceDigest` hashes validated source metadata, invocation, authored fields
+   and bindings, not just file contents. Keep that receipt-integrity meaning;
+   do not use a changed digest alone to claim that the file text changed.
+   Define a separate content comparison, including newline and BOM handling,
+   before E2. Filename, role and interpretation changes must be distinguishable
+   from text changes. Decide whether the comparison is derived from retained
+   authored text or needs additional representation without assuming that E1
+   and E2 may extend the current serialized receipt.
+4. **Plain text must remain literal through execution and copying.** The
+   current projection copies literal fields through, while the native template
+   engine interprets `{{…}}`. E1 must define escaping for literal spans so the
+   plain-text override preserves them through template rendering, including
+   existing backslashes. Verify import, rendered provider input and Copy as n8n
+   text with round-trip cases; retaining literal text in the receipt alone is
+   insufficient.
+5. **Variable mappings survive updates.** The current projector allocates
+   names afresh for each candidate. Its update contract must reuse prior
+   mappings and specify reserved names, removed expressions and expressions
+   reintroduced by a later pull. Saved inputs must never silently acquire a
+   different meaning because a name was recycled. Design which receipts supply
+   that history and how conflicts with locally authored variables are handled
+   alongside E1, before implementing E2.
+6. **CI overrides are prepared snapshots.** E4 is an explicit exception to
+   ordinary runs using only saved template content. Read source text during
+   preparation, freeze the projected input, and execute that snapshot. Define
+   the evidence representation for source identity, content and projection
+   provenance before E4 so a result remains explainable after the working tree
+   changes, without writing a shared template revision.
+
+### E1 implementation contracts (approved October 30, 2026)
+
+- E1 imports a reviewed batch into the Prompts library without replacing the
+  request, changing its pins or clearing open drafts and run-only values. Each
+  file creates one chat template and one receipt. The dialog previews all files,
+  lets the operator choose each message role and plain-text interpretation, and
+  applies the batch only when every candidate is valid. Picking and dropping
+  `.md` and `.txt` files use the same staging workflow.
+- Core owns candidates, projection, receipt validation and immutable batch
+  application. The file-import dialog owns file reading and preview staging;
+  `useProjectTemplates.importFilePrompts` applies the batch. `PromptsMode`
+  composes the workflow; the page gains no file-reading or import state.
+- Keep the current serialized receipt shape. File receipts require Project v17
+  (see the follow-ups below). Filename goes in
+  `source.resource.id` and `name`; the whole-file invocation is `type: "file"`,
+  `id: "content"`, with the filename stem as its name. `invocation.version`
+  records `expression-v1` or `plain-text-v1`, including expression-mode files
+  with no expressions. Missing bindings carry no execution evidence or values;
+  their inputs must be supplied by the operator. Existing receipt validation
+  permits `user-supplied` evidence only for a resolved value, so E1 does not
+  falsely label missing values as resolved.
+- Decode strict UTF-8, remove one initial BOM, and preserve line endings. E2
+  compares the retained decoded authored text separately from the receipt digest;
+  filename, role and interpretation changes do not establish text drift.
+  Approved October 30: the comparison normalizes CRLF and lone CR to LF on both
+  sides, so a checkout with different line endings (for example
+  `core.autocrlf`) is not drift. The receipt keeps the original text unchanged.
+- Escape every literal opening `{{` with one additional backslash in native
+  content, preserving pre-existing backslashes through native rendering. File
+  receipt validation reproduces that projection. Existing adapters retain their
+  historical projection. Earlier builds do not understand escaped file
+  projections, so a project holding file receipts is Project v17 and those
+  builds report it as saved by a newer Inference Lens. The scanner never
+  evaluates expressions. Unsupported expression syntax gets a preview error and
+  the plain-text override. Native
+  syntax cannot represent an active variable immediately after a backslash;
+  this also gets an explicit preview error, rather than silently losing data.
+- Copy as n8n text previews the editor's current single-message content with
+  native escapes decoded and recorded variables replaced by their expressions.
+  Unmapped or ambiguous variables are named and block copying. No source file
+  is written. Multiple messages cannot be copied as a single file prompt.
+  For an expression-mode file, the copied text must scan back to exactly the
+  recorded expressions in order; an escaped literal `{{` added in the editor
+  would come back as a live n8n expression, so it blocks copying. A plain-text
+  file copies its unescaped literals as written.
+- E2 mapping continuity will use all retained file receipts for the same
+  template, in import order, using the existing expression identity rules.
+  Reserve every historical mapped name and locally authored variable name;
+  reuse a prior expression's name, including after removal and reintroduction.
+  Never recycle a removed expression's name. Ambiguous history or a local
+  variable conflicting with a historical mapping blocks the update for explicit
+  resolution. This is design for E2; E1 implements no update operation. E2's
+  publication/base/open-draft behavior still needs its own bounded approval.
+
+### E1 delivery evidence (October 30, 2026)
+
+- Before the fix, `node --experimental-strip-types --test
+  tests/file-prompt-import.test.ts` failed on actual rendered text: a literal
+  `{{topic}}` became `WRONG` and existing backslashes were consumed. The first
+  browser run failed on the actual action list, which had no file import.
+  A further core regression failed when equivalent expressions sharing a native
+  variable incorrectly blocked copying; unchanged projections now preserve each
+  occurrence's original spelling.
+- `npm run test:core` passed all 1,708 tests, including seven file-import tests.
+  The initial sandboxed full run could not bind fixture listeners; the passing
+  rerun had loopback permissions. Core coverage includes strict UTF-8/BOM/CRLF,
+  interpretation versus content, expression identity and collisions, immutable
+  batch application and digest rejection, retained drafts, project reload,
+  literal rendering, reverse copy and unsupported syntax.
+- `node --test tests/project-templates-render.test.mjs
+  tests/project-templates-interaction.test.mjs tests/n8n-import-render.test.mjs`
+  passed all 22 tests.
+- `npm run test:e2e -- tests/e2e/file-prompt-import.spec.ts
+  tests/e2e/n8n-template-paste.spec.ts
+  tests/e2e/prompt-authoring-workspace.spec.ts
+  tests/e2e/prompt-draft-retention.spec.ts
+  tests/e2e/saved-prompt-revision-diff.spec.ts` passed 25 tests on pinned Chromium.
+  The three new scenarios cover pick/drop, per-file role and interpretation,
+  preview mappings, clipboard contents, cancellation, malformed expressions and
+  invalid UTF-8, keyboard focus, short/phone dialog layout, folder save/reopen,
+  request preservation and unmapped-variable copy refusal. A real buffered
+  fixture run completes, and both browser input and the saved trace's exact
+  serialized provider request contain the expected literal braces/backslashes
+  and supplied expression value. Folder handles are memory-backed test fixtures;
+  these checks do not establish native picker or native filesystem behavior.
+- `npm run lint`, `npm run typecheck`, `npm run typecheck:core` and
+  `git diff --check` passed. Lint reports four pre-existing warnings.
+- The full browser suite and CI have not run. Rust is unchanged, so no Rust
+  checks were needed. Native Tauri interaction, Docker deployment, real n8n
+  synchronization and hosted providers were not exercised. Human review should
+  check the import preview, plain-text wording and copy preview against a real
+  prompt file. E2 update/publication behavior remains unimplemented.
+
+### E1 review follow-ups (October 30, 2026)
+
+- **Fixed: Copy as n8n text could make a literal live.** Editing an
+  expression-mode template to add `\{{ $json.secret }}` copied as
+  `{{ $json.secret }}`, a live n8n expression. The regression test in
+  `tests/file-prompt-import.test.ts` failed on that actual output before the
+  fix. Copying now applies the round-trip rule in the contracts above.
+- **Refactored: batch import adds only library entries.**
+  `externalPromptLibraryAddition` builds one template and its receipt. Template
+  import adds its conversation use on top, and file import uses the builder
+  alone, rather than discarding a conversation revision and defaults after
+  the fact.
+- **Implemented: Project v17.** Approved October 30 so that builds without E1
+  report a newer project rather than rejecting escaped file receipts as
+  malformed. E1 took active v17, which had been reserved for
+  [final output](FINAL_OUTPUT_CONTRACTS.md#d1-format-version-allocation); final
+  output moves to Project v18, and the staged shared format was renumbered to
+  v18, to move to v19 when final output lands. RunTrace and ExperimentPlan are
+  unchanged. A v16 project opens as v17 unchanged; a v16 document already
+  holding a file receipt is rejected rather than reinterpreted.
+- **Implemented: warn on re-import.** Approved October 30. A file's identity
+  is its bare filename, without path or repository, so blocking would stop
+  distinct files that share a name, such as two workflows' `system.md`. The
+  preview warns and names the saved prompts already imported from that exact
+  filename, and separately warns when two files in one batch share a name;
+  importing still creates an independent template and receipt for each. E2
+  pulls into a chosen template, so duplicates are not ambiguous there. E3's
+  linked sources must establish stronger identity before relying on one file
+  per template.
+- **Follow-up verification.** Each regression test ran red on the actual
+  wrong output first: the live `{{ $json.secret }}` copy, a project still at
+  version 16, and a re-import dialog with no warnings. `npm run test:core`
+  passed 1,712 tests; `npm run lint` (four pre-existing warnings),
+  `npm run typecheck` and `npm run typecheck:core` passed; the three
+  rendered template test files passed 22 tests and `tests/theme-tokens.test.ts`
+  passed. `npm run test:e2e -- tests/e2e/file-prompt-import.spec.ts` passed
+  all four scenarios, and `tests/e2e/n8n-template-paste.spec.ts` passed after
+  the import refactor and the version bump, with
+  `evaluation-case-promotion`, `prompt-authoring-workspace`,
+  `prompt-draft-retention` and `saved-prompt-revision-diff` (26 tests in all).
+  The full browser suite and CI have not run.
+
 ## Implementation ownership and sequence
 
 Before each behavior-changing slice, approve its material contracts from the
@@ -684,7 +872,7 @@ unresolved persistence, compatibility, or dependency policy during coding.
 | --- | --- | --- |
 | 1 | Creation presets, exact ignore policy, documentation | Core bundle policy; creation dialog; browser/native creation adapters |
 | 2a | Complete field inventory, approved ownership and migration examples | Core shared-definition and personal-state contracts |
-| 2b, core foundation | Isolated v17/workbench v1 codecs and pure migration plan; app remains v15 (implemented October 26) | Core codecs; no workspace integration |
+| 2b, core foundation | Isolated v18/workbench v1 codecs and pure migration plan; app remains v15 (implemented October 26) | Core codecs; no workspace integration |
 | 2b, recovery-store foundation | Protected storage for existing prompt-draft and selections records (implemented October 26); app remains v15 | Core typed store; opt-in browser/native workspace adapters |
 | 2b, integration | Recovery store, migration, prompt/request drafts and scratch inputs, selections, explicit publication and launch defaults | Workspace adapters; personal-workbench, prompt, request, decision and execution-setting owners; compatible app/CLI loaders |
 | 2c | Suite/tool/mock drafts and import staging; explicit saves | Evaluation, tool and import feature owners |
@@ -756,8 +944,10 @@ review covers slice 2a; Level 3 decisions remain deferred.
    operations, plus old-reader/writer and export compatibility. Include how
    bundles created with the Level 1 definitions policy come to share new asset
    files.
-5. Confirm the [external prompt source](#external-prompt-sources) slice order
-   before slice E1. Its contract decisions are recorded.
+5. Specify the bounded [external prompt source review details](#accepted-review-recommendations-october-30-2026)
+   before their affected slices. E1 → E2 → E3 is approved, with E2's mapping
+   continuity designed alongside E1. E1 implementation is approved and delivered
+   under the bounded contracts above; later slices need separate approval.
 
 The target is fewer incidental conflicts, explicit intentional contributions,
 and selective sharing with understandable dependencies. Same-asset edits still

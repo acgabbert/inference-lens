@@ -84,11 +84,11 @@ function preflight(project: ProjectFile) {
   return evaluationSuitePreflight(project, suite.id, project.defaults.conversationRevisionId);
 }
 
-test("project schema is v16, and a v13 document opens unchanged", () => {
-  assert.equal(PROJECT_SCHEMA_VERSION, 16);
+test("project schema is v17, and a v13 document opens unchanged", () => {
+  assert.equal(PROJECT_SCHEMA_VERSION, 17);
   const v13 = { ...legacyContent(withRequest()), schemaVersion: 13 };
   const opened = parseProjectFile(v13);
-  assert.equal(opened.schemaVersion, 16);
+  assert.equal(opened.schemaVersion, 17);
   assert.deepEqual(opened.decisionRequestRevisions, withRequest().decisionRequestRevisions);
 });
 

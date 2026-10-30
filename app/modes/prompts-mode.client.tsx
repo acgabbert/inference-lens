@@ -105,6 +105,8 @@ export function PromptsMode({
         }
         {...(n8nImportDisabledReason ? { n8nImportDisabledReason } : {})}
         onOpenN8nImport={onOpenN8nImport}
+        onImportFiles={templates.importFilePrompts}
+        externalImports={project?.externalImports}
         onCreate={templates.createProjectTemplate}
         decisionEditorMemory={templates.decisionEditorMemory}
         onCreateDecision={templates.createDecisionTemplate}

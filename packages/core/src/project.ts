@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { ownKeyRecord } from "./own-key-record.ts";
+import { externalPromptProjectedMessages } from "./external-prompt-projection.ts";
 import type { CheckDefinition } from "./checks.ts";
 import {
   authoredCheckDefinitionSchema,
@@ -124,9 +125,9 @@ export function projectGitignoreContents(policy: ProjectGitPolicy): string | nul
   }
 }
 
-export const PROJECT_SCHEMA_VERSION = 16;
+export const PROJECT_SCHEMA_VERSION = 17;
 /** Older versions this build opens through the explicit one-version migration chain. */
-const OPENABLE_PROJECT_SCHEMA_VERSIONS: readonly number[] = [10, 11, 12, 13, 14, 15];
+const OPENABLE_PROJECT_SCHEMA_VERSIONS: readonly number[] = [10, 11, 12, 13, 14, 15, 16];
 
 /**
  * Turns the portable project display name into one safe, visible directory
@@ -440,7 +441,15 @@ export interface ProjectFileV16 extends Omit<ProjectFileV15, "schemaVersion"> {
   environments: ProjectEnvironment[];
 }
 
-export type ProjectFile = ProjectFileV16;
+/**
+ * v17 adds whole-file prompt imports, whose receipts project literal `{{` as
+ * escaped native text (docs/SHARED_ASSETS_PERSONAL_WORKBENCH_PLAN.md).
+ */
+export interface ProjectFileV17 extends Omit<ProjectFileV16, "schemaVersion"> {
+  schemaVersion: 17;
+}
+
+export type ProjectFile = ProjectFileV17;
 
 const entityId = <Kind extends Parameters<typeof createEntityId>[0]>(
   kind: Kind,
@@ -1042,7 +1051,7 @@ const evaluationSuiteSchema = z.unknown().transform((value, context): Evaluation
   return z.NEVER;
 });
 
-const projectFileV16Schema: z.ZodType<ProjectFileV16> = z
+const projectFileV17Schema: z.ZodType<ProjectFileV17> = z
   .object({
     schemaVersion: z.literal(PROJECT_SCHEMA_VERSION),
     projectId: entityId("project"),
@@ -1070,7 +1079,7 @@ const projectFileV16Schema: z.ZodType<ProjectFileV16> = z
  * Environment content rules, then every selection of one. A suite or variant
  * that names a missing environment would silently render without it.
  */
-function validateEnvironments(project: ProjectFileV16, context: z.RefinementCtx): void {
+function validateEnvironments(project: ProjectFileV17, context: z.RefinementCtx): void {
   for (const { path, message } of environmentIssues(project.environments)) {
     context.addIssue({ code: "custom", path: ["environments", ...path], message });
   }
@@ -1338,7 +1347,7 @@ function validateSharedProjectReferences(
 }
 
 function validateProjectReferences(
-  project: ProjectFileV16,
+  project: ProjectFileV17,
   context: z.RefinementCtx,
 ): void {
   validateSharedProjectReferences(
@@ -1551,44 +1560,7 @@ function validateProjectReferences(
         variableName,
       ]),
     );
-    const messages = receipt.authored.map((field) => {
-      if (!field.role) return undefined;
-      const contentStart = field.contentSpan?.startOffset ?? 0;
-      const contentEnd = field.contentSpan?.endOffset ?? field.text.length;
-      const indexedBindings = receipt.bindings
-        .map((binding, bindingIndex) => ({ binding, bindingIndex }))
-        .filter(({ binding }) => binding.authoredPath === field.path);
-      const wholeField = indexedBindings.find(
-        ({ binding }) => binding.source.kind === "whole-field",
-      );
-      if (wholeField) {
-        return {
-          role: field.role,
-          content: `{{${variableByBindingIndex.get(wholeField.bindingIndex) ?? ""}}}`,
-        };
-      }
-      const ordered = indexedBindings.sort((left, right) => {
-        const leftStart =
-          left.binding.source.kind === "expression-span"
-            ? left.binding.source.startOffset
-            : 0;
-        const rightStart =
-          right.binding.source.kind === "expression-span"
-            ? right.binding.source.startOffset
-            : 0;
-        return leftStart - rightStart;
-      });
-      let cursor = contentStart;
-      const parts: string[] = [];
-      ordered.forEach(({ binding, bindingIndex }) => {
-        if (binding.source.kind !== "expression-span") return;
-        parts.push(field.text.slice(cursor, binding.source.startOffset));
-        parts.push(`{{${variableByBindingIndex.get(bindingIndex) ?? ""}}}`);
-        cursor = binding.source.endOffset;
-      });
-      parts.push(field.text.slice(cursor, contentEnd));
-      return { role: field.role, content: parts.join("") };
-    });
+    const messages = externalPromptProjectedMessages(receipt.authored, receipt.bindings, variableByBindingIndex, receipt.source.adapter);
     if (messages.some((message) => !message)) {
       context.addIssue({
         code: "custom",
@@ -1616,7 +1588,7 @@ function validateProjectReferences(
  * one, because values are portable project data (D40).
  */
 function validateDecisionRequests(
-  project: ProjectFileV16,
+  project: ProjectFileV17,
   context: z.RefinementCtx,
 ): void {
   addDuplicateIssues(project.decisionRequests.map(({ id }) => id), ["decisionRequests"], context);
@@ -1694,7 +1666,7 @@ function checkSuiteKindIssue(
 }
 
 function validateEvaluationSuites(
-  project: ProjectFileV16,
+  project: ProjectFileV17,
   templates: ReadonlyMap<PromptTemplateId, PromptTemplate>,
   context: z.RefinementCtx,
 ): void {
@@ -2092,6 +2064,25 @@ function migrateV15Project(value: Record<string, unknown>): unknown {
   return { ...value, schemaVersion: 16, environments: [] };
 }
 
+/**
+ * v17 adds whole-file prompt imports. A v16 project has none; one that holds
+ * a file receipt was not written by a v16 build, which could not read its
+ * escaped projection, and is rejected rather than reinterpreted.
+ */
+function migrateV16Project(value: Record<string, unknown>): unknown {
+  const receipts = Array.isArray(value.externalImports) ? (value.externalImports as unknown[]) : [];
+  receipts.forEach((receipt, index) => {
+    if (isRecord(receipt) && isRecord(receipt.source) && receipt.source.adapter === "file") {
+      throw new ProjectValidationError([{
+        code: "custom",
+        path: ["externalImports", index, "source", "adapter"],
+        message: "File prompt imports require project schema v17; this document declares v16.",
+      }]);
+    }
+  });
+  return { ...value, schemaVersion: 17 };
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -2112,7 +2103,8 @@ export function parseProjectFile(value: unknown): ProjectFile {
   }
   if (isRecord(value) && value.schemaVersion === 14) value = migrateV14Project(value);
   if (isRecord(value) && value.schemaVersion === 15) value = migrateV15Project(value);
-  const parsed = projectFileV16Schema.safeParse(value);
+  if (isRecord(value) && value.schemaVersion === 16) value = migrateV16Project(value);
+  const parsed = projectFileV17Schema.safeParse(value);
   if (!parsed.success) throw new ProjectValidationError(parsed.error.issues);
   return parsed.data;
 }
