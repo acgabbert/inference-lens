@@ -35,6 +35,7 @@ import {
   importExternalPromptTemplateCandidate,
 } from "../../packages/core/src/external-prompt-project";
 import type { ExternalPromptCandidate } from "../../packages/core/src/external-prompt-import";
+import { importFilePromptCandidates } from "../../packages/core/src/file-prompt-import";
 import { createEntityId } from "../../packages/core/src/run-kernel";
 import type {
   ConversationMessage,
@@ -185,6 +186,7 @@ export interface ProjectTemplatesHandle {
   updateComposerMessage(id: MessageId, patch: { content?: ConversationMessage["content"]; role?: ConversationMessage["role"] }): void;
   removeComposerMessage(id: MessageId): void;
   importN8nPrompt(candidate: ExternalPromptCandidate, mode: "resolved-snapshot" | "reusable-template", options: { recommendModel: boolean }): Promise<void>;
+  importFilePrompts(candidates: ExternalPromptCandidate[]): Promise<PromptTemplateId[]>;
   clearTransientOverrides(): void;
   markExecutedRevision(revisionId: ConversationRevisionId): void;
 }
@@ -733,6 +735,11 @@ export function useProjectTemplates(input: UseProjectTemplatesInput): ProjectTem
     const receipt = imported.project.externalImports.find(({ id }) => id === imported.externalImportId);
     input.onImported({ name: candidate.invocation.name, variableCount: receipt?.projection.kind === "prompt-template" ? receipt.projection.variables.length : 0, template: mode === "reusable-template" });
   }
+  async function importFilePrompts(candidates: ExternalPromptCandidate[]): Promise<PromptTemplateId[]> {
+    const imported = await importFilePromptCandidates(input.ensureProjectDocument(), candidates);
+    input.adoptProjectMutation(imported.project);
+    return imported.templateIds;
+  }
   return {
     modelWarnings,
     decisionEditorMemory,
@@ -770,6 +777,7 @@ export function useProjectTemplates(input: UseProjectTemplatesInput): ProjectTem
     updateComposerMessage,
     removeComposerMessage,
     importN8nPrompt,
+    importFilePrompts,
     clearTransientOverrides: () => { setTemplateRunOverrides({}); decisionEditorMemory.clear(); },
     markExecutedRevision: (id) => executedRevisionIdsRef.current.add(id),
   };

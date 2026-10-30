@@ -42,6 +42,7 @@ import { N8nTemplatePasteDialog } from "./n8n-template-paste-dialog.client";
 import { ModalDialog } from "../modal-dialog.client";
 import { shouldSuggestN8nTemplatePaste } from "./n8n-template-paste";
 import { n8nPasteSuggestionsEnabled, setN8nPasteSuggestionsEnabled } from "./n8n-template-paste-preference.client";
+import { FilePromptCopy } from "./file-prompt-copy.client";
 
 import { RecommendedModelEditor, type PromptModelCatalog } from "./recommended-model-editor.client";
 
@@ -54,6 +55,7 @@ export interface CompatibleEvaluationSuite {
 }
 
 export interface ChatPromptTemplateEditorProps {
+  externalImports?: ExternalImportReceipt[];
   template: ChatPromptTemplate;
   /** The whole library, for duplicate-name warnings. */
   templates: readonly PromptTemplate[];
@@ -131,6 +133,7 @@ function currentRevision(template: ChatPromptTemplate) {
 }
 
 export function ChatPromptTemplateEditor({
+  externalImports = [],
   template,
   templates,
   connectionRequirements = [],
@@ -643,6 +646,10 @@ export function ChatPromptTemplateEditor({
             {/* One scroll region for the editor and its diff, so an open diff
                 in focus mode scrolls with the content instead of squeezing it. */}
             <div className="template-editor-scroll">
+            {externalImports.some((receipt) => receipt.source.adapter === "file" && receipt.projection.kind === "prompt-template" && receipt.projection.templateId === selected.id) && <FilePromptCopy
+              messages={messages}
+              receipts={externalImports.filter((receipt) => receipt.source.adapter === "file" && receipt.projection.kind === "prompt-template" && receipt.projection.templateId === selected.id)}
+            />}
             <div className="template-editor-body">
               <TemplateMessagesEditor
                 messages={messages}

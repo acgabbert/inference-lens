@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { ownKeyRecord } from "./own-key-record.ts";
+import { externalPromptProjectedMessages } from "./external-prompt-projection.ts";
 import type { CheckDefinition } from "./checks.ts";
 import {
   authoredCheckDefinitionSchema,
@@ -1551,44 +1552,7 @@ function validateProjectReferences(
         variableName,
       ]),
     );
-    const messages = receipt.authored.map((field) => {
-      if (!field.role) return undefined;
-      const contentStart = field.contentSpan?.startOffset ?? 0;
-      const contentEnd = field.contentSpan?.endOffset ?? field.text.length;
-      const indexedBindings = receipt.bindings
-        .map((binding, bindingIndex) => ({ binding, bindingIndex }))
-        .filter(({ binding }) => binding.authoredPath === field.path);
-      const wholeField = indexedBindings.find(
-        ({ binding }) => binding.source.kind === "whole-field",
-      );
-      if (wholeField) {
-        return {
-          role: field.role,
-          content: `{{${variableByBindingIndex.get(wholeField.bindingIndex) ?? ""}}}`,
-        };
-      }
-      const ordered = indexedBindings.sort((left, right) => {
-        const leftStart =
-          left.binding.source.kind === "expression-span"
-            ? left.binding.source.startOffset
-            : 0;
-        const rightStart =
-          right.binding.source.kind === "expression-span"
-            ? right.binding.source.startOffset
-            : 0;
-        return leftStart - rightStart;
-      });
-      let cursor = contentStart;
-      const parts: string[] = [];
-      ordered.forEach(({ binding, bindingIndex }) => {
-        if (binding.source.kind !== "expression-span") return;
-        parts.push(field.text.slice(cursor, binding.source.startOffset));
-        parts.push(`{{${variableByBindingIndex.get(bindingIndex) ?? ""}}}`);
-        cursor = binding.source.endOffset;
-      });
-      parts.push(field.text.slice(cursor, contentEnd));
-      return { role: field.role, content: parts.join("") };
-    });
+    const messages = externalPromptProjectedMessages(receipt.authored, receipt.bindings, variableByBindingIndex, receipt.source.adapter);
     if (messages.some((message) => !message)) {
       context.addIssue({
         code: "custom",

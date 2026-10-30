@@ -553,10 +553,11 @@ prompt files tracked from another repository.
 
 ## External prompt sources
 
-**Status:** Proposed October 30, 2026; its decisions and subsequent review
+**Status:** E1 implemented October 30, 2026; its decisions and subsequent review
 recommendations were approved the same day and are recorded below. The approved
 order is E1 → E2 → E3, with Level 3 separate. Design E2's mapping continuity
-alongside E1. No slice is approved for implementation.
+alongside E1. E1 implementation and the bounded contracts below were approved
+in the October 30 implementation session. E2 and later slices remain separate.
 
 Some teams keep n8n workflows in Git with each agent prompt extracted to its own
 `.md` or `.txt` file. A sync step using the n8n API detects drift between those
@@ -724,6 +725,91 @@ identified below must be specified before the affected implementation slice.
    provenance before E4 so a result remains explainable after the working tree
    changes, without writing a shared template revision.
 
+### E1 implementation contracts (approved October 30, 2026)
+
+- E1 imports a reviewed batch into the Prompts library without replacing the
+  request, changing its pins or clearing open drafts and run-only values. Each
+  file creates one chat template and one receipt. The dialog previews all files,
+  lets the operator choose each message role and plain-text interpretation, and
+  applies the batch only when every candidate is valid. Picking and dropping
+  `.md` and `.txt` files use the same staging workflow.
+- Core owns candidates, projection, receipt validation and immutable batch
+  application. The file-import dialog owns file reading and preview staging;
+  `useProjectTemplates.importFilePrompts` applies the batch. `PromptsMode`
+  composes the workflow; the page gains no file-reading or import state.
+- Keep the current serialized receipt and project version. Filename goes in
+  `source.resource.id` and `name`; the whole-file invocation is `type: "file"`,
+  `id: "content"`, with the filename stem as its name. `invocation.version`
+  records `expression-v1` or `plain-text-v1`, including expression-mode files
+  with no expressions. Missing bindings carry no execution evidence or values;
+  their inputs must be supplied by the operator. Existing receipt validation
+  permits `user-supplied` evidence only for a resolved value, so E1 does not
+  falsely label missing values as resolved.
+- Decode strict UTF-8, remove one initial BOM, and preserve line endings. E2
+  compares the retained decoded authored text separately from the receipt digest;
+  filename, role and interpretation changes do not establish text drift.
+- Escape every literal opening `{{` with one additional backslash in native
+  content, preserving pre-existing backslashes through native rendering. File
+  receipt validation reproduces that projection. Existing adapters retain their
+  historical projection. Earlier app builds do not understand escaped file
+  projections and can reject those receipts despite the unchanged project
+  envelope version; use a build with E1 support to read them. The scanner never
+  evaluates expressions. Unsupported expression syntax gets a preview error and
+  the plain-text override. Native
+  syntax cannot represent an active variable immediately after a backslash;
+  this also gets an explicit preview error, rather than silently losing data.
+- Copy as n8n text previews the editor's current single-message content with
+  native escapes decoded and recorded variables replaced by their expressions.
+  Unmapped or ambiguous variables are named and block copying. No source file
+  is written. Multiple messages cannot be copied as a single file prompt.
+- E2 mapping continuity will use all retained file receipts for the same
+  template, in import order, using the existing expression identity rules.
+  Reserve every historical mapped name and locally authored variable name;
+  reuse a prior expression's name, including after removal and reintroduction.
+  Never recycle a removed expression's name. Ambiguous history or a local
+  variable conflicting with a historical mapping blocks the update for explicit
+  resolution. This is design for E2; E1 implements no update operation. E2's
+  publication/base/open-draft behavior still needs its own bounded approval.
+
+### E1 delivery evidence (October 30, 2026)
+
+- Before the fix, `node --experimental-strip-types --test
+  tests/file-prompt-import.test.ts` failed on actual rendered text: a literal
+  `{{topic}}` became `WRONG` and existing backslashes were consumed. The first
+  browser run failed on the actual action list, which had no file import.
+  A further core regression failed when equivalent expressions sharing a native
+  variable incorrectly blocked copying; unchanged projections now preserve each
+  occurrence's original spelling.
+- `npm run test:core` passed all 1,708 tests, including seven file-import tests.
+  The initial sandboxed full run could not bind fixture listeners; the passing
+  rerun had loopback permissions. Core coverage includes strict UTF-8/BOM/CRLF,
+  interpretation versus content, expression identity and collisions, immutable
+  batch application and digest rejection, retained drafts, project reload,
+  literal rendering, reverse copy and unsupported syntax.
+- `node --test tests/project-templates-render.test.mjs
+  tests/project-templates-interaction.test.mjs tests/n8n-import-render.test.mjs`
+  passed all 22 tests.
+- `npm run test:e2e -- tests/e2e/file-prompt-import.spec.ts
+  tests/e2e/n8n-template-paste.spec.ts
+  tests/e2e/prompt-authoring-workspace.spec.ts
+  tests/e2e/prompt-draft-retention.spec.ts
+  tests/e2e/saved-prompt-revision-diff.spec.ts` passed 25 tests on pinned Chromium.
+  The three new scenarios cover pick/drop, per-file role and interpretation,
+  preview mappings, clipboard contents, cancellation, malformed expressions and
+  invalid UTF-8, keyboard focus, short/phone dialog layout, folder save/reopen,
+  request preservation and unmapped-variable copy refusal. A real buffered
+  fixture run completes, and both browser input and the saved trace's exact
+  serialized provider request contain the expected literal braces/backslashes
+  and supplied expression value. Folder handles are memory-backed test fixtures;
+  these checks do not establish native picker or native filesystem behavior.
+- `npm run lint`, `npm run typecheck`, `npm run typecheck:core` and
+  `git diff --check` passed. Lint reports four pre-existing warnings.
+- The full browser suite and CI have not run. Rust is unchanged, so no Rust
+  checks were needed. Native Tauri interaction, Docker deployment, real n8n
+  synchronization and hosted providers were not exercised. Human review should
+  check the import preview, plain-text wording and copy preview against a real
+  prompt file. E2 update/publication behavior remains unimplemented.
+
 ## Implementation ownership and sequence
 
 Before each behavior-changing slice, approve its material contracts from the
@@ -808,7 +894,8 @@ review covers slice 2a; Level 3 decisions remain deferred.
    files.
 5. Specify the bounded [external prompt source review details](#accepted-review-recommendations-october-30-2026)
    before their affected slices. E1 → E2 → E3 is approved, with E2's mapping
-   continuity designed alongside E1; implementation approval remains separate.
+   continuity designed alongside E1. E1 implementation is approved and delivered
+   under the bounded contracts above; later slices need separate approval.
 
 The target is fewer incidental conflicts, explicit intentional contributions,
 and selective sharing with understandable dependencies. Same-asset edits still

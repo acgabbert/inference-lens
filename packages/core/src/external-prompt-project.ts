@@ -22,6 +22,7 @@ import {
   n8nExpressionIdentity,
   suggestN8nExpressionName,
 } from "../../n8n/src/expression-naming.ts";
+import { externalPromptProjectedMessages } from "./external-prompt-projection.ts";
 import type {
   ConversationRevisionId,
   ExternalImportId,
@@ -227,54 +228,16 @@ export function projectExternalPromptTemplate(
       variableName,
     ]),
   );
-  const messages = candidate.authored.map((field) => {
-    const contentStart = field.contentSpan?.startOffset ?? 0;
-    const contentEnd = field.contentSpan?.endOffset ?? field.text.length;
-    const indexedBindings = candidate.bindings
-      .map((binding, bindingIndex) => ({ binding, bindingIndex }))
-      .filter(({ binding }) => binding.authoredPath === field.path);
-    if (
-      field.syntax === "external-expression" &&
-      indexedBindings.length === 0
-    ) {
-      throw new Error(
-        `Authored field "${field.path}" has no safely parsed expression bindings.`,
-      );
+  for (const field of candidate.authored) {
+    const bindings = candidate.bindings.filter((binding) => binding.authoredPath === field.path);
+    if (field.syntax === "external-expression" && bindings.length === 0 && candidate.source.adapter !== "file") {
+      throw new Error(`Authored field "${field.path}" has no safely parsed expression bindings.`);
     }
-    const wholeField = indexedBindings.find(
-      ({ binding }) => binding.source.kind === "whole-field",
-    );
-    let content: string;
-    if (wholeField) {
-      content = `{{${variableByBindingIndex.get(wholeField.bindingIndex)!}}}`;
-    } else {
-      const ordered = indexedBindings.sort((left, right) => {
-        const leftStart =
-          left.binding.source.kind === "expression-span"
-            ? left.binding.source.startOffset
-            : 0;
-        const rightStart =
-          right.binding.source.kind === "expression-span"
-            ? right.binding.source.startOffset
-            : 0;
-        return leftStart - rightStart;
-      });
-      let cursor = contentStart;
-      const parts: string[] = [];
-      for (const { binding, bindingIndex } of ordered) {
-        if (binding.source.kind !== "expression-span") continue;
-        parts.push(field.text.slice(cursor, binding.source.startOffset));
-        parts.push(`{{${variableByBindingIndex.get(bindingIndex)!}}}`);
-        cursor = binding.source.endOffset;
-      }
-      parts.push(field.text.slice(cursor, contentEnd));
-      content = parts.join("");
+    if (candidate.source.adapter === "file" && bindings.some((binding) => binding.source.kind === "expression-span" && field.text[binding.source.startOffset - 1] === "\\")) {
+      throw new Error("An expression immediately after a backslash cannot be represented safely. Use plain text or remove the preceding backslash.");
     }
-    return {
-      role: field.role!,
-      content,
-    };
-  });
+  }
+  const messages = externalPromptProjectedMessages(candidate.authored, candidate.bindings, variableByBindingIndex, candidate.source.adapter);
 
   const values: Record<string, string> = {};
   for (const variableName of usedNames) {
@@ -297,7 +260,7 @@ export function projectExternalPromptTemplate(
   }
 
   return {
-    name: candidate.source.resource.name
+    name: candidate.source.adapter === "file" ? candidate.invocation.name : candidate.source.resource.name
       ? `${candidate.source.resource.name} — ${candidate.invocation.name}`
       : candidate.invocation.name,
     messages: messages as PromptTemplateMessages,
