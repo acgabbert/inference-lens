@@ -12,6 +12,14 @@
   display: none;
 }
 
+/* A summary does not centre its content the way a button does, so the menu
+   triggers that read as buttons centre their label within the control height. */
+.header-menu > summary.button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2xs);
+}
+
 .target-control {
   width: min(235px, 24vw);
   min-width: 170px;

@@ -63,6 +63,11 @@
   --radius-xl: 14px;
   --radius-pill: 999px;
 
+  /* One height for every single-line control — buttons, text inputs and
+     selects — so a row that mixes them lines up without a local override. A
+     button whose label wraps still grows past it. */
+  --control-height: 32px;
+
   /* Font weight by emphasis. Five steps, so two labels meant to read alike
      cannot sit a hair apart. */
   --weight-regular: 400;
