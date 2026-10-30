@@ -515,6 +515,32 @@ An MCP server must be on a loopback address, which inside a container is the
 container itself; to reach one running on the host, run with `--network host`
 and `-e INFERENCE_LENS_CONTAINER=0`.
 
+**Test a pull request that edits a prompt file.** When a project's prompts are
+[linked to files](#linked-prompt-source-folders) in a workflow repository, CI in that
+repository can run a suite against the files as they are in the pull request,
+without saving a revision. Mount the checkout and name it with
+`--source-root <name>=<path>`, where `<name>` is the source root the project
+declares:
+
+```sh
+inference-lens run /project --suite triage \
+  --prompts-from-files --source-root n8n-workflows=/workflows
+```
+
+`--prompts-from-files` reads every linked prompt the suite uses from its file,
+reuses the variable names its pulls gave each n8n expression, and runs that
+text in place of the pinned revision for this run only. The plan and every
+trace record the file's root name, relative path and digest beside the pinned
+revision, and the app names the file when it opens them. A file that is
+missing, unreadable or cannot be used is a setup error (exit 2): nothing is
+sent and nothing falls back to the saved text. `--source-root` wins over
+`INFERENCE_LENS_SOURCE_ROOTS` for its name, and a relative path resolves
+against the current directory. To check only whether the files still match
+their last pull, run `inference-lens drift /project --source-root
+n8n-workflows=/workflows`: it sends nothing, exits 0 when every file matches,
+1 when one changed, is missing or is unreadable, and 2 for a setup error.
+Local revisions are reported but do not change the exit code.
+
 **Inside a running server container.** `docker compose exec inference-lens
 inference-lens run /project` also works, and reuses the server's environment.
 The published Compose template mounts no project folder and keeps the root

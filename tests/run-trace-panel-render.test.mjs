@@ -54,6 +54,35 @@ test("renders self-contained template provenance in the evidence inspector", asy
   }
 });
 
+test("a use whose text came from a linked prompt's file names the file and digest beside the pinned revision", async () => {
+  const digest = "0123456789abcdef".repeat(4);
+  const html = await renderTemplateProvenance([
+    {
+      templateUseId: "template-use_agent",
+      templateId: "template_agent",
+      templateRevisionId: "template-revision_agent-1",
+      templateName: "agent",
+      messages: [{ role: "user", content: "Describe {{topic}} in detail." }],
+      variableDefaults: {},
+      values: { topic: "addition" },
+      valueSources: { topic: "case" },
+      fileSource: {
+        sourceRootName: "prompts",
+        path: "flows/agent.md",
+        sourceDigest: digest,
+        baseTemplateRevisionId: "template-revision_agent-1",
+      },
+      outputMessageIds: ["message_agent"],
+    },
+  ]);
+
+  assert.match(html, /template-revision_agent-1/);
+  assert.match(html, /From file prompts\/flows\/agent\.md · digest 0123456789ab/);
+  assert.match(html, /Read from prompts\/flows\/agent\.md in place of revision template-revision_agent-1, which this run did not send\./);
+  assert.match(html, new RegExp(`&quot;sourceDigest&quot;: &quot;${digest}&quot;`));
+  assert.doesNotMatch(html, /undefined|NaN|\[object Object\]/);
+});
+
 test("omits template evidence when an older trace has no captured resolutions", async () => {
   const html = await renderComponent("RunTracePanel", {
     open: true,

@@ -80,6 +80,22 @@ label.experiment-retry-field {
   color: var(--text-muted);
 }
 
+.evaluation-prompt-file-sources {
+  padding: var(--space-sm) 0;
+  border-bottom: 1px solid var(--border-default);
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
+.evaluation-prompt-file-sources p,
+.evaluation-prompt-file-sources ul {
+  margin: 0;
+}
+
+.evaluation-prompt-file-sources ul {
+  padding-left: var(--space-lg);
+}
+
 .evaluation-results-actions {
   display: flex;
   align-items: center;

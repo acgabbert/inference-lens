@@ -230,6 +230,57 @@ test("a result that ran cells at once says so beside its latency", async () => {
   assert.doesNotMatch(await render(1), /at once/);
 });
 
+test("a plan that read linked prompts from files names each file and digest beside the revision it replaced", async () => {
+  const fx = await fixture();
+  const resolution = fx.plan.suite.cases[0].inputs[0].templateResolutions[0];
+  const digest = "fedcba9876543210".repeat(4);
+  const fileSource = {
+    sourceRootName: "prompts",
+    path: "flows/question.md",
+    sourceDigest: digest,
+    baseTemplateRevisionId: resolution.templateRevisionId,
+  };
+  const plan = fx.experimentCore.parseExperimentPlanFile({
+    ...fx.plan,
+    suite: {
+      ...fx.plan.suite,
+      cases: fx.plan.suite.cases.map((evaluationCase) => ({
+        ...evaluationCase,
+        inputs: evaluationCase.inputs.map((input) => ({
+          ...input,
+          templateResolutions: input.templateResolutions.map((use) => ({ ...use, fileSource })),
+        })),
+      })),
+      promptSources: [{
+        templateId: resolution.templateId,
+        baseTemplateRevisionId: resolution.templateRevisionId,
+        sourceRootName: "prompts",
+        path: "flows/question.md",
+        sourceDigest: digest,
+        authored: { role: "user", text: "Explain {{ $json.topic }}." },
+        interpretation: "expression-v1",
+        bindings: [{ expression: "{{ $json.topic }}", variableName: "topic" }],
+        messages: resolution.messages,
+        variableDefaults: {},
+        replacedLocalRevisions: true,
+      }],
+    },
+  });
+  const html = await renderSettled(fx.createElement(fx.EvaluationResultsWorkspace, {
+    execution: { plan, storage: "durable", workspace: null, states: new Map(), traces: new Map(), traceFileNames: new Map(), unreadableTraces: new Map(), selectedRunId: null },
+    onStop() {}, onOpenTrace() {},
+  }));
+  assert.match(html, /Prompts read from files for this run/);
+  assert.match(html, /Question ← prompts\/flows\/question\.md · digest fedcba987654 · in place of template-revision_question-1, a revision not pulled from the file/);
+  assert.doesNotMatch(html, /undefined|NaN|\[object Object\]/);
+
+  const ordinary = await renderSettled(fx.createElement(fx.EvaluationResultsWorkspace, {
+    execution: { plan: fx.plan, storage: "durable", workspace: null, states: new Map(), traces: new Map(), traceFileNames: new Map(), unreadableTraces: new Map(), selectedRunId: null },
+    onStop() {}, onOpenTrace() {},
+  }));
+  assert.doesNotMatch(ordinary, /read from files/);
+});
+
 test("a result that allowed retries says so, and counts the repetitions that needed them", async () => {
   const fx = await fixture();
   const [first, second] = fx.plan.cells;
