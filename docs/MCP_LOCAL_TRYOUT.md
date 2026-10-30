@@ -2,7 +2,7 @@
 
 This example uses the official Python MCP SDK. Its one read-only tool,
 `lookup_record(record_id)`, returns a predictable string. The server listens
-only on `127.0.0.1:44020`; Inference Lens connects to its Streamable HTTP
+only on `127.0.0.1:24020`; Inference Lens connects to its Streamable HTTP
 endpoint at `/mcp`. Run the commands from the repository root in separate
 terminals.
 
@@ -17,7 +17,7 @@ python3.12 -m venv .venv-mcp
 .venv-mcp/bin/python scripts/local-mcp-server.py
 ```
 
-Leave this terminal running. The SDK serves `http://127.0.0.1:44020/mcp`.
+Leave this terminal running. The SDK serves `http://127.0.0.1:24020/mcp`.
 A plain browser GET is not a useful health check for MCP; use the app's
 **Connect and browse tools** action to check the protocol connection.
 

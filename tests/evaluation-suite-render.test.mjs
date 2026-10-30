@@ -337,7 +337,7 @@ test("renders the four focused-case preflight regions from the shared resolution
       variantName: "Default",
       requirementName: "Buffered fixture",
       targetName: "Buffered fixture",
-      endpoint: "http://127.0.0.1:44014/v1",
+      endpoint: "http://127.0.0.1:24014/v1",
       protocol: "openai-compatible-chat-completions",
       model: "buffered-test-model",
       responseMode: "buffered",
@@ -379,7 +379,7 @@ test("renders the four focused-case preflight regions from the shared resolution
   //    every populated inference option, and tools.
   assert.match(html, /aria-label="Execution settings for Migrations"/);
   assert.match(html, /<dd>Buffered fixture<\/dd>/);
-  assert.match(html, /http:\/\/127\.0\.0\.1:44014\/v1/);
+  assert.match(html, /http:\/\/127\.0\.0\.1:24014\/v1/);
   assert.match(html, /openai-compatible-chat-completions/);
   assert.match(html, /buffered-test-model/);
   assert.match(html, /<dt>Delivery<\/dt><dd>Buffered<\/dd>/);
@@ -465,7 +465,7 @@ test("marks a disagreeing prompt target recommendation as advisory without chang
       variantName: "Default",
       requirementName: "Research cluster",
       targetName: "Buffered fixture",
-      endpoint: "http://127.0.0.1:44014/v1",
+      endpoint: "http://127.0.0.1:24014/v1",
       protocol: "openai-compatible-chat-completions",
       model: "buffered-test-model",
       responseMode: "buffered",

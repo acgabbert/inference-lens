@@ -26,7 +26,7 @@ import {
   preflightSummary,
 } from "./support";
 
-const PROFILE_ENDPOINT = "http://127.0.0.1:44014/v1";
+const PROFILE_ENDPOINT = "http://127.0.0.1:24014/v1";
 
 function baseProject() {
   let project = createProjectFile({

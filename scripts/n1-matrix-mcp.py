@@ -73,5 +73,5 @@ if __name__ == "__main__":
     for scenario in scenarios:
         with (output / scenario / "python-versions.json").open("x") as evidence:
             json.dump(versions, evidence, indent=2)
-    server.run(transport="streamable-http", host="127.0.0.1", port=44030,
+    server.run(transport="streamable-http", host="127.0.0.1", port=24030,
                streamable_http_path="/mcp", stateless_http=True, json_response=True)

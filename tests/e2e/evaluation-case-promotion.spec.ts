@@ -54,7 +54,7 @@ function fixture(): Record<string, string> {
     projectId: ids.project,
     name: "Promotion browser fixture",
     defaults: { conversationRevisionId: ids.revision, target: { connectionRequirementId: ids.connection, model: "fixture-model", protocol: "openai-compatible-chat-completions" }, options: {}, enabledToolIds: [] },
-    connectionRequirements: [{ id: ids.connection, name: "Fixture", provider: "openai-compatible", endpoint: "http://127.0.0.1:44014/v1" }],
+    connectionRequirements: [{ id: ids.connection, name: "Fixture", provider: "openai-compatible", endpoint: "http://127.0.0.1:24014/v1" }],
     conversations: [{ id: ids.conversation, name: "Incident conversation" }],
     conversationRevisions: [{ id: ids.revision, conversationId: ids.conversation, createdAt: "2026-08-06T12:00:00.000Z", items: [{ kind: "template-use", use: { id: ids.use, templateId: ids.template, templateRevisionId: ids.templateRevision, values: {}, outputMessageIds: [ids.message] } }] }],
     promptTemplates: [{ kind: "chat", id: ids.template, name: "Incident prompt", currentRevisionId: ids.templateRevision, revisions: [{ id: ids.templateRevision, createdAt: "2026-08-06T12:00:00.000Z", messages: [{ role: "user", content: "Investigate {{topic}}" }], variableDefaults: {} }] }],

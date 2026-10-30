@@ -15,7 +15,7 @@ async function exportedProject(page: Page) {
 
 function fixture() {
   let project = createProjectFile({ name: "Structured authoring", request: {
-    provider: "openai-compatible", endpoint: "http://127.0.0.1:44014/v1", model: "buffered-test-model",
+    provider: "openai-compatible", endpoint: "http://127.0.0.1:24014/v1", model: "buffered-test-model",
     messages: [{ role: "user", content: "Hello" }], temperature: 0.4,
   }, idSuffix: "structured", createdAt: "2026-10-16T12:00:00.000Z" });
   const suite = createEvaluationSuite(project, "Structured suite", () => "structured");

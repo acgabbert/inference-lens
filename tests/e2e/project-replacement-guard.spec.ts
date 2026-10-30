@@ -21,7 +21,7 @@ function project(name: string, content: string) {
       name,
       request: {
         provider: "openai-compatible",
-        endpoint: "http://127.0.0.1:44014/v1",
+        endpoint: "http://127.0.0.1:24014/v1",
         model: "buffered-test-model",
         messages: [{ role: "user", content: `${name} request` }],
       },

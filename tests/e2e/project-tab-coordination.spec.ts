@@ -37,7 +37,7 @@ function project() {
       name: "Tab coordination",
       request: {
         provider: "openai-compatible",
-        endpoint: "http://127.0.0.1:44014/v1",
+        endpoint: "http://127.0.0.1:24014/v1",
         model: "buffered-test-model",
         messages: [{ role: "user", content: "Coordinate the tabs." }],
       },
@@ -330,7 +330,7 @@ test("replacing the project releases the editor role", async ({ context }) => {
     name: "Other project",
     request: {
       provider: "openai-compatible",
-      endpoint: "http://127.0.0.1:44014/v1",
+      endpoint: "http://127.0.0.1:24014/v1",
       model: "buffered-test-model",
       messages: [{ role: "user", content: "Elsewhere." }],
     },

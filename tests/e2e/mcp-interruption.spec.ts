@@ -21,7 +21,7 @@ import {
  */
 const SERVER_ID = "interruption-fixture";
 const SERVER_LABEL = "Synthetic MCP interruption fixture";
-const FIXTURE = "http://127.0.0.1:44023";
+const FIXTURE = "http://127.0.0.1:24023";
 
 test.describe.configure({ mode: "serial" });
 

@@ -12,7 +12,7 @@ process.env.INFERENCE_LENS_N1_MATRIX_OUTPUT = output;
 for (const scenario of scenarios) mkdirSync(path.join(output, scenario.id), { recursive: true });
 const catalog = JSON.parse(readFileSync("tests/fixtures/mcp-servers/catalog.json", "utf8"));
 catalog.servers.push({ id: "n1-matrix", label: "N1 Python matrix", transport: "streamable-http",
-  endpoint: "http://127.0.0.1:44030/mcp", callTimeoutMs: 5000, authorization: { kind: "none" } });
+  endpoint: "http://127.0.0.1:24030/mcp", callTimeoutMs: 5000, authorization: { kind: "none" } });
 const catalogPath = path.join(output, "catalog.json");
 writeFileSync(catalogPath, JSON.stringify(catalog));
 const servers = Array.isArray(base.webServer) ? base.webServer : [];
@@ -24,7 +24,7 @@ export default defineConfig({
     ...servers.map((server, index) => index === 0
       ? { ...server, env: { ...server.env, INFERENCE_LENS_MCP_SERVERS: catalogPath } } : server),
     { command: ".venv-mcp/bin/python scripts/n1-matrix-mcp.py",
-      url: "http://127.0.0.1:44030/health", reuseExistingServer: false, timeout: 15000,
+      url: "http://127.0.0.1:24030/health", reuseExistingServer: false, timeout: 15000,
       env: { INFERENCE_LENS_N1_MATRIX_OUTPUT: output } },
     ...scenarios.map((scenario) => ({
       command: "node scripts/n8n-tool-capture-provider.mjs",

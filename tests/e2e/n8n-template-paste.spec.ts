@@ -7,7 +7,7 @@ import { expectModalContract } from "./support/modal";
 function pasteProject() {
   let project = createProjectFile({
     name: "n8n paste fixture",
-    request: { provider: "openai-compatible", endpoint: "http://127.0.0.1:44014/v1", model: "buffered-test-model", messages: [{ role: "user", content: "Unused" }] },
+    request: { provider: "openai-compatible", endpoint: "http://127.0.0.1:24014/v1", model: "buffered-test-model", messages: [{ role: "user", content: "Unused" }] },
     idSuffix: "n8n-paste", createdAt: "2026-08-05T12:00:00.000Z",
   });
   project = createPromptTemplate(project, {

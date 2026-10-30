@@ -8,7 +8,7 @@ import { createEntityId } from "../packages/core/src/run-kernel/types.ts";
 import { createProjectFile, parseProjectFile, serializeProjectFile } from "../packages/core/src/project.ts";
 import type { Tool } from "@modelcontextprotocol/client";
 
-function catalog(endpoint = "http://127.0.0.1:44018/mcp") {
+function catalog(endpoint = "http://127.0.0.1:24018/mcp") {
   return { schemaVersion: 1, servers: [{ id: "fixture", label: "Fixture", endpoint, transport: "streamable-http", authorization: { kind: "none" } }] };
 }
 
@@ -16,7 +16,7 @@ test("the MCP catalog pins a safe host endpoint and publishes only its origin", 
   const [server] = parseMcpServerCatalog(catalog());
   assert.equal(server.connectTimeoutMs, 10_000);
   assert.equal(server.maxResponseBytes, 1_048_576);
-  assert.deepEqual(publicMcpServer(server), { id: "fixture", label: "Fixture", endpointIdentity: "http://127.0.0.1:44018", executionAvailable: true });
+  assert.deepEqual(publicMcpServer(server), { id: "fixture", label: "Fixture", endpointIdentity: "http://127.0.0.1:24018", executionAvailable: true });
   for (const endpoint of [
     "http://example.com/mcp",
     "https://user:secret@example.com/mcp",
@@ -47,6 +47,6 @@ test("an attached MCP descriptor survives project export without host capability
   const parsed = parseProjectFile(JSON.parse(exported));
   assert.deepEqual(parsed.tools[0], snapshot);
   assert.equal(snapshot.source?.remoteToolName, "lookup_record");
-  for (const forbidden of ["127.0.0.1", "44018", "serverId", "authorization", "sessionId", "grantedAt"]) assert.equal(exported.includes(forbidden), false);
+  for (const forbidden of ["127.0.0.1", "24018", "serverId", "authorization", "sessionId", "grantedAt"]) assert.equal(exported.includes(forbidden), false);
   assert.equal(JSON.stringify(parsed.tools[0]).includes("endpoint"), false);
 });

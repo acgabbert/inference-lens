@@ -4,16 +4,18 @@ import { defineConfig, devices } from "@playwright/test";
 
 import { CHROMIUM_OVERRIDE_ENV } from "./scripts/e2e-chromium.mjs";
 
+// Fixed ports stay below 32768, where the OS never assigns an outgoing
+// connection's local port; tests/fixture-ports.test.ts enforces it.
 const appPort = 4300;
-const bufferedFixturePort = 44014;
-const flakyFixturePort = 44015;
-const mcpFixturePort = 44018;
-const mcpExecutionFixturePort = 44019;
-const mcpBatchFixturePort = 44020;
-const mcpInterruptionFixturePort = 44023;
-const responsesFixturePort = 44026;
-const anthropicFixturePort = 44027;
-const systemOneFixturePort = 44028;
+const bufferedFixturePort = 24014;
+const flakyFixturePort = 24015;
+const mcpFixturePort = 24018;
+const mcpExecutionFixturePort = 24019;
+const mcpBatchFixturePort = 24020;
+const mcpInterruptionFixturePort = 24023;
+const responsesFixturePort = 24026;
+const anthropicFixturePort = 24027;
+const systemOneFixturePort = 24028;
 
 /**
  * The only reason the suite's dev server can run anything at all.

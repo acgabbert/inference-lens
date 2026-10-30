@@ -19,7 +19,7 @@ const BIG = "evaluation-variant_big" as EvaluationVariantId;
 const decisionProfile: EvaluationLocalProfile = {
   id: "decisions",
   name: "Decision fixture",
-  endpoint: "http://127.0.0.1:44028/llamacpp/v1",
+  endpoint: "http://127.0.0.1:24028/llamacpp/v1",
   capabilities: OPENAI_COMPATIBLE_CAPABILITIES,
   systemOne: true,
 };

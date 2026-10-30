@@ -20,16 +20,16 @@ export const PROJECT_REQUIREMENT_PROFILE_MAP_STORAGE_KEY =
   "inference-lens:project-profile-map:v3";
 
 /** The buffered fixture provider started by playwright.config.ts. */
-export const BUFFERED_FIXTURE_ENDPOINT = "http://127.0.0.1:44014/v1";
+export const BUFFERED_FIXTURE_ENDPOINT = "http://127.0.0.1:24014/v1";
 /** The Responses API fixture (`scripts/responses-provider.mjs`). */
-export const RESPONSES_FIXTURE_ENDPOINT = "http://127.0.0.1:44026/v1";
+export const RESPONSES_FIXTURE_ENDPOINT = "http://127.0.0.1:24026/v1";
 /** The Anthropic Messages fixture (`scripts/anthropic-provider.mjs`). */
-export const ANTHROPIC_FIXTURE_ENDPOINT = "http://127.0.0.1:44027/v1";
+export const ANTHROPIC_FIXTURE_ENDPOINT = "http://127.0.0.1:24027/v1";
 /**
  * The System One capture replay (`scripts/system-one-provider.mjs`). Append a
  * runtime and `/v1`: `llamacpp`, `ollama`, `ollama-proxied`, or `openrouter`.
  */
-export const SYSTEM_ONE_FIXTURE_ORIGIN = "http://127.0.0.1:44028";
+export const SYSTEM_ONE_FIXTURE_ORIGIN = "http://127.0.0.1:24028";
 
 export interface SeedProfileOptions {
   endpoint?: string;
