@@ -4,7 +4,10 @@ import { WORKBENCH_GITIGNORE_CONTENTS } from "../packages/core/src/personal-work
 import { assertWorkbenchRecordPath, FOREIGN_PROJECT_MESSAGE, hasForeignWorkbenchIdentity } from "../packages/core/src/workbench-store.ts";
 import type { WorkbenchFile, WorkbenchStorage } from "../packages/core/src/workbench-store.ts";
 import { assertMigrationPath, hasForeignMigrationIdentity, sameMigrationBytes } from "../packages/core/src/migration-journal.ts";
-import type { MigrationFile, MigrationPayload, MigrationStageOutcome, MigrationStorage } from "../packages/core/src/migration-journal.ts";
+import type { MigrationFile, MigrationPayload, MigrationSnapshot, MigrationStageOutcome, MigrationStorage } from "../packages/core/src/migration-journal.ts";
+import type {
+  MigrationCompletionActivation, MigrationCompletionHostResult, MigrationCompletionPlan, MigrationCompletionStorage,
+} from "../packages/core/src/migration-completion.ts";
 import type { ProjectId } from "../packages/core/src/run-kernel/types.ts";
 import type { FileSystemDirectoryHandleLike } from "./project-directory.client.ts";
 
@@ -112,13 +115,7 @@ export function coordinateProjectWrites<T>(projectId: ProjectId, operation: () =
 /** Byte-preserving migration capability; creation performs no I/O. */
 export function browserMigrationStorage(directory: FileSystemDirectoryHandleLike): MigrationStorage {
   return {
-    async read() {
-      const active = await list(directory);
-      const files: MigrationFile[] = active.filter(file => !file.path.startsWith("migrations/")).map(file =>
-        "contents" in file ? { path: file.path, bytes: new TextEncoder().encode(file.contents) } : file);
-      files.push(...await listMigrationFiles(directory));
-      return { manifest: await readBytes(directory, "project.json"), files };
-    },
+    read: () => readMigrationSnapshot(directory),
     async stage(projectId, files) {
       // Freeze before queuing behind another writer.
       const payloads = structuredClone(files);
@@ -154,6 +151,142 @@ export function browserMigrationStorage(directory: FileSystemDirectoryHandleLike
       });
     },
   };
+}
+
+/**
+ * Migration completion for one workspace handle. Only that handle's storage
+ * factory constructs it: `onSharedAttempt` invalidates the handle's ordinary
+ * manifest saves once the shared write is attempted or found already done.
+ */
+export function browserMigrationCompletionStorage(directory: FileSystemDirectoryHandleLike, projectId: ProjectId, onSharedAttempt: () => void): MigrationCompletionStorage {
+  return {
+    read: () => readMigrationSnapshot(directory),
+    async execute(input) {
+      // Freeze before queuing behind another writer.
+      const plan = structuredClone(input);
+      validateCompletionPlan(plan, projectId);
+      return coordinateProjectWrites(projectId, () => executeCompletion(directory, plan, onSharedAttempt));
+    },
+  };
+}
+
+/** Binds every write to the staged operation, so a plan can never become an arbitrary path writer. */
+function validateCompletionPlan(plan: MigrationCompletionPlan, projectId: ProjectId): void {
+  const invalid = (reason: string) => new Error(`Invalid completion plan: ${reason}.`);
+  if (plan.projectId !== projectId) throw invalid("it belongs to another project");
+  const root = `migrations/${plan.operationId}/`;
+  const expected = new Map(plan.expected.files.map(file => [file.path, file]));
+  const staged = (path: string) => {
+    const file = expected.get(`${root}${path}`);
+    if (!file || !("bytes" in file)) throw invalid(`${path} is not staged in this operation`);
+    return file.bytes;
+  };
+  assertMigrationPath(`${root}source.project.json`);
+  if (!sameMigrationBytes(plan.source, staged("source.project.json"))) throw invalid("the source is not the staged source");
+  if (!sameMigrationBytes(plan.shared, staged("shared.project.json"))) throw invalid("the shared manifest is not the staged snapshot");
+  if (!sameMigrationBytes(plan.expected.manifest, plan.source) && !sameMigrationBytes(plan.expected.manifest, plan.shared)) throw invalid("the manifest matches neither snapshot");
+  const destinations = new Set<string>();
+  for (const activation of plan.activations) {
+    if (!activation.candidate.startsWith("candidates/")) throw invalid(`${activation.candidate} is not a candidate`);
+    assertMigrationPath(`${root}${activation.candidate}`);
+    const name = activation.candidate.slice("candidates/".length);
+    const destination = name === "selections.json" ? name : `drafts/${name}`;
+    if (activation.destination !== destination) throw invalid(`${activation.candidate} does not activate at ${activation.destination}`);
+    assertWorkbenchRecordPath(destination);
+    if (!sameMigrationBytes(activation.bytes, staged(activation.candidate))) throw invalid(`${activation.candidate} is not the staged bytes`);
+    if (destinations.has(destination) || expected.has(destination)) throw invalid(`${destination} is not absent`);
+    destinations.add(destination);
+  }
+}
+
+type CompletionStop = NonNullable<Extract<MigrationCompletionHostResult, { kind: "executed" }>["stopped"]>;
+const errorMessage = (error: unknown) => error instanceof Error ? error.message : String(error);
+
+/**
+ * Runs inside the project's write scope. Everything before the first content
+ * write only reads, so a failure there throws with nothing attempted.
+ */
+async function executeCompletion(directory: FileSystemDirectoryHandleLike, plan: MigrationCompletionPlan, onSharedAttempt: () => void): Promise<MigrationCompletionHostResult> {
+  const current = await readMigrationSnapshot(directory);
+  if (!sameSnapshot(current, plan.expected)) return { kind: "stale-plan" };
+  if (hasForeignMigrationIdentity(current.files, plan.projectId)) throw new Error(FOREIGN_PROJECT_MESSAGE);
+  if (!await isWorkbenchProtected(directory)) return { kind: "blocked", reason: "protection", message: PROTECTION_MESSAGE };
+  let manifest: "written" | "already-shared" = "already-shared";
+  if (sameMigrationBytes(current.manifest, plan.source)) {
+    // The expected-source check immediately before replacement; nothing has been written yet.
+    if (!sameMigrationBytes(await readBytes(directory, "project.json"), plan.source)) return { kind: "stale-plan" };
+    onSharedAttempt();
+    const stopped = await replaceManifest(directory, plan.shared);
+    if (stopped) return { kind: "executed", manifest: "failed", activated: [], stopped };
+    manifest = "written";
+  } else onSharedAttempt();
+  const activated: MigrationCompletionActivation[] = [];
+  for (const activation of plan.activations) {
+    const stopped = await activate(directory, plan, activation, activated);
+    if (stopped) return { kind: "executed", manifest, activated: activated.map(item => item.destination), stopped };
+    activated.push(activation);
+  }
+  return { kind: "executed", manifest, activated: activated.map(item => item.destination) };
+}
+
+async function replaceManifest(directory: FileSystemDirectoryHandleLike, shared: Uint8Array): Promise<CompletionStop | undefined> {
+  let phase: CompletionStop["phase"] = "write";
+  try {
+    const writable = await (await directory.getFileHandle("project.json")).createWritable();
+    await writable.write(shared);
+    await writable.close();
+    phase = "read-back";
+    if (!sameMigrationBytes(await readBytes(directory, "project.json"), shared)) return { destination: "project.json", phase, message: "Manifest read-back does not match the shared snapshot." };
+    return undefined;
+  } catch (error) { return { destination: "project.json", phase, message: errorMessage(error) }; }
+}
+
+/** Creates one absent record after rechecking everything the shared write and earlier activations established. */
+async function activate(directory: FileSystemDirectoryHandleLike, plan: MigrationCompletionPlan, activation: MigrationCompletionActivation, activated: MigrationCompletionActivation[]): Promise<CompletionStop | undefined> {
+  const { destination } = activation;
+  let phase: CompletionStop["phase"] = "before-write";
+  try {
+    const expected: MigrationSnapshot = {
+      manifest: plan.shared,
+      files: [...plan.expected.files, ...activated.map(item => ({ path: item.destination, bytes: item.bytes }))],
+    };
+    if (!sameSnapshot(await readMigrationSnapshot(directory), expected)) return { destination, phase, message: "The project or its recovery files changed during completion." };
+    if (!await isWorkbenchProtected(directory)) return { destination, phase, message: PROTECTION_MESSAGE };
+    const [parent, name] = await recordLocation(await directory.getDirectoryHandle(".workbench"), destination, true);
+    if (await readBytes(parent!, name) !== null) return { destination, phase, message: "The destination appeared during completion." };
+    phase = "write";
+    const writable = await (await parent!.getFileHandle(name, { create: true })).createWritable();
+    await writable.write(activation.bytes);
+    await writable.close();
+    phase = "read-back";
+    if (!sameMigrationBytes(await readBytes(parent!, name), activation.bytes)) return { destination, phase, message: "Read-back does not match the staged candidate." };
+    return undefined;
+  } catch (error) { return { destination, phase, message: errorMessage(error) }; }
+}
+
+/** Exact inventory equality by path; an unreadable entry matches only another unreadable entry. */
+function sameSnapshot(left: MigrationSnapshot, right: MigrationSnapshot): boolean {
+  if (!sameMigrationBytes(left.manifest, right.manifest) || left.files.length !== right.files.length) return false;
+  const files = new Map(right.files.map(file => [file.path, file]));
+  return files.size === right.files.length && left.files.every(file => {
+    const other = files.get(file.path);
+    if (!other) return false;
+    return "bytes" in file ? "bytes" in other && sameMigrationBytes(file.bytes, other.bytes) : !("bytes" in other);
+  });
+}
+
+/** Completion never creates or repairs protection; successful staging already established it. */
+async function isWorkbenchProtected(directory: FileSystemDirectoryHandleLike): Promise<boolean> {
+  try { return await readFile(await directory.getDirectoryHandle(".workbench"), ".gitignore") === WORKBENCH_GITIGNORE_CONTENTS; }
+  catch (error) { if (isMissing(error)) return false; throw error; }
+}
+
+async function readMigrationSnapshot(directory: FileSystemDirectoryHandleLike): Promise<MigrationSnapshot> {
+  const active = await list(directory);
+  const files: MigrationFile[] = active.filter(file => !file.path.startsWith("migrations/")).map(file =>
+    "contents" in file ? { path: file.path, bytes: new TextEncoder().encode(file.contents) } : file);
+  files.push(...await listMigrationFiles(directory));
+  return { manifest: await readBytes(directory, "project.json"), files };
 }
 
 async function protectWorkbench(directory: FileSystemDirectoryHandleLike): Promise<FileSystemDirectoryHandleLike | { kind: "blocked"; reason: "protection"; message: string }> {

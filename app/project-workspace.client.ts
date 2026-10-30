@@ -46,7 +46,8 @@ import type { ProjectFile, ProjectGitPolicy } from "../packages/core/src/project
 import type { WorkbenchFile, WorkbenchMutationResult, WorkbenchStorage } from "../packages/core/src/workbench-store.ts";
 import { nativeMigrationStorage } from "./migration-native.client.ts";
 import type { MigrationStorage } from "../packages/core/src/migration-journal.ts";
-import { browserMigrationStorage, browserWorkbenchStorage, coordinateProjectWrites } from "./workbench-directory.client.ts";
+import type { MigrationCompletionStorage } from "../packages/core/src/migration-completion.ts";
+import { browserMigrationCompletionStorage, browserMigrationStorage, browserWorkbenchStorage, coordinateProjectWrites } from "./workbench-directory.client.ts";
 import {
   assertTraceEntryName,
   serializeDecisionRunTrace,
@@ -148,6 +149,12 @@ interface WorkspaceStorage {
   /** Opt-in byte-preserving migration staging; never replaces the manifest. */
   migration: MigrationStorage;
   /**
+   * Opt-in completion of a staged migration; the only writer of a v19
+   * manifest. Once it attempts that write, or finds it already done, this
+   * handle's `save` rejects with `ProjectHandleInvalidatedError`.
+   */
+  migrationCompletion: MigrationCompletionStorage;
+  /**
    * `precondition` runs inside the project's write scope before the manifest
    * is read, so nothing can change the answer before the write lands. It throws
    * to refuse the write.
@@ -235,17 +242,32 @@ export class ProjectManifestConflictError extends Error {
   }
 }
 
+/**
+ * Migration completion wrote, or tried to write, a shared manifest this handle
+ * never read. Its expected contents are no longer a safe basis for a save,
+ * even if the write left the old bytes in place.
+ */
+export class ProjectHandleInvalidatedError extends Error {
+  constructor() {
+    super(`This window started migrating ${PROJECT_FILE_NAME} to a newer format. Reopen the project before saving.`);
+    this.name = "ProjectHandleInvalidatedError";
+  }
+}
+
 function browserStorage(
   directory: FileSystemDirectoryHandleLike,
   initialContents: string,
   projectId: ProjectFile["projectId"],
 ): WorkspaceStorage {
   let lastContents = initialContents;
+  let valid = true;
   return {
     workbench: browserWorkbenchStorage(directory),
     migration: browserMigrationStorage(directory),
+    migrationCompletion: browserMigrationCompletionStorage(directory, projectId, () => { valid = false; }),
     save(contents: string, precondition?: () => Promise<void>): Promise<void> {
       return coordinateProjectWrites(projectId, async () => {
+        if (!valid) throw new ProjectHandleInvalidatedError();
         await precondition?.();
         const fileHandle = await directory.getFileHandle(PROJECT_FILE_NAME);
         const currentContents = await (await fileHandle.getFile()).text();
@@ -669,6 +691,11 @@ function nativeWorkspaceHandle(
     displayPath: workspace.displayPath,
     storage: {
       migration: nativeMigrationStorage(workspace.workspaceId, invokeNative),
+      migrationCompletion: {
+        read: () => nativeMigrationStorage(workspace.workspaceId, invokeNative).read(),
+        // The native command is a later slice; until then completion stops before any write.
+        async execute() { throw new Error("Migration completion is not available in the desktop app yet."); },
+      },
       workbench: {
         list: () => invokeNative<WorkbenchFile[]>("list_workbench_records", { workspaceId: workspace.workspaceId }),
         mutate: (path, expectedContents, contents, projectId) => invokeNative<WorkbenchMutationResult>("mutate_workbench_record", {
