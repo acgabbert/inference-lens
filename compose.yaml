@@ -7,8 +7,11 @@ services:
     # For INFERENCE_LENS_CONNECTIONS, mount the catalog and its key files
     # read-only and set the variable in .env to the in-container path, for
     # example INFERENCE_LENS_CONNECTIONS=/config/connections.json.
+    # INFERENCE_LENS_SOURCE_ROOTS works the same way, with each prompt source
+    # folder mounted read-only beside it (docs/DOCKER.md).
     # volumes:
     #   - ~/.config/inference-lens:/config:ro
+    #   - ~/src/n8n-workflows:/sources/n8n-workflows:ro
     ports:
       - "127.0.0.1:${INFERENCE_LENS_PORT:-3000}:3000"
     # Docker Desktop resolves host.docker.internal on its own; plain Linux

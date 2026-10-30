@@ -25,6 +25,7 @@ import {
   type PromptLibraryFilters,
   type PromptLibraryKind,
 } from "./templates/prompt-library";
+import { linkedPromptStatusLines } from "./templates/linked-prompt-source.client";
 export { TemplateUseCard } from "./templates/chat-prompt-template-editor.client";
 export type { CompatibleEvaluationSuite } from "./templates/chat-prompt-template-editor.client";
 
@@ -251,6 +252,14 @@ export function ProjectTemplatesPane(props: ProjectTemplatesPaneProps) {
                 {describeEntry(template)} · {props.usageCounts.get(template.id) ?? 0} uses
               </span>
               {template.recommendedTarget && <span>Recommended model: {template.recommendedTarget.model}</span>}
+              {(() => {
+                const state = props.linkedSources?.stateFor(template.id);
+                // A quiet library: only drift and problems are worth a line.
+                const lines = state?.kind === "read"
+                  ? linkedPromptStatusLines(state).filter((line) => line !== "File matches the last pull")
+                  : state && state.kind !== "checking" ? ["Source file unavailable"] : [];
+                return lines.length > 0 && <span className="template-list-source">{lines.join(" · ")}</span>;
+              })()}
             </button>
           ))}
         </div>

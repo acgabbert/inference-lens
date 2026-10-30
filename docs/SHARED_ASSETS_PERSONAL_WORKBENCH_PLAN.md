@@ -562,7 +562,9 @@ designed. E1 then took Project v17 and gained a re-import warning
 ([follow-ups](#e1-review-follow-ups-october-30-2026)). E2's
 [contracts](#e2-implementation-contracts-approved-october-30-2026) are
 approved. E3's [contracts](#e3-implementation-contracts-approved-october-30-2026)
-were approved the same day; E4 and later slices need separate approval.
+were approved and implemented the same day, taking Project v18
+([evidence](#e3-delivery-evidence-october-30-2026)); E4 and later slices need
+separate approval.
 
 Some teams keep n8n workflows in Git with each agent prompt extracted to its own
 `.md` or `.txt` file. A sync step using the n8n API detects drift between those
@@ -1058,6 +1060,66 @@ drift, composed by the Prompts mode; the link dialog owns choosing a folder and
 file; the update dialog takes an already-read file in place of its picker.
 `deploy/compose.yaml` passes the variable through, and `docs/DOCKER.md`
 describes the mount.
+
+### E3 delivery evidence (October 30, 2026)
+
+- **Implementation notes.** The name, path and catalog rules live in
+  `packages/core/src/source-root-rules.ts`, apart from `source-roots.ts`, so
+  `project.ts` can validate with them without an import cycle. Root ids use
+  the `source-root_` prefix, like the other entity kinds. Refresh also asks
+  for the catalog again, so an operator's edit shows without a reload.
+- `tests/source-roots.test.ts` was written first. A first run in a container
+  without `node_modules` failed on `zod`, which is not evidence; after
+  `npm ci`, run against the unchanged code, it failed on the missing
+  `source-root-rules.ts` module, which is the absence of the feature. Its
+  first run against the implementation failed one case in the test itself (an
+  in-memory `undefined` key compared with a JSON round trip), now compared as
+  serialized bytes. The cases cover the v17 → v18 migration and its
+  rejections, name and path rules, the catalog codec, link, re-link, unlink
+  and root removal, validation (unknown root, duplicate link, untracked
+  prompt), drift with CRLF, and a linked pull recording the relative path
+  without a filename warning.
+- `tests/source-root-files.test.ts` first failed on the missing service
+  export. Against the implementation, one expectation was wrong: a directory
+  symlink pointing outside the root is `outside-root`, not `not-a-file`; the
+  fixture now points one inside the root for `not-a-file`, and the escaping
+  file symlink still covers `outside-root`. The cases cover unset, unreadable
+  and invalid catalogs, relative paths, confinement, the size limit, strict
+  UTF-8, BOM removal, listing order and limits, no host path in any message,
+  and request validation.
+- `npm run test:core` passed all 1,734 tests. `npm run lint` (the four
+  pre-existing warnings), `npm run typecheck`, `npm run typecheck:core` and
+  `git diff --check` passed. `node --test tests/project-templates-render.test.mjs
+  tests/project-templates-interaction.test.mjs tests/n8n-import-render.test.mjs`
+  passed 22 tests.
+- `npm run test:e2e -- tests/e2e/linked-prompt-sources.spec.ts` passed three
+  scenarios against the dev server with `INFERENCE_LENS_SOURCE_ROOTS` set to
+  `tests/fixtures/source-roots/catalog.json`, whose folders live under
+  `test-results/source-roots/`: linking in a folder project (modal contract,
+  short and phone layout, preselected file, persisted `sourceRoots` and
+  `fileSource`, no new revision), drift after an outside edit and Refresh,
+  separate local-revision drift in the editor and the library, Pull with no
+  picker and no filename warning, the persisted relative-path receipt, and a
+  reload; an undeclared root named, read from another folder for the session,
+  a missing file named, and Unlink keeping the root another prompt uses; and
+  the unconfigured message, with the catalog response stubbed. The spec was
+  written after the UI, so it was not run red. To check it is not vacuous,
+  forcing `fileChanged` to `false` made the first scenario fail on
+  "File matches the last pull" where "File changed since last pull" was
+  expected; the change was reverted. `file-prompt-update.spec.ts` now lists
+  "Link to source file…" among the editor's file actions. Related specs
+  passed with it: `file-prompt-update`, `file-prompt-import`,
+  `n8n-template-paste`, `prompt-authoring-workspace`, `prompt-draft-retention`,
+  `saved-prompt-revision-diff`, `evaluation-case-promotion`,
+  `system-one-decision-requests`, `first-use-prompt-authoring`,
+  `saved-prompt-picker`, `project-tab-coordination`, `wide-prompt-dialogs` and
+  `pr2-workbench` (89 tests with the new spec).
+- Not run: the full browser suite and CI. Rust is unchanged. A real Docker
+  container with mounted folders, the Tauri desktop app, a real n8n workflow
+  repository and its sync step were not exercised; the "no local service" and
+  "unreachable" messages were checked only by reading the code. Human review
+  should check the link dialog, the library's drift line and the Docker
+  instructions against a real prompt folder.
 
 ## Implementation ownership and sequence
 
