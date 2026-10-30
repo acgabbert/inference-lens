@@ -1,0 +1,107 @@
+version: 2
+
+# Dependabot rather than Renovate: it is built into GitHub, so no third-party
+# app holds write access, and its pull requests run with a read-only token and
+# no repository secrets. Every ecosystem here is supported natively.
+#
+# Each update pull request runs the full CI (four browser shards, two image
+# architectures, the macOS host), so version updates are batched: one weekly
+# minor-and-patch pull request per ecosystem, and majors on their own, with
+# packages that are released in lockstep kept in one pull request. The first
+# group a dependency matches wins, so the catch-all comes first and the
+# lockstep groups only ever receive majors. Security updates are not delayed
+# by the schedule or the cooldown; simultaneous ones share a pull request.
+#
+# Not covered by version updates, on purpose (security updates still apply):
+# - scripts/requirements-mcp.txt: the Python MCP SDK pins name the SDK behind
+#   captured fixtures, and the N1 scripts refuse any other version.
+# - scripts/spikes/: frozen comparison spikes, not shipped code.
+
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    # Let a release age before it is proposed, so a compromised or yanked
+    # version has time to be caught upstream.
+    cooldown:
+      default-days: 7
+    ignore:
+      # The Node major moves as one change across engines, setup-node, the
+      # Docker base image and these types; see the docker entry below.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
+    groups:
+      security:
+        applies-to: security-updates
+        patterns: ["*"]
+      minor-and-patch:
+        update-types: [minor, patch]
+        patterns: ["*"]
+      next:
+        update-types: [major]
+        patterns: [next, eslint-config-next]
+      react:
+        update-types: [major]
+        patterns:
+          - react
+          - react-dom
+          - react-server-dom-webpack
+          - "@types/react"
+          - "@types/react-dom"
+      mcp:
+        update-types: [major]
+        patterns: ["@modelcontextprotocol/*"]
+      tailwind:
+        update-types: [major]
+        patterns: [tailwindcss, "@tailwindcss/*"]
+      tauri:
+        update-types: [major]
+        patterns: ["@tauri-apps/*"]
+
+  # The tauri crate and @tauri-apps/api must share a major.minor, and only the
+  # release build checks that. Merge this ecosystem's weekly pull request
+  # together with the npm one when both move Tauri.
+  - package-ecosystem: cargo
+    directory: /src-tauri
+    schedule:
+      interval: weekly
+      day: monday
+    cooldown:
+      default-days: 7
+    groups:
+      security:
+        applies-to: security-updates
+        patterns: ["*"]
+      minor-and-patch:
+        update-types: [minor, patch]
+        patterns: ["*"]
+      tauri:
+        update-types: [major]
+        patterns: [tauri, "tauri-*"]
+
+  - package-ecosystem: github-actions
+    directories:
+      - /
+      - /.github/actions/*
+    schedule:
+      interval: weekly
+      day: monday
+    cooldown:
+      default-days: 7
+    groups:
+      actions:
+        patterns: ["*"]
+
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    cooldown:
+      default-days: 7
+    ignore:
+      # Node 22 is the supported runtime (package.json engines, setup-node).
+      - dependency-name: node
+        update-types: ["version-update:semver-major"]
