@@ -37,6 +37,11 @@ struct ProjectWorkspaces(Mutex<HashMap<String, ProjectWorkspaceState>>);
 struct ProjectWorkspaceState {
     directory: PathBuf,
     last_contents: String,
+    /// Set once migration completion attempts the shared manifest write, or
+    /// finds it already done. `last_contents` is then no safe basis for a
+    /// save, even if the attempt left the old bytes in place. Evidence and
+    /// recovery commands stay available.
+    shared_save_invalidated: bool,
 }
 
 #[derive(Serialize)]
@@ -325,7 +330,11 @@ fn write_project_manifest(directory: &Path, contents: &str) -> Result<(), String
 
 /// Writes one file in the project root through a temporary file, so an
 /// interrupted save cannot leave a half-written file where a valid one was.
-fn write_project_file(directory: &Path, destination: &Path, contents: &str) -> Result<(), String> {
+pub(crate) fn write_project_file(
+    directory: &Path,
+    destination: &Path,
+    contents: impl AsRef<[u8]>,
+) -> Result<(), String> {
     let manifest = destination.to_path_buf();
     let temporary = directory.join(format!(
         ".inference-lens-project-{}.tmp",
@@ -595,6 +604,7 @@ fn register_project_workspace(
             ProjectWorkspaceState {
                 directory,
                 last_contents: contents.clone(),
+                shared_save_invalidated: false,
             },
         );
     NativeProjectWorkspace {
@@ -665,6 +675,15 @@ fn save_project_workspace(
     let workspace = workspaces
         .get_mut(&workspace_id)
         .ok_or_else(|| command_error("This project folder is no longer open."))?;
+    save_workspace(workspace, contents)
+}
+
+fn save_workspace(workspace: &mut ProjectWorkspaceState, contents: String) -> Result<(), String> {
+    if workspace.shared_save_invalidated {
+        return Err(command_error(format!(
+            "This window started migrating {PROJECT_FILE_NAME} to a newer format. Reopen the project before saving."
+        )));
+    }
     let manifest = project_manifest_path(&workspace.directory);
     let current_contents = fs::read_to_string(&manifest)
         .map_err(|error| format!("Could not read the project: {error}"))?;
@@ -751,6 +770,46 @@ fn stage_workbench_migration(
         .get(&workspace_id)
         .ok_or_else(|| command_error("This project folder is no longer open."))?;
     workbench::stage_migration(&workspace.directory, &project_id, &files)
+}
+
+#[tauri::command]
+fn complete_workbench_migration(
+    workspaces: State<'_, ProjectWorkspaces>,
+    workspace_id: String,
+    project_id: String,
+    plan: workbench::completion::Plan,
+) -> Result<workbench::completion::Completion, String> {
+    // Held through snapshot comparison, writes and read-back, so no native
+    // save, recovery write or staging from any handle can interleave.
+    let mut workspaces = workspaces
+        .0
+        .lock()
+        .map_err(|_| command_error("Project workspace state is unavailable."))?;
+    let workspace = workspaces
+        .get_mut(&workspace_id)
+        .ok_or_else(|| command_error("This project folder is no longer open."))?;
+    complete_workspace_migration(workspace, &project_id, &plan, |_, _| Ok(()))
+}
+
+fn complete_workspace_migration(
+    workspace: &mut ProjectWorkspaceState,
+    project_id: &str,
+    plan: &workbench::completion::Plan,
+    hook: impl FnMut(&str, &'static str) -> Result<(), String>,
+) -> Result<workbench::completion::Completion, String> {
+    let mut attempted = false;
+    let result = workbench::completion::complete(
+        &workspace.directory,
+        project_id,
+        plan,
+        &mut attempted,
+        hook,
+    );
+    // Never adopts the shared bytes as `last_contents`; a v19 owner reopens.
+    if attempted {
+        workspace.shared_save_invalidated = true;
+    }
+    result
 }
 
 #[tauri::command]
@@ -1535,6 +1594,7 @@ pub fn run() {
             mutate_workbench_record,
             read_workbench_migration,
             stage_workbench_migration,
+            complete_workbench_migration,
             save_run_trace,
             list_run_traces,
             read_run_trace,
@@ -1570,6 +1630,94 @@ mod tests {
     impl Drop for TemporaryProjectDirectory {
         fn drop(&mut self) {
             let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+
+    fn migration_workspace(staged: &workbench::completion::tests::Staged) -> ProjectWorkspaceState {
+        let contents = String::from_utf8(staged.read("project.json").unwrap()).unwrap();
+        ProjectWorkspaceState {
+            directory: staged.0.clone(),
+            last_contents: contents,
+            shared_save_invalidated: false,
+        }
+    }
+
+    #[test]
+    fn completion_attempts_invalidate_ordinary_saves_without_adopting_shared_bytes() {
+        use workbench::completion::{
+            tests::{Staged, SHARED, SOURCE},
+            Completion,
+        };
+        let edited = "{\"schemaVersion\":15,\"edited\":true}\n".to_owned();
+        for attempt in ["confirmed", "uncertain", "already-shared"] {
+            let staged = Staged::new();
+            if attempt == "already-shared" {
+                staged.write("project.json", SHARED);
+            }
+            let mut workspace = migration_workspace(&staged);
+            let plan = staged.plan();
+            let result = complete_workspace_migration(
+                &mut workspace,
+                "project_one",
+                &plan,
+                |path, phase| {
+                    if attempt == "uncertain" && (path, phase) == ("project.json", "write") {
+                        return Err("injected write failure".into());
+                    }
+                    Ok(())
+                },
+            )
+            .unwrap();
+            assert!(
+                matches!(result, Completion::Executed { .. }),
+                "{attempt}: {result:?}"
+            );
+            let before = staged.read("project.json");
+            let refused = save_workspace(&mut workspace, edited.clone()).unwrap_err();
+            // Invalidation, not just the expected-manifest check a stale handle would also fail.
+            assert!(
+                refused.contains("started migrating project.json"),
+                "{attempt}: {refused}"
+            );
+            assert_eq!(staged.read("project.json"), before, "{attempt}");
+            if attempt == "uncertain" {
+                assert_eq!(
+                    before.as_deref(),
+                    Some(SOURCE),
+                    "the source was left in place"
+                );
+            }
+            // Recovery and evidence reads remain registered.
+            assert!(workbench::read_migration(&workspace.directory).is_ok());
+        }
+    }
+
+    #[test]
+    fn a_stale_or_refused_completion_leaves_ordinary_saves_available() {
+        use workbench::completion::{tests::Staged, Completion};
+        for refusal in ["stale-plan", "invalid-plan", "protection"] {
+            let staged = Staged::new();
+            let mut workspace = migration_workspace(&staged);
+            let mut plan = staged.plan();
+            match refusal {
+                "stale-plan" => staged.write(".workbench/drafts/draft_other.json", b"{}"),
+                "invalid-plan" => plan.project_id = "project_other".into(),
+                _ => {
+                    staged.write(".workbench/.gitignore", b"# custom\n");
+                    plan = staged.plan();
+                }
+            }
+            let result =
+                complete_workspace_migration(&mut workspace, "project_one", &plan, |_, _| Ok(()));
+            assert!(
+                !matches!(result, Ok(Completion::Executed { .. })),
+                "{refusal}: {result:?}"
+            );
+            save_workspace(&mut workspace, "{\"edited\":true}\n".into()).unwrap();
+            assert_eq!(
+                staged.read("project.json").as_deref(),
+                Some(b"{\"edited\":true}\n".as_slice())
+            );
         }
     }
 

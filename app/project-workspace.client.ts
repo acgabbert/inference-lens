@@ -44,7 +44,7 @@ import {
 } from "../packages/core/src/project.ts";
 import type { ProjectFile, ProjectGitPolicy } from "../packages/core/src/project.ts";
 import type { WorkbenchFile, WorkbenchMutationResult, WorkbenchStorage } from "../packages/core/src/workbench-store.ts";
-import { nativeMigrationStorage } from "./migration-native.client.ts";
+import { nativeMigrationCompletionStorage, nativeMigrationStorage } from "./migration-native.client.ts";
 import type { MigrationStorage } from "../packages/core/src/migration-journal.ts";
 import type { MigrationCompletionStorage } from "../packages/core/src/migration-completion.ts";
 import { browserMigrationCompletionStorage, browserMigrationStorage, browserWorkbenchStorage, coordinateProjectWrites } from "./workbench-directory.client.ts";
@@ -684,6 +684,7 @@ async function invokeNative<T>(
 
 function nativeWorkspaceHandle(
   workspace: NativeWorkspace,
+  projectId: ProjectFile["projectId"],
 ): ProjectWorkspaceHandle {
   return {
     kind: "tauri-directory",
@@ -691,11 +692,7 @@ function nativeWorkspaceHandle(
     displayPath: workspace.displayPath,
     storage: {
       migration: nativeMigrationStorage(workspace.workspaceId, invokeNative),
-      migrationCompletion: {
-        read: () => nativeMigrationStorage(workspace.workspaceId, invokeNative).read(),
-        // The native command is a later slice; until then completion stops before any write.
-        async execute() { throw new Error("Migration completion is not available in the desktop app yet."); },
-      },
+      migrationCompletion: nativeMigrationCompletionStorage(workspace.workspaceId, projectId, invokeNative),
       workbench: {
         list: () => invokeNative<WorkbenchFile[]>("list_workbench_records", { workspaceId: workspace.workspaceId }),
         mutate: (path, expectedContents, contents, projectId) => invokeNative<WorkbenchMutationResult>("mutate_workbench_record", {
@@ -703,10 +700,17 @@ function nativeWorkspaceHandle(
         }),
       },
       async save(contents: string): Promise<void> {
-        await invokeNative("save_project_workspace", {
-          workspaceId: workspace.workspaceId,
-          contents,
-        });
+        try {
+          await invokeNative("save_project_workspace", {
+            workspaceId: workspace.workspaceId,
+            contents,
+          });
+        } catch (error) {
+          // The command refuses with this exact text once completion has invalidated the workspace.
+          const invalidated = new ProjectHandleInvalidatedError();
+          if (error === invalidated.message || (error instanceof Error && error.message === invalidated.message)) throw invalidated;
+          throw error;
+        }
       },
       async saveTrace(
         runId: string,
@@ -779,9 +783,10 @@ async function openNativeProjectFolder(): Promise<OpenedProjectWorkspace | null>
     "open_project_workspace",
   );
   if (!workspace) return null;
+  const project = parseProjectJson(workspace.contents);
   return {
-    project: parseProjectJson(workspace.contents),
-    handle: nativeWorkspaceHandle(workspace),
+    project,
+    handle: nativeWorkspaceHandle(workspace, project.projectId),
   };
 }
 
@@ -800,7 +805,7 @@ async function createNativeProjectFolder(
   if (!workspace) return null;
   return {
     project,
-    handle: nativeWorkspaceHandle(workspace),
+    handle: nativeWorkspaceHandle(workspace, project.projectId),
   };
 }
 

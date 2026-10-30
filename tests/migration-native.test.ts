@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { nativeMigrationStorage } from "../app/migration-native.client.ts";
+import { nativeMigrationCompletionStorage, nativeMigrationStorage } from "../app/migration-native.client.ts";
+import type { MigrationCompletionPlan } from "../packages/core/src/migration-completion.ts";
 
 test("native bridge retains raw bytes, workspace association and structured conflict bytes", async () => {
   const calls: Array<{ command: string; args: Record<string, unknown> }> = [];
@@ -26,4 +27,44 @@ test("native byte arrays reject invalid numbers instead of wrapping or truncatin
     const adapter = nativeMigrationStorage("workspace", async <T>(): Promise<T> => ({ manifest: value, files: [] }) as T);
     await assert.rejects(adapter.read(), /Invalid native migration byte payload/);
   }
+});
+test("native completion sends the frozen plan as byte arrays, bound to its workspace and project", async () => {
+  const calls: Array<{ command: string; args: Record<string, unknown> }> = [];
+  const result = { kind: "executed", manifest: "written", activated: ["selections.json"] };
+  const adapter = nativeMigrationCompletionStorage("workspace_bytes", "project_bytes", async <T>(command: string, args: Record<string, unknown>): Promise<T> => {
+    calls.push({ command, args: structuredClone(args) });
+    return result as T;
+  });
+  assert.equal(calls.length, 0, "construction performs no IPC");
+  const original = [239, 187, 191, 0, 255];
+  const manifest = new Uint8Array(original);
+  const plan: MigrationCompletionPlan = {
+    projectId: "project_bytes",
+    operationId: "migration_op",
+    expected: { manifest, files: [{ path: "selections.json", bytes: new Uint8Array([255]) }, { path: "drafts/draft_x.json", error: "unreadable" }] },
+    source: manifest,
+    shared: new Uint8Array([123, 125, 10]),
+    activations: [{ candidate: "candidates/selections.json", destination: "selections.json", bytes: new Uint8Array([13, 10]) }],
+  };
+  const pending = adapter.execute(plan);
+  // The caller's buffers may change after the call; the payload was captured synchronously.
+  manifest.fill(0);
+  assert.deepEqual(await pending, result);
+  assert.deepEqual(calls, [{
+    command: "complete_workbench_migration",
+    args: {
+      workspaceId: "workspace_bytes",
+      projectId: "project_bytes",
+      plan: {
+        projectId: "project_bytes",
+        operationId: "migration_op",
+        expected: { manifest: original, files: [{ path: "selections.json", bytes: [255] }, { path: "drafts/draft_x.json", error: "unreadable" }] },
+        source: original,
+        shared: [123, 125, 10],
+        activations: [{ candidate: "candidates/selections.json", destination: "selections.json", bytes: [13, 10] }],
+      },
+    },
+  }]);
+  await adapter.read().catch(() => {});
+  assert.equal(calls.at(-1)?.command, "read_workbench_migration");
 });

@@ -301,7 +301,47 @@ read-back and read failure, rechecks between activations, plan binding, one
 Web Lock shared with recovery writes and another handle's saves, and a real Git
 repository staging only `project.json`.
 
-**Remaining, in order.** The native Rust command (workspace mutex, safe path
-bindings, symlink refusal, registration-state invalidation), then the real-Git
-staging check for native output. Each needs the evidence listed above before it
-lands. No application caller is approved.
+**Native command (implemented October 30).** `complete_workbench_migration`
+([lib.rs](../src-tauri/src/lib.rs), host in
+[workbench/completion.rs](../src-tauri/src/workbench/completion.rs)) holds the
+process-wide workspace mutex through validation, snapshot comparison, writes
+and read-back, so no native save, recovery write or staging from any handle can
+interleave. `nativeMigrationCompletionStorage`
+([migration-native.client.ts](../app/migration-native.client.ts)) is bound to
+the opened project's ID and converts the plan to byte arrays before the first
+await. These details were settled during implementation:
+
+- Plan binding mirrors the browser host and is checked before any read. The
+  operation must name a valid migration path. Paths are validated without
+  touching the filesystem, so a traversal or foreign candidate is refused with
+  nothing created.
+- The manifest is replaced through the existing temporary-file replacement
+  (`write_project_file`, now taking bytes). Candidates are created with
+  exclusive creation (`create_new`), so an activation can never replace a file
+  that appeared after the recheck. A failed write can leave a partial file,
+  which is reported and never removed.
+- A linked or unreadable `.workbench/.gitignore` is a `protection` refusal, as
+  in native recovery writes. Links at `project.json`, `.workbench` and
+  `.workbench/drafts` fail the snapshot read; a link at a destination is an
+  unavailable entry that fails the recheck. Each is refused whether it is
+  present before the call or appears between activations.
+- Registration state gains `shared_save_invalidated`. Native `save` refuses
+  with the same text as `ProjectHandleInvalidatedError`, and the TypeScript
+  handle maps it to that class. Evidence and recovery commands stay registered.
+- Review fix carried to native: migration snapshots now read active records as
+  raw bytes, as the browser host does. `list` keeps its text contract.
+
+[`completion.rs`](../src-tauri/src/workbench/completion.rs) tests cover exact
+write order and bytes, repeats and restart after a shared write, stale plans
+(including a manifest change just before replacement), protection without
+repair, foreign identity, every manifest and activation boundary (before
+write, write, read-back), plan binding refusals, symlinks at every level, JSON
+IPC byte round-trip, and a real Git repository tracking only `project.json`.
+`lib.rs` tests cover invalidation on confirmed, uncertain and already-shared
+attempts and none on stale, invalid or protection-refused plans. The native
+fixture uses synthetic bytes staged by the native staging command; the host
+compares bytes and project identity only, so real v19 content is covered by the
+core and browser tests rather than here.
+
+**Remaining.** No application caller is approved. Enabling completion needs the
+reconciliation UI and a v19 application owner, per the approval condition.

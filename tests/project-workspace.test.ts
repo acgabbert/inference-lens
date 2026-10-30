@@ -10,6 +10,7 @@ import {
   downloadProjectFile,
   listExperimentArtifactsWorkspace,
   openProjectFolder,
+  ProjectHandleInvalidatedError,
   readExperimentArtifactWorkspace,
   saveExperimentPlanWorkspace,
   saveProjectWorkspace,
@@ -419,6 +420,38 @@ test("native recovery bridge passes workspace identity, expected contents and st
     assert.equal(typeof calls[2].args?.contents, "string");
     assert.equal((await store.save(record)).kind, "blocked");
     assert.equal(calls.length, 3);
+  } finally {
+    if (originalWindow === undefined) Reflect.deleteProperty(globalThis, "window");
+    else Object.defineProperty(globalThis, "window", { configurable: true, value: originalWindow });
+  }
+});
+
+test("native workspace handles bind completion to the opened project and report invalidated saves as such", async () => {
+  const originalWindow = Object.getOwnPropertyDescriptor(globalThis, "window")?.value;
+  const calls: Array<{ command: string; args?: Record<string, unknown> }> = [];
+  const invalidated = "This window started migrating project.json to a newer format. Reopen the project before saving.";
+  Object.defineProperty(globalThis, "window", {
+    configurable: true,
+    value: { __TAURI_INTERNALS__: {
+      invoke: async (command: string, args?: Record<string, unknown>) => {
+        calls.push({ command, args });
+        if (command === "open_project_workspace") return { workspaceId: "workspace_native-completion", displayName: "Native", displayPath: "/Native", contents: serializeProjectFile(project()) };
+        if (command === "complete_workbench_migration") return { kind: "executed", manifest: "written", activated: [] };
+        // Tauri rejects with the command's error string, not an Error.
+        if (command === "save_project_workspace") throw invalidated;
+        throw new Error(`Unexpected command ${command}`);
+      },
+    } },
+  });
+  try {
+    const opened = await openProjectFolder();
+    assert.ok(opened);
+    const plan = { projectId: opened.project.projectId, operationId: "migration_op", expected: { manifest: null, files: [] }, source: new Uint8Array(), shared: new Uint8Array(), activations: [] };
+    assert.deepEqual(await opened.handle.storage.migrationCompletion.execute(plan), { kind: "executed", manifest: "written", activated: [] });
+    assert.equal(calls[1].command, "complete_workbench_migration");
+    assert.equal(calls[1].args?.workspaceId, "workspace_native-completion");
+    assert.equal(calls[1].args?.projectId, opened.project.projectId);
+    await assert.rejects(opened.handle.storage.save("{}"), ProjectHandleInvalidatedError);
   } finally {
     if (originalWindow === undefined) Reflect.deleteProperty(globalThis, "window");
     else Object.defineProperty(globalThis, "window", { configurable: true, value: originalWindow });

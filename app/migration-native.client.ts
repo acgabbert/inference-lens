@@ -1,5 +1,7 @@
 "use client";
 
+import type { MigrationCompletionHostResult, MigrationCompletionPlan, MigrationCompletionStorage } from "../packages/core/src/migration-completion.ts";
+import type { ProjectId } from "../packages/core/src/run-kernel/types.ts";
 import type { MigrationFile, MigrationPayload, MigrationSnapshot, MigrationStageOutcome, MigrationStorage } from "../packages/core/src/migration-journal.ts";
 
 type Invoke = <T>(command: string, args: Record<string, unknown>) => Promise<T>;
@@ -21,6 +23,32 @@ export function nativeMigrationStorage(workspaceId: string, invoke: Invoke): Mig
         workspaceId, projectId, files: files.map(file => ({ path: file.path, bytes: Array.from(file.bytes) })),
       });
       return outcome.kind === "conflict" ? { ...outcome, actualBytes: outcome.actualBytes === null ? null : bytes(outcome.actualBytes) } : outcome;
+    },
+  };
+}
+
+const wireBytes = (value: Uint8Array) => Array.from(value);
+/**
+ * Native completion for one workspace handle. The plan is converted before the
+ * first await, so later changes to caller buffers cannot reach the host. The
+ * command holds the workspace mutex and invalidates this workspace's saves.
+ */
+export function nativeMigrationCompletionStorage(workspaceId: string, projectId: ProjectId, invoke: Invoke): MigrationCompletionStorage {
+  return {
+    read: () => nativeMigrationStorage(workspaceId, invoke).read(),
+    execute(plan: MigrationCompletionPlan): Promise<MigrationCompletionHostResult> {
+      const wire = {
+        projectId: plan.projectId,
+        operationId: plan.operationId,
+        expected: {
+          manifest: plan.expected.manifest === null ? null : wireBytes(plan.expected.manifest),
+          files: plan.expected.files.map((file): WireFile => "bytes" in file ? { path: file.path, bytes: wireBytes(file.bytes) } : { path: file.path, error: file.error }),
+        },
+        source: wireBytes(plan.source),
+        shared: wireBytes(plan.shared),
+        activations: plan.activations.map(item => ({ candidate: item.candidate, destination: item.destination, bytes: wireBytes(item.bytes) })),
+      };
+      return invoke<MigrationCompletionHostResult>("complete_workbench_migration", { workspaceId, projectId, plan: wire });
     },
   };
 }
