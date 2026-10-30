@@ -12,9 +12,10 @@ label.file-button {
 
 
 .button {
+  min-height: var(--control-height);
   border: 1px solid var(--border-default);
   border-radius: var(--radius-md);
-  padding: var(--space-sm) var(--space-md);
+  padding: var(--space-2xs) var(--space-md);
   background: var(--surface-panel);
   color: var(--text-primary);
   font-weight: var(--weight-semibold);
@@ -100,6 +101,13 @@ input:not([type="range"]) {
   font-family: var(--font-stack-mono);
 }
 
+/* Single-line fields take the shared control height, so one beside a button
+   or a select lines up with it. */
+input:not([type="range"], [type="checkbox"], [type="radio"], [type="file"], [type="color"]) {
+  height: var(--control-height);
+  padding-block: 0;
+}
+
 /* Selects were the only control with no rules of their own: they inherited
    their label's bold 10px and kept the UA's padding, so they sat shorter and
    heavier than the input beside them in the same row. They now share the
@@ -107,7 +115,7 @@ input:not([type="range"]) {
    it follows the theme tokens — an SVG chevron would have to hardcode a color
    that could not track light and dark. */
 select {
-  height: 32px;
+  height: var(--control-height);
   margin-top: var(--space-xs);
   padding: 0 var(--space-2xl) 0 var(--space-sm);
   appearance: none;
