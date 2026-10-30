@@ -23,74 +23,74 @@ const held = new Set();
 /** Open `/mcp` connections, so `/drop` can sever them as a killed process would. */
 const sockets = new Set();
 
-const server = new Server(
-  { name: "inference-lens-discovery-fixture", version: "1.0.0" },
-  { capabilities: { tools: { listChanged: true } } },
-);
-server.setRequestHandler("tools/list", async (request) => {
-  discoveryRequests++;
-  if (!request.params?.cursor) return {
-    tools: [{
-      name: "lookup_record",
-      title: "Look up a record",
-      description: revision === 1 ? "Find a synthetic record." : "Find an updated synthetic record.",
-      inputSchema: {
-        type: "object",
-        properties: { record_id: { type: "string" } },
-        required: ["record_id"],
-        additionalProperties: false,
-      },
-    }],
-    nextCursor: "page-2",
-  };
-  return {
-    tools: [{
-      name: "second_tool",
-      description: "A tool on the second page. <img src=x onerror=window.__mcpInjected=1>",
-      inputSchema: { type: "object", properties: {}, additionalProperties: false },
-    }],
-  };
-});
-server.setRequestHandler("tools/call", async (request) => {
-  calls++;
-  lastCall = { name: request.params.name, arguments: request.params.arguments };
-  if (request.params.name !== "lookup_record") {
-    return { content: [{ type: "text", text: "Unknown fixture tool." }], isError: true };
-  }
-  const recordId = request.params.arguments?.record_id;
-  if (recordId === "tool-error") return {
-    content: [{ type: "text", text: "Record lookup rejected by fixture." }], isError: true,
-  };
-  if (recordId === "slow") {
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-    return { content: [{ type: "text", text: "late response" }] };
-  }
-  if (recordId === "hold") {
-    await new Promise((resolve) => {
-      held.add(resolve);
-    });
-    return { content: [{ type: "text", text: "Record hold: released" }] };
-  }
-  if (recordId === "protocol-error") throw new Error("Synthetic MCP protocol failure");
-  if (recordId === "malformed") return { content: "bad" };
-  if (recordId === "structured") return {
-    content: [], structuredContent: { record_id: "structured", value: 7 },
-  };
-  if (recordId === "go-down") {
-    // Answers this call, then behaves as a server that stopped right after.
-    down = true;
-    return { content: [{ type: "text", text: "Record go-down: local MCP result" }] };
-  }
-  if (recordId === "two-parts") return {
-    content: [{ type: "text", text: "first" }, { type: "text", text: "second" }],
-  };
-  return { content: [{ type: "text", text: `Record ${recordId}: local MCP result` }] };
-});
-const transport = new WebStandardStreamableHTTPServerTransport({
-  sessionIdGenerator: undefined,
-  enableJsonResponse: true,
-});
-await server.connect(transport);
+// A stateless transport serves exactly one request, so each `/mcp` request gets
+// its own server and transport. The counters above stay shared across them.
+function createMcpServer() {
+  const server = new Server(
+    { name: "inference-lens-discovery-fixture", version: "1.0.0" },
+    { capabilities: { tools: { listChanged: true } } },
+  );
+  server.setRequestHandler("tools/list", async (request) => {
+    discoveryRequests++;
+    if (!request.params?.cursor) return {
+      tools: [{
+        name: "lookup_record",
+        title: "Look up a record",
+        description: revision === 1 ? "Find a synthetic record." : "Find an updated synthetic record.",
+        inputSchema: {
+          type: "object",
+          properties: { record_id: { type: "string" } },
+          required: ["record_id"],
+          additionalProperties: false,
+        },
+      }],
+      nextCursor: "page-2",
+    };
+    return {
+      tools: [{
+        name: "second_tool",
+        description: "A tool on the second page. <img src=x onerror=window.__mcpInjected=1>",
+        inputSchema: { type: "object", properties: {}, additionalProperties: false },
+      }],
+    };
+  });
+  server.setRequestHandler("tools/call", async (request) => {
+    calls++;
+    lastCall = { name: request.params.name, arguments: request.params.arguments };
+    if (request.params.name !== "lookup_record") {
+      return { content: [{ type: "text", text: "Unknown fixture tool." }], isError: true };
+    }
+    const recordId = request.params.arguments?.record_id;
+    if (recordId === "tool-error") return {
+      content: [{ type: "text", text: "Record lookup rejected by fixture." }], isError: true,
+    };
+    if (recordId === "slow") {
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      return { content: [{ type: "text", text: "late response" }] };
+    }
+    if (recordId === "hold") {
+      await new Promise((resolve) => {
+        held.add(resolve);
+      });
+      return { content: [{ type: "text", text: "Record hold: released" }] };
+    }
+    if (recordId === "protocol-error") throw new Error("Synthetic MCP protocol failure");
+    if (recordId === "malformed") return { content: "bad" };
+    if (recordId === "structured") return {
+      content: [], structuredContent: { record_id: "structured", value: 7 },
+    };
+    if (recordId === "go-down") {
+      // Answers this call, then behaves as a server that stopped right after.
+      down = true;
+      return { content: [{ type: "text", text: "Record go-down: local MCP result" }] };
+    }
+    if (recordId === "two-parts") return {
+      content: [{ type: "text", text: "first" }, { type: "text", text: "second" }],
+    };
+    return { content: [{ type: "text", text: `Record ${recordId}: local MCP result` }] };
+  });
+  return server;
+}
 
 const http = createServer(async (incoming, outgoing) => {
   const pathname = new URL(incoming.url ?? "/", `http://127.0.0.1:${port}`).pathname;
@@ -136,14 +136,30 @@ const http = createServer(async (incoming, outgoing) => {
     outgoing.end("not found");
     return;
   }
+  // A per-request server has no session to stream to or end, so it offers no
+  // standalone stream, as the spec allows. Held open, one would keep the
+  // client's process alive.
+  if (incoming.method !== "POST") {
+    outgoing.writeHead(405, { allow: "POST" });
+    outgoing.end();
+    return;
+  }
   sockets.add(incoming.socket);
   outgoing.on("close", () => sockets.delete(incoming.socket));
   try {
     const request = new Request(`http://127.0.0.1:${port}${incoming.url}`, {
       method: incoming.method,
       headers: incoming.headers,
-      ...(incoming.method === "GET" || incoming.method === "HEAD" ? {} : { body: incoming, duplex: "half" }),
+      body: incoming,
+      duplex: "half",
     });
+    const server = createMcpServer();
+    const transport = new WebStandardStreamableHTTPServerTransport({
+      sessionIdGenerator: undefined,
+      enableJsonResponse: true,
+    });
+    outgoing.on("close", () => void server.close());
+    await server.connect(transport);
     const response = await transport.handleRequest(request);
     outgoing.writeHead(response.status, Object.fromEntries(response.headers));
     if (response.body) Readable.fromWeb(response.body).pipe(outgoing);

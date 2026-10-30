@@ -60,7 +60,7 @@ jobs:
       # Keep two browser workers per machine; scale across isolated runners.
       - run: npm run test:e2e -- --shard=${{ matrix.shard }}/4 --workers=2
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: failure()
         with:
           name: playwright-report-${{ matrix.shard }}
@@ -105,7 +105,7 @@ jobs:
 
       - run: npm run test:e2e -- --config playwright.python-mcp.config.ts
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: failure()
         with:
           name: playwright-report-lanes
