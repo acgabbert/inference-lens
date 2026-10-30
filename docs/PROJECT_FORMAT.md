@@ -2,8 +2,8 @@
 
 Inference Lens projects use a visible `<name>.inference-lens/` directory bundle
 containing one canonical, portable JSON document named `project.json`. New
-saves use schema version 16. The parser also opens versions 10, 11, 12, 13, 14,
-and 15 and upgrades them on load. From v10, the protocol it kept on each connection
+saves use schema version 17. The parser also opens versions 10, 11, 12, 13, 14,
+15 and 16 and upgrades them on load. From v10, the protocol it kept on each connection
 requirement (always chat completions) moves onto every execution target that
 names that requirement — the project default and each suite's
 `execution.target` — and the requirement loses the field. See
@@ -20,7 +20,9 @@ templates and inline/template-use decision request revisions. Legacy templates
 gain `kind: "chat"`; legacy decision revisions gain `kind: "inline"`, with
 IDs, drafts, defaults, provenance and suite pins preserved. v16 adds
 [prompt environments](#prompt-environments); a v15 document opens with none, and
-one that already holds or selects any is rejected. Earlier project
+one that already holds or selects any is rejected. v17 adds
+[whole-file prompt imports](#file-prompt-imports); a v16 document opens
+unchanged, and one that already holds a file receipt is rejected. Earlier project
 formats, including v5–v9, and the proof-of-concept request export are rejected
 with a version error rather than upgraded on load.
 Every schema is strict, so a reader rejects a document it does not understand
@@ -236,6 +238,22 @@ handles.
 Run traces are separate diagnostic artifacts. Local profile metadata and
 workbench preferences are application state. Credentials remain in the OS
 credential store, an environment variable, or session memory.
+
+### File prompt imports
+
+From v17, a `.md` or `.txt` file can be imported as one saved chat prompt with
+a receipt whose `source.adapter` is `"file"`. The receipt's
+`source.resource.id` and `name` are the bare filename, its invocation is
+`{ type: "file", id: "content" }` with the filename stem as its name, and
+`invocation.version` records `expression-v1` or `plain-text-v1`. The authored
+text is the strictly decoded UTF-8 file without an initial BOM, with its line
+endings preserved. n8n expressions become variables with no recorded value.
+In the projected template every literal `{{` gains one backslash (`\{{`), so
+native rendering reproduces the file's text; receipt validation reproduces
+that projection. Other adapters keep their unescaped projection. A v16
+reader applies no escaping, which is why file receipts need v17 and a v16
+document holding one is rejected. See the
+[external prompt sources plan](SHARED_ASSETS_PERSONAL_WORKBENCH_PLAN.md#external-prompt-sources).
 
 ## Template authoring session
 

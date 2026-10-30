@@ -4,7 +4,7 @@ import { createExternalPromptCandidate } from "../packages/core/src/external-pro
 import { projectExternalPromptTemplate } from "../packages/core/src/external-prompt-project.ts";
 import { renderTemplateMessages } from "../packages/core/src/template-engine.ts";
 import { copyFilePromptAsN8nText, createFilePromptCandidate, decodePromptFile, importFilePromptCandidates } from "../packages/core/src/file-prompt-import.ts";
-import { createProjectFile, parseProjectJson, serializeProjectFile, updatePromptTemplateDraft } from "../packages/core/src/project.ts";
+import { createProjectFile, parseProjectFile, parseProjectJson, PROJECT_SCHEMA_VERSION, ProjectValidationError, serializeProjectFile, updatePromptTemplateDraft } from "../packages/core/src/project.ts";
 
 function projectFixture() {
   return createProjectFile({ name: "File fixture", request: {
@@ -121,5 +121,22 @@ test("copy refuses edited expression-mode text that n8n would read as different 
   const plainProject = await importFilePromptCandidates(projectFixture(), [plain]);
   assert.deepEqual(copyFilePromptAsN8nText([{ role: "user", content: String.raw`Keep \{{x}} and more` }], plainProject.project.externalImports), {
     ok: true, text: "Keep {{x}} and more",
+  });
+});
+
+test("file imports are Project v17: v16 opens as v17, and a v16 file receipt is rejected rather than reinterpreted", async () => {
+  assert.equal(PROJECT_SCHEMA_VERSION, 17);
+  assert.equal(projectFixture().schemaVersion, 17);
+  assert.equal(parseProjectFile({ ...projectFixture(), schemaVersion: 16 }).schemaVersion, 17);
+
+  const candidate = await createFilePromptCandidate({ filename: "literal.txt", text: "Keep {{x}}", role: "user", plainText: true });
+  const { project } = await importFilePromptCandidates(projectFixture(), [candidate]);
+  assert.throws(() => parseProjectFile({ ...project, schemaVersion: 16 }), (error: unknown) => {
+    assert.ok(error instanceof ProjectValidationError);
+    assert.deepEqual(error.issues.map(({ path, message }) => ({ path: path.join("."), message })), [{
+      path: "externalImports.0.source.adapter",
+      message: "File prompt imports require project schema v17; this document declares v16.",
+    }]);
+    return true;
   });
 });

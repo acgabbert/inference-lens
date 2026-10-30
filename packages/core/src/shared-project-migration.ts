@@ -5,7 +5,7 @@ import { parseWorkbenchRecord } from "./personal-workbench.ts";
 import type { WorkbenchPromptDraftV1, WorkbenchSelectionsV1 } from "./personal-workbench.ts";
 
 export interface SharedProjectMigrationPlan {
-  sourceVersion: 10 | 11 | 12 | 13 | 14 | 15 | 16;
+  sourceVersion: 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17;
   /** Untouched bytes, copied before decoding or legacy normalization. */
   sourceBytes: Uint8Array;
   shared: SharedProjectFileV18;
@@ -31,7 +31,7 @@ export function planSharedProjectMigration(sourceBytes: Uint8Array): SharedProje
   } catch {
     throw new ProjectValidationError([{ code: "custom", path: [], message: "Migration source is not valid UTF-8." }]);
   }
-  // The existing strict v10→v16 chain validates before any fields are removed.
+  // The existing strict v10→v17 chain validates before any fields are removed.
   const project = parseProjectJson(text);
   const sourceVersion = (JSON.parse(text) as { schemaVersion: SharedProjectMigrationPlan["sourceVersion"] }).schemaVersion;
   const drafts: WorkbenchPromptDraftV1[] = [];

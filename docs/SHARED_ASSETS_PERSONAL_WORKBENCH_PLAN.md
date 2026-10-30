@@ -739,7 +739,8 @@ identified below must be specified before the affected implementation slice.
   application. The file-import dialog owns file reading and preview staging;
   `useProjectTemplates.importFilePrompts` applies the batch. `PromptsMode`
   composes the workflow; the page gains no file-reading or import state.
-- Keep the current serialized receipt and project version. Filename goes in
+- Keep the current serialized receipt shape. File receipts require Project v17
+  (see the follow-ups below). Filename goes in
   `source.resource.id` and `name`; the whole-file invocation is `type: "file"`,
   `id: "content"`, with the filename stem as its name. `invocation.version`
   records `expression-v1` or `plain-text-v1`, including expression-mode files
@@ -756,9 +757,9 @@ identified below must be specified before the affected implementation slice.
 - Escape every literal opening `{{` with one additional backslash in native
   content, preserving pre-existing backslashes through native rendering. File
   receipt validation reproduces that projection. Existing adapters retain their
-  historical projection. Earlier app builds do not understand escaped file
-  projections and can reject those receipts despite the unchanged project
-  envelope version; use a build with E1 support to read them. The scanner never
+  historical projection. Earlier builds do not understand escaped file
+  projections, so a project holding file receipts is Project v17 and those
+  builds report it as saved by a newer Inference Lens. The scanner never
   evaluates expressions. Unsupported expression syntax gets a preview error and
   the plain-text override. Native
   syntax cannot represent an active variable immediately after a backslash;
@@ -831,13 +832,14 @@ identified below must be specified before the affected implementation slice.
   import adds its conversation use on top, and file import uses the builder
   alone, rather than discarding a conversation revision and defaults after
   the fact.
-- **Approved, number open: new project version.** The user approved a project
-  version bump so that builds without E1 report a newer project rather than
-  rejecting escaped file receipts. Project v17 is already allocated to
-  [final output](FINAL_OUTPUT_CONTRACTS.md#d1-format-version-allocation), and
-  the staged shared format is v17 in code. The number must be allocated before
-  the bump is implemented; until then the compatibility note in the contracts
-  above still applies.
+- **Implemented: Project v17.** Approved October 30 so that builds without E1
+  report a newer project rather than rejecting escaped file receipts as
+  malformed. E1 took active v17, which had been reserved for
+  [final output](FINAL_OUTPUT_CONTRACTS.md#d1-format-version-allocation); final
+  output moves to Project v18, and the staged shared format was renumbered to
+  v18, to move to v19 when final output lands. RunTrace and ExperimentPlan are
+  unchanged. A v16 project opens as v17 unchanged; a v16 document already
+  holding a file receipt is rejected rather than reinterpreted.
 - **Recommended, awaiting confirmation: warn on re-import.** A file's identity
   is its bare filename, without path or repository, so blocking would stop
   distinct files that share a name, such as two workflows' `system.md`. The
