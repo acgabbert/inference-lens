@@ -7,6 +7,7 @@ import type {
   ExternalImportReceipt,
   ProjectTemplateDiagnostic,
   ChatPromptTemplate,
+  ChatPromptTemplateRevision,
   PromptTemplate,
   PromptTemplateMessages,
   PromptTemplateRecommendedTarget,
@@ -43,6 +44,9 @@ import { ModalDialog } from "../modal-dialog.client";
 import { shouldSuggestN8nTemplatePaste } from "./n8n-template-paste";
 import { n8nPasteSuggestionsEnabled, setN8nPasteSuggestionsEnabled } from "./n8n-template-paste-preference.client";
 import { FilePromptCopy } from "./file-prompt-copy.client";
+import { FilePromptUpdateDialog } from "./file-prompt-update-dialog.client";
+import { filePromptReceipts, type FilePromptUpdatePlan } from "../../packages/core/src/file-prompt-update";
+import type { ExternalPromptCandidate } from "../../packages/core/src/external-prompt-import";
 
 import { RecommendedModelEditor, type PromptModelCatalog } from "./recommended-model-editor.client";
 
@@ -122,6 +126,10 @@ export interface ChatPromptTemplateEditorProps {
   ): void;
   focusRequested?: boolean;
   onFocusHandled?(): void;
+  /** Previews a pull from a file into a file-tracked prompt against the latest project. */
+  onPlanFileUpdate?(templateId: PromptTemplateId, candidate: ExternalPromptCandidate): FilePromptUpdatePlan;
+  /** Applies a reviewed pull and returns the revision it made current. */
+  onUpdateFromFile?(templateId: PromptTemplateId, candidate: ExternalPromptCandidate): Promise<ChatPromptTemplateRevision>;
 }
 
 function newPrompt(): PromptTemplateMessages {
@@ -160,6 +168,8 @@ export function ChatPromptTemplateEditor({
   onSelectionChange,
   focusRequested = false,
   onFocusHandled,
+  onPlanFileUpdate,
+  onUpdateFromFile,
 }: ChatPromptTemplateEditorProps) {
   // The shell mounts an editor per prompt; the guards below predate that.
   const selected: ChatPromptTemplate | undefined = template;
@@ -219,6 +229,7 @@ export function ChatPromptTemplateEditor({
   const [n8nPasteTarget, setN8nPasteTarget] = useState<undefined | {
     messageIndex: number; start: number; end: number; source: string; pastedSource?: string; revisionId?: PromptTemplateRevisionId; textarea: HTMLTextAreaElement; automatic: boolean;
   }>();
+  const [fileUpdateOpen, setFileUpdateOpen] = useState(false);
   const [evaluateRequest, setEvaluateRequest] = useState<undefined | { templateId: PromptTemplateId; revisionId: PromptTemplateRevisionId }>();
   // Open by default when browsing a historical revision (that's why the user
   // navigated here); collapsed while the current draft is being edited. A
@@ -246,6 +257,10 @@ export function ChatPromptTemplateEditor({
     : [];
   const archived = Boolean(selected?.archivedAt);
   const sessionOwned = Boolean(selected && sessionTemplateIds.has(selected.id));
+  const fileReceipts = selected ? filePromptReceipts({ externalImports }, selected.id) : [];
+  const canUpdateFromFile = Boolean(
+    onPlanFileUpdate && onUpdateFromFile && !archived && !sessionOwned && persistenceStatus !== "secondary",
+  );
   const readOnly = Boolean(
     selected &&
       (archived || (viewedRevision?.id !== selected.currentRevisionId && !candidateSourceRevisionId)),
@@ -646,9 +661,17 @@ export function ChatPromptTemplateEditor({
             {/* One scroll region for the editor and its diff, so an open diff
                 in focus mode scrolls with the content instead of squeezing it. */}
             <div className="template-editor-scroll">
-            {externalImports.some((receipt) => receipt.source.adapter === "file" && receipt.projection.kind === "prompt-template" && receipt.projection.templateId === selected.id) && <FilePromptCopy
+            {candidateSourceRevisionId && candidateSourceRevisionId !== selected.currentRevisionId && !sessionOwned && <p className="template-draft-source-notice" role="status">
+              This draft started from {promptRevisionLabel(selected, candidateSourceRevisionId)}; the current revision is {promptRevisionLabel(selected, selected.currentRevisionId)}.{" "}
+              <button className="text-button" type="button" onClick={() => {
+                setComparedRevisionId(selected.currentRevisionId);
+                setDiffOpen(true);
+              }}>Compare with current</button>
+            </p>}
+            {fileReceipts.length > 0 && <FilePromptCopy
               messages={messages}
-              receipts={externalImports.filter((receipt) => receipt.source.adapter === "file" && receipt.projection.kind === "prompt-template" && receipt.projection.templateId === selected.id)}
+              receipts={fileReceipts}
+              {...(canUpdateFromFile ? { onUpdate: () => setFileUpdateOpen(true) } : {})}
             />}
             <div className="template-editor-body">
               <TemplateMessagesEditor
@@ -879,6 +902,25 @@ export function ChatPromptTemplateEditor({
         onClose={() => setN8nPasteTarget(undefined)}
         onInsert={insertAtN8nPasteTarget}
         onPasteUnchanged={() => insertAtN8nPasteTarget(n8nPasteTarget.pastedSource ?? n8nPasteTarget.source.slice(n8nPasteTarget.start, n8nPasteTarget.end))}
+      />}
+      {fileUpdateOpen && selected && fileReceipts.length > 0 && onPlanFileUpdate && onUpdateFromFile && <FilePromptUpdateDialog
+        template={selected}
+        lastReceipt={fileReceipts.at(-1)!}
+        plan={(candidate) => onPlanFileUpdate(selected.id, candidate)}
+        onClose={() => setFileUpdateOpen(false)}
+        onApply={async (candidate) => {
+          const revision = await onUpdateFromFile(selected.id, candidate);
+          // An open draft keeps its source and edits; the notice above says
+          // the current revision moved. Otherwise follow the pull.
+          if (candidateSourceRevisionId || !viewedRevision) return;
+          setComparedRevisionId(viewedRevision.id);
+          setViewedRevisionId(revision.id);
+          setMessages(structuredClone(revision.messages));
+          setDefaults({ ...revision.variableDefaults });
+          setRevisionName("");
+          setDiffOpen(true);
+          onSelectionChange?.(selected.id, revision.id);
+        }}
       />}
       {evaluateRequest && <ModalDialog className="confirmation-dialog" label="Evaluate in a suite" onClose={() => { onDismissEvaluateRevisionError?.(); setEvaluateRequest(undefined); }}>
         <h2>Evaluate in a suite</h2>

@@ -6,7 +6,12 @@ import { copyFilePromptAsN8nText } from "../../packages/core/src/file-prompt-imp
 import { ModalDialog } from "../modal-dialog.client";
 import { WorkbenchPanel } from "../workbench-panel.client";
 
-export function FilePromptCopy({ messages, receipts }: { messages: PromptTemplateMessages; receipts: ExternalImportReceipt[] }) {
+export function FilePromptCopy({ messages, receipts, onUpdate }: {
+  messages: PromptTemplateMessages;
+  receipts: ExternalImportReceipt[];
+  /** Opens Update from file; omitted where the prompt cannot be updated. */
+  onUpdate?(): void;
+}) {
   const [open, setOpen] = useState(false);
   const [copyStatus, setCopyStatus] = useState("");
   const result = copyFilePromptAsN8nText(messages, receipts);
@@ -14,6 +19,7 @@ export function FilePromptCopy({ messages, receipts }: { messages: PromptTemplat
     <div className="file-prompt-actions">
       <span>Imported from {receipts.at(-1)?.source.resource.name}</span>
       <button type="button" className="button secondary" onClick={() => { setCopyStatus(""); setOpen(true); }}>Copy as n8n text…</button>
+      {onUpdate && <button type="button" className="button secondary" onClick={onUpdate}>Update from file…</button>}
     </div>
     {open && <ModalDialog backdropClassName="file-prompt-backdrop" className="file-prompt-dialog" labelledBy="file-copy-title" onClose={() => setOpen(false)}>
       <WorkbenchPanel header={<h2 id="file-copy-title">Copy as n8n text</h2>}>

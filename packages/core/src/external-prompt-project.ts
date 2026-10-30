@@ -11,6 +11,7 @@ import {
   parseProjectFile,
 } from "./project.ts";
 import type {
+  ChatPromptTemplateRevision,
   ExternalImportReceipt,
   ProjectFile,
   ProjectConversationItem,
@@ -186,8 +187,16 @@ function bindingKey(binding: ExpressionBinding): string {
   return n8nExpressionIdentity(binding.expression).key;
 }
 
+export interface ExternalPromptNameHistory {
+  /** Names earlier projections gave each expression identity; reused as-is. */
+  priorNames: ReadonlyMap<string, string>;
+  /** Names a new expression must not take, so none is ever recycled. */
+  reserved: ReadonlySet<string>;
+}
+
 export function projectExternalPromptTemplate(
   candidateValue: ExternalPromptCandidate,
+  history?: ExternalPromptNameHistory,
 ): ExternalPromptTemplateProjection {
   const candidate = parseExternalPromptCandidate(candidateValue);
   if (candidate.authored.some(({ role }) => !role)) {
@@ -197,11 +206,12 @@ export function projectExternalPromptTemplate(
   }
 
   const usedNames = new Set<string>();
+  const unavailable = new Set(history?.reserved);
   const variableByExpression = new Map<string, string>();
   const fallbackIndex = { value: 0 };
   const variables = candidate.bindings.map((binding, bindingIndex) => {
     const key = bindingKey(binding);
-    let variableName = variableByExpression.get(key);
+    let variableName = variableByExpression.get(key) ?? history?.priorNames.get(key);
     if (!variableName) {
       const suggestion = suggestN8nExpressionName(
         binding.expression,
@@ -209,11 +219,13 @@ export function projectExternalPromptTemplate(
       );
       variableName = allocateN8nVariableName(
         suggestion.name,
-        usedNames,
+        unavailable,
         fallbackIndex,
       );
-      variableByExpression.set(key, variableName);
     }
+    variableByExpression.set(key, variableName);
+    usedNames.add(variableName);
+    unavailable.add(variableName);
     return {
       bindingIndex,
       authoredPath: binding.authoredPath,
@@ -407,6 +419,37 @@ export async function importExternalPromptCandidate(
   };
 }
 
+function templateImportReceipt(
+  candidate: ExternalPromptCandidate,
+  projection: ExternalPromptTemplateProjection,
+  ids: {
+    externalImportId: ExternalImportId;
+    templateId: PromptTemplateId;
+    templateRevisionId: PromptTemplateRevisionId;
+    importedAt: string;
+    importerVersion: number;
+  },
+): ExternalImportReceipt {
+  return {
+    id: ids.externalImportId,
+    source: structuredClone(candidate.source),
+    invocation: structuredClone(candidate.invocation),
+    authored: structuredClone(candidate.authored),
+    bindings: structuredClone(candidate.bindings),
+    importedAt: ids.importedAt,
+    importerVersion: ids.importerVersion,
+    sourceDigest: candidate.sourceDigest,
+    fidelity: candidate.fidelity,
+    warnings: structuredClone(candidate.warnings),
+    projection: {
+      kind: "prompt-template",
+      templateId: ids.templateId,
+      templateRevisionId: ids.templateRevisionId,
+      variables: structuredClone(projection.variables),
+    },
+  };
+}
+
 export interface ExternalPromptLibraryAddition {
   template: ProjectFile["promptTemplates"][number];
   receipt: ExternalImportReceipt;
@@ -447,24 +490,9 @@ export async function externalPromptLibraryAddition(
     "template-revision",
     `import-${suffix}-1`,
   );
-  const receipt: ExternalImportReceipt = {
-    id: externalImportId,
-    source: structuredClone(candidate.source),
-    invocation: structuredClone(candidate.invocation),
-    authored: structuredClone(candidate.authored),
-    bindings: structuredClone(candidate.bindings),
-    importedAt,
-    importerVersion,
-    sourceDigest: candidate.sourceDigest,
-    fidelity: candidate.fidelity,
-    warnings: structuredClone(candidate.warnings),
-    projection: {
-      kind: "prompt-template",
-      templateId,
-      templateRevisionId,
-      variables: structuredClone(projection.variables),
-    },
-  };
+  const receipt = templateImportReceipt(candidate, projection, {
+    externalImportId, templateId, templateRevisionId, importedAt, importerVersion,
+  });
   const template: ProjectFile["promptTemplates"][number] = {
     id: templateId,
     kind: "chat",
@@ -557,5 +585,51 @@ export async function importExternalPromptTemplateCandidate(
     templateRevisionId: template.currentRevisionId,
     templateUseId,
     messageIds,
+  };
+}
+
+/**
+ * Builds the next revision of an existing template from a candidate and the
+ * projection the caller computed with that template's name history, plus the
+ * receipt anchoring it. The caller decides where it goes and what is current.
+ */
+export async function externalPromptRevisionAddition(
+  project: ProjectFile,
+  templateId: PromptTemplateId,
+  candidateValue: ExternalPromptCandidate,
+  projection: ExternalPromptTemplateProjection,
+  {
+    importedAt = new Date().toISOString(),
+    importerVersion = EXTERNAL_PROMPT_IMPORTER_VERSION,
+    variableDefaults = {},
+  }: ImportExternalPromptOptions & { variableDefaults?: Record<string, string> } = {},
+): Promise<{ revision: ChatPromptTemplateRevision; receipt: ExternalImportReceipt }> {
+  const candidate = parseExternalPromptCandidate(candidateValue);
+  if (candidate.sourceDigest !== await computeExternalPromptSourceDigest(candidate)) {
+    throw new Error(
+      "External prompt candidate digest does not match its source evidence.",
+    );
+  }
+  const suffix = templateCollisionSafeSuffix(
+    project,
+    candidate.sourceDigest,
+    projection.messages.length,
+  );
+  const externalImportId = createEntityId("external-import", suffix);
+  const templateRevisionId = createEntityId(
+    "template-revision",
+    `import-${suffix}-1`,
+  );
+  return {
+    revision: {
+      id: templateRevisionId,
+      createdAt: importedAt,
+      messages: structuredClone(projection.messages),
+      variableDefaults: { ...variableDefaults },
+      externalImportId,
+    },
+    receipt: templateImportReceipt(candidate, projection, {
+      externalImportId, templateId, templateRevisionId, importedAt, importerVersion,
+    }),
   };
 }
