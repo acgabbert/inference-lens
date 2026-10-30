@@ -255,8 +255,53 @@ completion of a draft-free source and of the other legacy source versions.
 Preparation of those inputs is covered by `shared-project-migration.test.ts`
 (legacy versions, no drafts) and draft-free staging by `migration-journal.test.ts`.
 
-**Remaining, in order.** The browser adapter (moving workspace `save` onto the
-per-project coordination scope and the shared-handle validity flag), then the
-native Rust command (workspace mutex, safe path bindings, symlink refusal,
-registration-state invalidation), then the real-Git staging check. Each needs the
-evidence listed above before it lands. No application caller is approved.
+**Browser adapter (implemented October 30).** `browserMigrationCompletionStorage`
+([workbench-directory.client.ts](../app/workbench-directory.client.ts)) is
+constructed only inside the browser workspace storage factory, as
+`WorkspaceStorage.migrationCompletion`. Workspace `save` already ran in the
+per-project scope (`coordinateProjectWrites`, from tab coordination); it now
+also rejects with `ProjectHandleInvalidatedError` once completion attempts the
+manifest write or recognizes the shared snapshot already present. The handle
+never adopts v19. These details were settled during implementation:
+
+- The host refuses a plan that is not bound to the staged operation before
+  queuing: another project, a source or shared snapshot other than the staged
+  one, a candidate outside `candidates/`, a destination other than the
+  candidate's own, bytes other than the staged candidate, or a destination
+  that is not absent. It throws, so core reports `blocked`.
+- Inventory checks compare the whole snapshot by path, before the first write
+  and before each activation (expected snapshot, shared manifest and earlier
+  activations), so staged integrity, foreign identities, competitors and later
+  edits all stop the batch at `before-write`. Protection is read, never
+  created. A manifest that changes between the snapshot and its replacement
+  returns `stale-plan`.
+- A failed browser activation write can leave an empty file at the
+  destination, because `getFileHandle({ create: true })` creates it first.
+  Reinspection reports it `unavailable`; its staged candidate is preserved.
+- The native handle's `migrationCompletion.execute` throws until the native
+  command lands.
+- Core fix: a store that cannot be read after the host executed now yields
+  `uncertain` with every candidate `unavailable`, rather than `blocked`,
+  which hid that the manifest may have been written.
+- Review fix: migration snapshots read active records as raw bytes, preserving
+  BOMs and invalid UTF-8 for exact comparisons and strict validation. Ordinary
+  workbench reads retain their text contract. Regression tests cover a
+  BOM-prefixed draft remaining pending and invalid UTF-8 selections remaining
+  unavailable; both failed on the incorrect dispositions before the fix.
+- The approval-condition guard now allows the two host adapter files to import
+  the module's types. It still rejects any call to completion or inspection
+  and any read of `migrationCompletion` outside its declaration and
+  construction.
+
+[`migration-completion-directory.test.ts`](../tests/migration-completion-directory.test.ts)
+covers exact bytes and write order, repeats, preserved selections and competing
+drafts, handle invalidation on confirmed, uncertain and already-shared attempts
+(not on `stale-plan`), protection, every manifest and activation write,
+read-back and read failure, rechecks between activations, plan binding, one
+Web Lock shared with recovery writes and another handle's saves, and a real Git
+repository staging only `project.json`.
+
+**Remaining, in order.** The native Rust command (workspace mutex, safe path
+bindings, symlink refusal, registration-state invalidation), then the real-Git
+staging check for native output. Each needs the evidence listed above before it
+lands. No application caller is approved.

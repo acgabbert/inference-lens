@@ -14,8 +14,8 @@ opt-in protected staging and read-only restart classification without replacing
 the manifest or activating personal candidates. The next
 [completion design](SHARED_ASSETS_MIGRATION_COMPLETION_DESIGN.md), approved
 October 28, defines an opt-in shared commit, candidate activation and
-stale-handle invalidation; the core module is implemented and the browser and
-native adapters are in progress. Slice 2a's remaining
+stale-handle invalidation; the core module and browser adapter are implemented
+and the native adapter is next. Slice 2a's remaining
 persistence, recovery and compatibility proposals still need review before
 integration. Level 3 remains proposed. The product direction is agreed:
 Inference Lens is a personal workbench for potentially shared assets. Approved

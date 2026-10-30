@@ -293,15 +293,22 @@ test("no application or CLI code path references the completion capability", asy
   const { readdirSync, statSync } = await import("node:fs");
   const { join, relative } = await import("node:path");
   const root = new URL("..", import.meta.url).pathname;
-  const allowed = new Set(["packages/core/src/migration-completion.ts"]);
+  const core = "packages/core/src/migration-completion.ts";
+  // Host adapters construct the capability inside the workspace storage factory; nothing else may import it.
+  const adapters = new Set(["app/workbench-directory.client.ts", "app/project-workspace.client.ts"]);
   const offenders: string[] = [];
   const walk = (dir: string) => {
     for (const name of readdirSync(dir)) {
       if (["node_modules", ".next", "dist", "target", ".git", "tests", "docs"].includes(name)) continue;
       const path = join(dir, name);
       if (statSync(path).isDirectory()) { walk(path); continue; }
-      if (!/\.(ts|tsx|mjs|js)$/.test(name) || allowed.has(relative(root, path))) continue;
-      if (/migration-completion|completeSharedProjectMigration/.test(readFileSync(path, "utf8"))) offenders.push(relative(root, path));
+      const file = relative(root, path);
+      if (!/\.(ts|tsx|mjs|js)$/.test(name) || file === core) continue;
+      const source = readFileSync(path, "utf8");
+      if (/completeSharedProjectMigration|inspectSharedProjectMigrationCompletion/.test(source)) offenders.push(`${file}: calls completion`);
+      if (!adapters.has(file) && /migration-completion/.test(source)) offenders.push(`${file}: imports completion`);
+      // Declaring or constructing the workspace field is allowed; any read of it is a caller.
+      if (source.split("\n").some(line => /migrationCompletion/.test(line) && !/^\s*migrationCompletion\??:/.test(line))) offenders.push(`${file}: reads the workspace capability`);
     }
   };
   walk(root);
@@ -349,4 +356,22 @@ test("activations reported after a failed shared write stop the batch as a host 
   assert.equal(outcome.personal.status, "stopped");
   assert.equal(outcome.personal.stopped?.destination, "selections.json");
   assert.match(outcome.personal.stopped?.message ?? "", /shared write/);
+});
+
+test("an unreadable store after the host wrote the manifest is uncertain, not blocked", async () => {
+  const setup = await staged();
+  const execute = setup.host.execute.bind(setup.host);
+  setup.host.execute = async plan => {
+    const result = await execute(plan);
+    setup.host.read = async () => { throw new Error("store unreadable"); };
+    return result;
+  };
+  const outcome = assertCompleted(await complete(setup.host, setup.prepared));
+  assert.equal(outcome.shared, "uncertain");
+  assert.equal(outcome.personal.status, "recovery-pending");
+  for (const item of outcome.personal.candidates) {
+    assert.equal(item.disposition, "unavailable", item.candidate);
+    assert.match(item.reason ?? "", /store unreadable/);
+  }
+  assert.deepEqual(outcome.personal.activated, []);
 });
