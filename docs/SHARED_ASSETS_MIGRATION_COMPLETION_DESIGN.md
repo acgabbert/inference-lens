@@ -283,6 +283,11 @@ never adopts v19. These details were settled during implementation:
 - Core fix: a store that cannot be read after the host executed now yields
   `uncertain` with every candidate `unavailable`, rather than `blocked`,
   which hid that the manifest may have been written.
+- Review fix: migration snapshots read active records as raw bytes, preserving
+  BOMs and invalid UTF-8 for exact comparisons and strict validation. Ordinary
+  workbench reads retain their text contract. Regression tests cover a
+  BOM-prefixed draft remaining pending and invalid UTF-8 selections remaining
+  unavailable; both failed on the incorrect dispositions before the fix.
 - The approval-condition guard now allows the two host adapter files to import
   the module's types. It still rejects any call to completion or inspection
   and any read of `migrationCompletion` outside its declaration and

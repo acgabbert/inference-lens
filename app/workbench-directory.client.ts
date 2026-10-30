@@ -68,15 +68,27 @@ async function recordLocation(workbench: FileSystemDirectoryHandleLike, path: st
 }
 
 async function list(directory: FileSystemDirectoryHandleLike): Promise<WorkbenchFile[]> {
+  const files: WorkbenchFile[] = await listActiveRecords(directory, async file => ({ contents: await file.text() }));
+  for (const file of await listMigrationFiles(directory)) {
+    files.push("bytes" in file ? { path: file.path, contents: new TextDecoder().decode(file.bytes) } : file);
+  }
+  return files.sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
+}
+
+/** Share inventory traversal while leaving text versus raw-byte reads to the caller. */
+async function listActiveRecords<T extends { contents: string } | { bytes: Uint8Array }>(
+  directory: FileSystemDirectoryHandleLike,
+  read: (file: File) => Promise<T>,
+): Promise<({ path: string } & (T | { error: string }))[]> {
   let workbench: FileSystemDirectoryHandleLike;
   try { workbench = await directory.getDirectoryHandle(".workbench"); }
   catch (error) { if (isMissing(error)) return []; throw error; }
-  const files: WorkbenchFile[] = [];
+  const files: ({ path: string } & (T | { error: string }))[] = [];
   async function collect(parent: FileSystemDirectoryHandleLike, prefix: string): Promise<void> {
     for await (const entry of parent.values()) {
       if (entry.kind !== "file" || !entry.name.endsWith(".json")) continue;
       const path = `${prefix}${entry.name}`;
-      try { files.push({ path, contents: await (await entry.getFile()).text() }); }
+      try { files.push({ path, ...await read(await entry.getFile()) }); }
       catch (error) { files.push({ path, error: error instanceof Error ? error.message : String(error) }); }
     }
   }
@@ -85,10 +97,7 @@ async function list(directory: FileSystemDirectoryHandleLike): Promise<Workbench
   try { drafts = await workbench.getDirectoryHandle("drafts"); }
   catch (error) { if (!isMissing(error)) throw error; }
   if (drafts) await collect(drafts, "drafts/");
-  for (const file of await listMigrationFiles(directory)) {
-    files.push("bytes" in file ? { path: file.path, contents: new TextDecoder().decode(file.bytes) } : file);
-  }
-  return files.sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
+  return files;
 }
 
 // Web Locks coordinate tabs/windows. The fallback covers callers in this realm;
@@ -282,10 +291,9 @@ async function isWorkbenchProtected(directory: FileSystemDirectoryHandleLike): P
 }
 
 async function readMigrationSnapshot(directory: FileSystemDirectoryHandleLike): Promise<MigrationSnapshot> {
-  const active = await list(directory);
-  const files: MigrationFile[] = active.filter(file => !file.path.startsWith("migrations/")).map(file =>
-    "contents" in file ? { path: file.path, bytes: new TextEncoder().encode(file.contents) } : file);
+  const files: MigrationFile[] = await listActiveRecords(directory, async file => ({ bytes: new Uint8Array(await file.arrayBuffer()) }));
   files.push(...await listMigrationFiles(directory));
+  files.sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
   return { manifest: await readBytes(directory, "project.json"), files };
 }
 

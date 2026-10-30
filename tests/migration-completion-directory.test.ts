@@ -86,6 +86,40 @@ test("repeated browser completion writes nothing and stays complete", async () =
   assert.equal(again.kind === "completed" && again.personal.status, "complete");
 });
 
+test("a BOM-prefixed active draft remains pending instead of matching the staged bytes", async () => {
+  const setup = await staged();
+  const draft = setup.activations[1];
+  const bytes = new Uint8Array([0xef, 0xbb, 0xbf, ...draft.bytes]);
+  setup.directory.seed(`.workbench/${draft.destination}`, bytes);
+  const outcome = await complete(setup);
+  assert.equal(outcome.kind, "completed");
+  if (outcome.kind === "completed") {
+    assert.equal(outcome.personal.candidates.find(item => item.destination === draft.destination)?.disposition, "pending-draft");
+    assert.equal(outcome.personal.status, "recovery-pending");
+  }
+  assert.deepEqual(setup.directory.files.get(`.workbench/${draft.destination}`), bytes);
+  assertStagingUntouched(setup);
+});
+
+test("invalid UTF-8 in active selections remains unavailable instead of becoming valid replacement text", async () => {
+  const setup = await staged();
+  const selections = setup.activations[0];
+  // Invalid UTF-8 inside a JSON string becomes valid JSON if decoded non-fatally.
+  const record = JSON.parse(text(selections.bytes)!);
+  record.chat = { execution: { options: { stop: ["INVALID_UTF8"] } } };
+  const serialized = JSON.stringify(record);
+  const bytes = new TextEncoder().encode(serialized);
+  bytes[new TextEncoder().encode(serialized.slice(0, serialized.indexOf("INVALID_UTF8"))).length] = 0xff;
+  setup.directory.seed(`.workbench/${selections.destination}`, bytes);
+  const outcome = await complete(setup);
+  assert.equal(outcome.kind, "completed");
+  if (outcome.kind === "completed") {
+    assert.equal(outcome.personal.candidates.find(item => item.destination === selections.destination)?.disposition, "unavailable");
+    assert.equal(outcome.personal.status, "recovery-pending");
+  }
+  assert.deepEqual(setup.directory.files.get(`.workbench/${selections.destination}`), bytes);
+});
+
 test("existing selections and a competing draft are preserved while other candidates activate", async () => {
   const setup = await staged();
   const [selections, draft, ...rest] = setup.activations;
