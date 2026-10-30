@@ -560,7 +560,8 @@ The order is E1 → E2 → E3, with Level 3 separate; E2's mapping continuity is
 designed. E1 then took Project v17 and gained a re-import warning
 ([follow-ups](#e1-review-follow-ups-october-30-2026)). E2's
 [contracts](#e2-implementation-contracts-approved-october-30-2026) are
-approved; E3 and later slices need separate approval.
+approved. E3's [contracts](#e3-implementation-contracts-approved-october-30-2026)
+were approved the same day; E4 and later slices need separate approval.
 
 Some teams keep n8n workflows in Git with each agent prompt extracted to its own
 `.md` or `.txt` file. A sync step using the n8n API detects drift between those
@@ -978,6 +979,85 @@ showed them to be incomplete (noted inline).
   creates a revision without a receipt, so comparing a draft with a pulled
   revision reports the import provenance as removed.
 
+### E3 implementation contracts (approved October 30, 2026)
+
+The user approved these six recommendations together. They link a file-tracked
+prompt to a file in an operator-declared folder, so drift is visible and Pull
+needs no file picker.
+
+1. **Format version.** Whichever of E3 and final output lands first takes
+   active Project v18, and the other renumbers, as E1 did with v17. If E3 lands
+   first, final output moves to Project v19 and the staged shared format
+   renumbers to v19, deriving from active v18. RunTrace and ExperimentPlan are
+   unchanged. A v17 project opens as v18 with no source roots; a v17 document
+   that already declares source roots or a link is rejected rather than
+   reinterpreted.
+2. **What the format stores.**
+   - `ProjectFile.sourceRoots: SourceRootRequirement[]`, each
+     `{ id: "sourceroot_…", name }`, like `ConnectionRequirement`. `name` is
+     the portable name a deployment maps: lowercase letters, digits and `-`,
+     starting with a letter or digit, at most 63 characters, unique within the
+     project.
+   - `ChatPromptTemplate.fileSource?: { sourceRootId, path }`. `path` is
+     relative to the root: `/`-separated, with no empty, `.`, `..` or hidden
+     (leading `.`) segment, no backslash or control character, at most 1,024
+     characters, ending in `.md` or `.txt`. Validation requires a known root,
+     a chat template with at least one file receipt, and at most one template
+     per root and path, archived templates included.
+   - Receipts keep their shape. A pull through a link records the relative
+     path as `source.resource.id` and `name`; `invocation.name` stays the
+     basename without its extension. E2's filename warning compares basenames,
+     so the first linked pull after a bare-filename import does not warn.
+   - Linking and unlinking change only `fileSource` and `sourceRoots`, never a
+     revision. Unlinking drops a root no other template uses. Level 3 moves
+     `fileSource` into the prompt's asset file unchanged and makes source roots
+     an asset kind, as row L3 of the sequence says.
+3. **How the operator provides folders.** `INFERENCE_LENS_SOURCE_ROOTS` names
+   a JSON catalog read only by `services/api`, per request like the command
+   tool catalog:
+   `{ "schemaVersion": 1, "roots": [{ "name", "path", "label"? }] }`. A
+   relative `path` resolves against the catalog's directory. Unset means no
+   folders; an unreadable or invalid catalog is reported with the variable's
+   name. The API serves the root names and labels, never host paths:
+   `GET /api/source-roots` (the catalog), `GET /api/source-roots/files?root=`
+   (a bounded, sorted list of `.md` and `.txt` paths, skipping hidden entries)
+   and `POST /api/source-roots/read` (a batch of `{ root, path }`, each
+   answered with its text or a named reason). Every route checks the same
+   origin. Reads resolve the real path of the root and of the file and refuse
+   anything outside the root, so a symlink cannot lead out; they accept only
+   regular `.md` and `.txt` files up to 1 MiB of UTF-8. A project's root
+   maps to the operator root with the same name, unless the user picks
+   another for the session. The pick is not saved, like the connection
+   profile mapping.
+4. **One file per template.** Enforced by validation (contract 2). A
+   file-tracked prompt is linked from its editor by choosing an operator
+   folder and one of its files; the preview says whether the file matches the
+   last pull. Linking adds the project root by that name when it is missing.
+   Importing new prompts straight from a folder is a later addition.
+5. **Drift and Pull.** Linked files are read when the Prompts mode opens,
+   after a link or pull, and on Refresh, with no file watching. The library
+   and the editor show "File changed since last pull" (the file's text, with
+   CRLF and lone CR as LF, differs from the last file receipt's authored text)
+   and "Local revisions not from the file" (the current revision is not the
+   last pulled one) separately. Pull opens the E2 dialog with the folder's
+   file already read and no picker; preview and apply are E2's, unchanged.
+6. **When it is unavailable.** Each case is named, as command tools do: no
+   local service (the Tauri desktop app and static hosting), no folders
+   configured (naming the variable), a catalog problem, a project root this
+   server does not declare, and a missing or unreadable file with its reason.
+   A linked prompt keeps working from its last pulled text in every case.
+
+**Ownership.** Core `packages/core/src/source-roots.ts` owns names, path rules,
+the catalog codec, drift derivation and immutable link and unlink;
+`project.ts` owns the v18 schema and migration. `services/api` owns the
+catalog source and confined reads and listings, served by routes under
+`app/api/source-roots/`, with wire types in `packages/contracts`. In the app,
+`useLinkedPromptSources` owns the catalog, the session root mapping, reads and
+drift, composed by the Prompts mode; the link dialog owns choosing a folder and
+file; the update dialog takes an already-read file in place of its picker.
+`deploy/compose.yaml` passes the variable through, and `docs/DOCKER.md`
+describes the mount.
+
 ## Implementation ownership and sequence
 
 Before each behavior-changing slice, approve its material contracts from the
@@ -1063,7 +1143,8 @@ review covers slice 2a; Level 3 decisions remain deferred.
 5. Specify the bounded [external prompt source review details](#accepted-review-recommendations-october-30-2026)
    before their affected slices. E1 → E2 → E3 is approved, with E2's mapping
    continuity designed alongside E1. E1 and E2 are approved and delivered
-   under the bounded contracts above; later slices need separate approval.
+   under the bounded contracts above, and E3's contracts are approved; E4 and
+   later slices need separate approval.
 
 The target is fewer incidental conflicts, explicit intentional contributions,
 and selective sharing with understandable dependencies. Same-asset edits still
