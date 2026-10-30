@@ -15,7 +15,7 @@ const decision: DecisionInput = {
 };
 function base() {
   return createProjectFile({ name: "Saved decisions", idSuffix: "saved", createdAt, request: {
-    provider: "openai-compatible", endpoint: "http://127.0.0.1:44028/v1", model: "chat",
+    provider: "openai-compatible", endpoint: "http://127.0.0.1:24028/v1", model: "chat",
     messages: [{ role: "user", content: "Hi" }], capabilities: resolveProviderCapabilities("openai-compatible"),
   } });
 }

@@ -58,7 +58,7 @@ function project() {
     createdAt: "2026-10-24T12:00:00.000Z",
     request: {
       provider: "openai-compatible",
-      endpoint: "http://127.0.0.1:44028/v1",
+      endpoint: "http://127.0.0.1:24028/v1",
       model: "chat-model",
       messages: [{ role: "user", content: "Hello" }],
       capabilities: resolveProviderCapabilities("openai-compatible"),

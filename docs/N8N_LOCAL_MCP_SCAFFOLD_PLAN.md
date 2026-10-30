@@ -186,10 +186,10 @@ data; do not promise that automatic credential omission makes them sanitized.
 
 ### Download, start, connect
 
-Choose a server label and an explicit port. Do not default to `44020`: the
+Choose a server label and an explicit port. Do not default to `24020`: the
 local example uses it and so does the `batch-fixture` entry in
 `tests/fixtures/mcp-servers/catalog.json`, and the repository's fixtures occupy
-`44014`–`44030`. Default outside that range (for example `44100`) and show the
+`24014`–`24030`. Default outside that range (for example `24100`) and show the
 port prominently, since a second generated mock needs a different one. An
 occupied port produces an actionable startup error; no silent switch to a new
 port that disagrees with the catalog.
@@ -561,7 +561,7 @@ four ordinary shards). The
 integration harness may prepare a temporary operator catalog and launch child
 processes; these are test responsibilities, not product capabilities. The
 generated server's port must not collide with the fixture catalog's
-`44014`–`44030` range used by the repository's fixtures. Ensure
+`24014`–`24030` range used by the repository's fixtures. Ensure
 fixtures are terminated and temporary ports/files cleaned up on failure.
 
 During implementation run scoped unit/contract tests, lint and both TypeScript
@@ -619,7 +619,7 @@ asserts it.
 
 The branch merged `main` at `e255548`. Unchanged since the original baseline:
 the MCP discovery, execution and catalog services, the Python scripts and their
-pins, the fixture catalog and its `44014`–`44030` ports, and `packages/n8n`.
+pins, the fixture catalog and its `24014`–`24030` ports, and `packages/n8n`.
 Relevant changes and how this plan absorbs them:
 
 | Change on `main` | Effect on this plan |

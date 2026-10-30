@@ -11,7 +11,7 @@ test("N1 captures Python discovery, attachment, execution and provider continuat
   const output = process.env.INFERENCE_LENS_N1_OUTPUT;
   test.skip(!output, "Run with --config playwright.n1.config.ts and the pinned Python environment.");
   const initial = JSON.parse(await readFile(path.join(baseline, "provider-request-initial.json"), "utf8"));
-  const endpoint = "http://127.0.0.1:44022/v1";
+  const endpoint = "http://127.0.0.1:24022/v1";
   const project = createProjectFile({ name: "N1 string input",
     request: { provider: "openai-compatible", endpoint, model: initial.model,
       temperature: 0, messages: initial.messages } });
@@ -48,7 +48,7 @@ test("N1 captures Python discovery, attachment, execution and provider continuat
   expect(executed.isError).toBe(false);
   await writeFile(path.join(output!, "execution.json"), JSON.stringify(executed, null, 2));
   await expect(page.locator(".transcript-list")).toContainText("IL_N0_CAPTURE_COMPLETE");
-  expect(await (await request.get("http://127.0.0.1:44022/status")).json())
+  expect(await (await request.get("http://127.0.0.1:24022/status")).json())
     .toMatchObject({ complete: true, requestCount: 2, problem: null });
   const continuation = JSON.parse(await readFile(path.join(output!, "provider-request-continuation.json"), "utf8"));
   const reference = JSON.parse(await readFile(path.join(baseline, "provider-request-continuation.json"), "utf8"));

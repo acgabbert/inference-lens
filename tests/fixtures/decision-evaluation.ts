@@ -23,7 +23,7 @@ import { OPENAI_COMPATIBLE_CAPABILITIES, resolveProviderCapabilities } from "../
 
 const request = {
   provider: "openai-compatible" as const,
-  endpoint: "http://127.0.0.1:44028/v1",
+  endpoint: "http://127.0.0.1:24028/v1",
   model: "chat-model",
   messages: [{ role: "user" as const, content: "Hello" }],
   capabilities: resolveProviderCapabilities("openai-compatible"),
@@ -92,7 +92,7 @@ export function decisionRuntimeTarget(suffix: string): Omit<ResolvedDecisionTarg
   return {
     profileId: createEntityId("profile", suffix),
     protocol: "systemone",
-    endpoint: `http://127.0.0.1:4403${suffix.length}/v1`,
+    endpoint: `http://127.0.0.1:2403${suffix.length}/v1`,
     capabilities: OPENAI_COMPATIBLE_CAPABILITIES,
   };
 }

@@ -39,5 +39,5 @@ if __name__ == "__main__":
     if versions != {"mcp": "2.1.1", "pydantic": "2.13.5"}:
         raise RuntimeError(f"N1 fixture requires pinned SDK versions; got {versions}")
     (output / "python-versions.json").write_text(json.dumps(versions, indent=2))
-    server.run(transport="streamable-http", host="127.0.0.1", port=44021,
+    server.run(transport="streamable-http", host="127.0.0.1", port=24021,
                streamable_http_path="/mcp", stateless_http=True, json_response=True)

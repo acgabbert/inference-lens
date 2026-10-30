@@ -12,9 +12,9 @@ import base from "./playwright.config";
  * server. Prepare `.venv-mcp` from `scripts/requirements-mcp.txt`; the
  * ordinary config skips this lane's spec and needs no Python.
  */
-export const PYTHON_MCP_PORT = 44024;
+export const PYTHON_MCP_PORT = 24024;
 /** Started and killed by the spec itself, once per test. */
-export const PYTHON_MCP_KILL_PORT = 44025;
+export const PYTHON_MCP_KILL_PORT = 24025;
 
 const python = { transport: "streamable-http", callTimeoutMs: 120_000, authorization: { kind: "none" } };
 const catalog = JSON.parse(readFileSync("tests/fixtures/mcp-servers/catalog.json", "utf8"));

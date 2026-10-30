@@ -15,7 +15,7 @@ import { serializeRunTrace } from "../../packages/core/src/run-trace";
 import { seedProfile, stubPersistentProjectDirectories, waitForHydration } from "./support";
 
 function savedProject(suffix: string) {
-  const request = { provider: "openai-compatible" as const, endpoint: "http://127.0.0.1:44014/v1", model: "saved-history-model", messages: [{ role: "user" as const, content: `Question ${suffix}` }] };
+  const request = { provider: "openai-compatible" as const, endpoint: "http://127.0.0.1:24014/v1", model: "saved-history-model", messages: [{ role: "user" as const, content: `Question ${suffix}` }] };
   const project = createProjectFile({ name: `Project ${suffix}`, request, idSuffix: suffix });
   const input = createResolvedRunInput(request, {
     conversationId: project.conversations[0]!.id,
@@ -74,7 +74,7 @@ function savedDecisionTrace(): DecisionRunTrace {
     target: {
       profileId: "profile_saved-decision" as const,
       protocol: "systemone" as const,
-      endpoint: "http://127.0.0.1:44016/llamacpp/v1",
+      endpoint: "http://127.0.0.1:24016/llamacpp/v1",
       model,
       capabilities: OPENAI_COMPATIBLE_CAPABILITIES,
     },

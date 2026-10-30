@@ -3,7 +3,7 @@ import { Readable } from "node:stream";
 
 import { Server, WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/server";
 
-const port = Number(process.env.INFERENCE_LENS_MCP_FIXTURE_PORT ?? 44018);
+const port = Number(process.env.INFERENCE_LENS_MCP_FIXTURE_PORT ?? 24018);
 let revision = 1;
 let discoveryRequests = 0;
 let calls = 0;

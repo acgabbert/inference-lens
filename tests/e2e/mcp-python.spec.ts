@@ -11,7 +11,7 @@ import { seedProfile, waitForHydration, openMcpServers } from "./support";
  */
 test.skip(!process.env.INFERENCE_LENS_PYTHON_MCP, "Run with --config playwright.python-mcp.config.ts and .venv-mcp.");
 
-const KILL_PORT = 44025;
+const KILL_PORT = 24025;
 
 async function attachFromServer(page: Page, serverId: string, model: string): Promise<void> {
   await seedProfile(page, { model, favoriteModels: [model], capabilityOverrides: { tools: true } });

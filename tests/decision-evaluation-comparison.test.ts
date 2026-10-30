@@ -71,8 +71,8 @@ test("two decision configurations compare by case, with the target as decision d
   assert.equal(comparison.drift.kind, "decision");
   assert.deepEqual(comparison.drift.model, { baseline: "local-decision", candidate: "big-decision" });
   assert.deepEqual(comparison.drift.endpoint, {
-    baseline: "http://127.0.0.1:44035/v1",
-    candidate: "http://127.0.0.1:44036/v1",
+    baseline: "http://127.0.0.1:24035/v1",
+    candidate: "http://127.0.0.1:24036/v1",
   });
   assert.equal(comparison.drift.inputRevision, undefined);
   assert.equal(comparison.drift.protocol, undefined);
