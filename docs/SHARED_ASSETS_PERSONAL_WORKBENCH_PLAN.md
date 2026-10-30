@@ -553,9 +553,10 @@ prompt files tracked from another repository.
 
 ## External prompt sources
 
-**Status:** Proposed October 30, 2026; its decisions were settled the same day
-and are recorded below. The slice order awaits confirmation, and no slice is
-approved for implementation.
+**Status:** Proposed October 30, 2026; its decisions and subsequent review
+recommendations were approved the same day and are recorded below. The approved
+order is E1 → E2 → E3, with Level 3 separate. Design E2's mapping continuity
+alongside E1. No slice is approved for implementation.
 
 Some teams keep n8n workflows in Git with each agent prompt extracted to its own
 `.md` or `.txt` file. A sync step using the n8n API detects drift between those
@@ -583,12 +584,14 @@ repositories, scoped to prompt text.
    template itself. Template revisions stay immutable and pinned by uses,
    suites and traces. A changed file produces a new revision only when the user
    pulls it.
-2. **Runs never read the file.** A tracked template carries the text it last
+2. **Ordinary runs never read the file.** A tracked template carries the text it last
    pulled, so a clone without the source repository, the CLI and historical
    traces all work without it. The link drives drift detection and pulling
    only. For Level 3, the source file is therefore not part of an asset's
    dependency closure; a missing source means the template cannot be
-   refreshed, not that it is incomplete.
+   refreshed, not that it is incomplete. E4's explicit working-tree override
+   reads and freezes source text during preparation; execution consumes that
+   snapshot and records its provenance rather than rereading a mutable file.
 3. **Provenance through existing receipts.** Each import or pull records an
    `ExternalImportReceipt` (`packages/core/src/project.ts`) with a new `file`
    adapter beside `n8n`: source identity, `sourceDigest`, authored text,
@@ -674,6 +677,53 @@ Recommended and approved October 30, 2026:
    the text contains `{{`, the files are expression mode by construction and
    the override is only a safety valve.
 
+### Accepted review recommendations (October 30, 2026)
+
+The user approved the following recommendations after review against the current
+receipt and projection code. These settle the direction; the bounded details
+identified below must be specified before the affected implementation slice.
+
+1. **Delivery order.** Proceed in the order E1 → E2 → E3, keeping Level 3
+   separate. E1 is the next proposed implementation slice, and E2's mapping
+   continuity must be designed alongside it so the initial import does not
+   constrain later updates incorrectly. E4 remains a follow-up to E3.
+2. **Pulling after local edits.** Show an explicit replacement preview and
+   preserve existing local revisions and open drafts. Existing template uses
+   remain pinned; pulling must not silently move them to the new revision.
+   Before E2, specify the new revision's base, whether and how confirmation
+   makes it current, and how an open draft retains its base and edits when the
+   current revision changes. The two drift indicators alone do not settle
+   these publication and draft contracts.
+3. **Content comparison is distinct from receipt identity.** The existing
+   `sourceDigest` hashes validated source metadata, invocation, authored fields
+   and bindings, not just file contents. Keep that receipt-integrity meaning;
+   do not use a changed digest alone to claim that the file text changed.
+   Define a separate content comparison, including newline and BOM handling,
+   before E2. Filename, role and interpretation changes must be distinguishable
+   from text changes. Decide whether the comparison is derived from retained
+   authored text or needs additional representation without assuming that E1
+   and E2 may extend the current serialized receipt.
+4. **Plain text must remain literal through execution and copying.** The
+   current projection copies literal fields through, while the native template
+   engine interprets `{{…}}`. E1 must define escaping for literal spans so the
+   plain-text override preserves them through template rendering, including
+   existing backslashes. Verify import, rendered provider input and Copy as n8n
+   text with round-trip cases; retaining literal text in the receipt alone is
+   insufficient.
+5. **Variable mappings survive updates.** The current projector allocates
+   names afresh for each candidate. Its update contract must reuse prior
+   mappings and specify reserved names, removed expressions and expressions
+   reintroduced by a later pull. Saved inputs must never silently acquire a
+   different meaning because a name was recycled. Design which receipts supply
+   that history and how conflicts with locally authored variables are handled
+   alongside E1, before implementing E2.
+6. **CI overrides are prepared snapshots.** E4 is an explicit exception to
+   ordinary runs using only saved template content. Read source text during
+   preparation, freeze the projected input, and execute that snapshot. Define
+   the evidence representation for source identity, content and projection
+   provenance before E4 so a result remains explainable after the working tree
+   changes, without writing a shared template revision.
+
 ## Implementation ownership and sequence
 
 Before each behavior-changing slice, approve its material contracts from the
@@ -756,8 +806,9 @@ review covers slice 2a; Level 3 decisions remain deferred.
    operations, plus old-reader/writer and export compatibility. Include how
    bundles created with the Level 1 definitions policy come to share new asset
    files.
-5. Confirm the [external prompt source](#external-prompt-sources) slice order
-   before slice E1. Its contract decisions are recorded.
+5. Specify the bounded [external prompt source review details](#accepted-review-recommendations-october-30-2026)
+   before their affected slices. E1 → E2 → E3 is approved, with E2's mapping
+   continuity designed alongside E1; implementation approval remains separate.
 
 The target is fewer incidental conflicts, explicit intentional contributions,
 and selective sharing with understandable dependencies. Same-asset edits still
