@@ -265,8 +265,10 @@ export function ChatPromptTemplateEditor({
     selected &&
       (archived || (viewedRevision?.id !== selected.currentRevisionId && !candidateSourceRevisionId)),
   );
+  // A draft can always be compared with its own source, even on a prompt
+  // with only one revision.
   const comparedRevision = selected?.revisions.find(
-    ({ id }) => id === comparedRevisionId,
+    ({ id }) => id === (comparedRevisionId ?? candidateSourceRevisionId),
   );
   // A draft comparison follows the edited content, not its immutable source.
   // Drafts have no import receipt of their own.

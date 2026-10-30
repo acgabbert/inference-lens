@@ -968,6 +968,15 @@ showed them to be incomplete (noted inline).
   exercised; folder handles are memory-backed fixtures. Human review should
   check the update dialog's wording, the replacement warning and the draft
   notice against a real tracked prompt.
+- **Review follow-ups.** A drop inside the update dialog also bubbled to the
+  library's import drop and opened a second dialog; the dialog now stops the
+  drop (its regression failed on two open dialogs before the fix). The
+  editor's diff for a draft now compares the draft's edits rather than its
+  source revision, and a draft with nothing chosen compares with its source,
+  so a single-revision prompt's draft can be compared (its regression failed
+  on "Save another revision to compare" before the fix). Saving a draft
+  creates a revision without a receipt, so comparing a draft with a pulled
+  revision reports the import provenance as removed.
 
 ## Implementation ownership and sequence
 

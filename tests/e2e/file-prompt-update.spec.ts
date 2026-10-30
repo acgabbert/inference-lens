@@ -161,3 +161,19 @@ test("dropping an update stays in the update dialog and updates the existing pro
   await expect(page.getByLabel("Prompt message 1 content", { exact: true })).toHaveValue("Changed");
   await expect(page.getByLabel("Revision", { exact: true }).locator("option")).toHaveCount(2);
 });
+
+test("a draft on a single-revision prompt compares its edits with that revision", async ({ page }) => {
+  await seedProfile(page);
+  await page.goto("/");
+  await waitForHydration(page);
+  await importProject(page, createProjectFile({ name: "Draft compare", request: {
+    provider: "openai-compatible", endpoint: BUFFERED_FIXTURE_ENDPOINT, model: "buffered-test-model", messages: [{ role: "user", content: "Existing" }],
+  } }), "Draft compare");
+  await openMode(page, "Prompts");
+  await importAgent(page, "Original");
+  await page.getByLabel("Prompt message 1 content", { exact: true }).fill("Draft edit");
+  const diff = page.getByRole("region", { name: "Revision diff" });
+  await diff.getByRole("button", { name: /^Revision diff/ }).click();
+  await expect(diff).toContainText("vs Revision 1 (current)");
+  await expect(diff).toContainText("Draft edit");
+});
