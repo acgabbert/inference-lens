@@ -563,8 +563,9 @@ designed. E1 then took Project v17 and gained a re-import warning
 [contracts](#e2-implementation-contracts-approved-october-30-2026) are
 approved. E3's [contracts](#e3-implementation-contracts-approved-october-30-2026)
 were approved and implemented the same day, taking Project v18
-([evidence](#e3-delivery-evidence-october-30-2026)); E4 and later slices need
-separate approval.
+([evidence](#e3-delivery-evidence-october-30-2026)). E4's
+[contracts](#e4-implementation-contracts-proposed-october-30-2026) are proposed
+and await approval; later slices need separate approval.
 
 Some teams keep n8n workflows in Git with each agent prompt extracted to its own
 `.md` or `.txt` file. A sync step using the n8n API detects drift between those
@@ -1120,6 +1121,112 @@ describes the mount.
   "unreachable" messages were checked only by reading the code. Human review
   should check the link dialog, the library's drift line and the Docker
   instructions against a real prompt folder.
+
+### E4 implementation contracts (proposed October 30, 2026)
+
+The user chose to record file provenance in RunTrace and asked for
+recommendations on the rest; these are those recommendations, for approval
+together. They let the CLI run a suite against the text in a linked prompt's
+file without saving a revision, and report drift for CI. The principle
+throughout: ordinary runs never read a file, so reading one is an explicit
+opt-in, and a CI run never quietly tests something other than the file.
+
+1. **Format versions.** E4 takes the next RunTrace and ExperimentPlan
+   versions, under the rule E1 and E3 used for Project: if final output lands
+   first with RunTrace v10 and ExperimentPlan v7, E4 takes v11 and v8;
+   otherwise E4 takes v10 and v7 and final output renumbers. Project and
+   ExperimentResult are unchanged. An older trace or plan opens unchanged
+   with no file source; an older-version document that already carries one is
+   rejected rather than reinterpreted. The bump is needed because a resolved
+   template use with a file source still names its pinned revision, and a
+   reader that ignored the source would attribute the file's text to that
+   revision.
+2. **What the formats store.** No host path is recorded anywhere.
+   - The evaluation plan gains `suite.promptSources?: PromptFileSnapshot[]`,
+     one per overridden prompt, frozen during preparation: `templateId`,
+     `baseTemplateRevisionId` (the revision the suite's conversation pins),
+     `sourceRootName`, `path` (relative, E3's rules), `sourceDigest`, the
+     authored text and role, the interpretation version, the
+     expression-to-variable bindings, the projected messages and variable
+     defaults, and `replacedLocalRevisions` (the pinned revision is not the
+     last one pulled from the file).
+   - Each resolved template use in a plan cell and in its RunTrace gains
+     `fileSource?: { sourceRootName, path, sourceDigest, baseTemplateRevisionId }`.
+     `templateRevisionId` keeps the pinned revision; `messages` are already
+     recorded and hold the projected text. The trace therefore explains
+     itself, and the plan holds the full snapshot behind it.
+   - Decision traces are unchanged: decision templates cannot be linked.
+3. **CLI shape.** `run` gains a repeatable `--source-root <name>=<path>` and a
+   boolean `--prompts-from-files`. A relative path resolves against the
+   current directory. `INFERENCE_LENS_SOURCE_ROOTS` supplies names no flag
+   gives; a flag wins for its name. Usage errors (exit 2): a name given twice,
+   a name the project does not declare, and `--source-root` without
+   `--prompts-from-files` on `run`, where it would otherwise look like a file
+   test that read nothing. Reads use the server's confinement unchanged: real
+   paths inside the root, regular `.md` and `.txt` files up to 1 MiB of strict
+   UTF-8, BOM removed.
+4. **What the override covers.** All or nothing: every linked prompt the
+   suite's conversation revision uses, whichever cases and configurations are
+   selected. Each file's text goes through E2's
+   `planFilePromptUpdate` against the project as saved, so variable names are
+   reused exactly as a Pull would reuse them, and replaces the pinned revision
+   in every cell. Template-use values, case bindings and environments apply
+   unchanged, and the existing preflight runs against the projected messages.
+   A selector for single prompts (`--prompt-from-file`) is a later addition.
+5. **When the override cannot run.** Each is a setup error (exit 2) naming the
+   prompt, with nothing sent and no plan written: the suite uses no linked
+   prompt; a root that is not mapped; a missing, unreadable or refused file;
+   a projection problem E2 would show (an expression earlier pulls mapped
+   ambiguously, or a reintroduced name); and a variable that no case binding,
+   use value or default supplies. There is no fallback to saved text. A
+   replaced local revision is not an error: the summary reports it.
+6. **Drift.** A new read-only command,
+   `inference-lens drift <project-folder> [--source-root <name>=<path>]... [--json]`,
+   sends nothing and writes nothing. It reports each non-archived linked
+   prompt as `matches`, `file-changed`, `missing` or `unreadable` (with the
+   reason), using E3's comparison (CRLF and lone CR as LF), and separately
+   whether it has local revisions not from the file. Exit 0 when every file
+   matches (including when nothing is linked, which the output says); 1 when
+   any file changed, is missing or is unreadable; 2 for setup errors (an
+   unmapped root, a catalog or project that cannot be read). Local revisions
+   do not affect the exit code. The JSON summary is its own
+   `kind: "drift"`, schema version 1.
+7. **Run output.** With `--prompts-from-files`, the `run` summary adds
+   `promptSources`: each overridden prompt's root name, path, digest, whether
+   its text differs from the pinned revision, and `replacedLocalRevisions`.
+   It is an additive field on summary v1, as earlier additions were. Drift
+   never fails `run`, and `run`'s exit codes keep their meanings.
+8. **Scope.** `run` with chat suites only. `repeat` does not take the new
+   flags; it can later, unchanged. The browser app runs no overrides; Pull
+   remains its way to bring file text in. The app does read the new fields:
+   the trace panel and plan views name the file and digest beside the pinned
+   revision, so a CI artifact opened in the app is not mistaken for a run of
+   the saved revision.
+
+**Ownership.** Core: a new `packages/core/src/prompt-file-override.ts` builds
+snapshots from a project and file texts through `planFilePromptUpdate`,
+applies them to the template resolutions, and derives the drift report through
+`filePromptDrift`; `experiment.ts` and `run-trace.ts` own their versions and
+migrations. `packages/runner` evaluation start accepts the snapshots when it
+creates the plan. `services/api/src/source-root-files.ts` gains a
+host-neutral way to build a `SourceRootCatalogSource` from mappings, which the
+CLI uses with `readSourceRootFiles`, as it already reuses the command tool
+catalog. The CLI owns flag parsing, the `drift` command and summaries in a new
+`packages/cli/src/prompt-sources.ts`; `main.ts` only routes. In the app,
+`app/run-trace-panel.client.tsx` and the experiment views render the field;
+no route gains state.
+
+**Evidence.** Tests first, red on the actual wrong value: a plan built with
+`--prompts-from-files` whose cells still carry the saved revision's text, and
+a drift run that exits 0 on a changed file. Cover the version migrations and
+rejections; flag parsing and every usage error; confinement (symlink out,
+size, encoding) through the CLI; reuse of variable names across a pull and
+each exit-2 case in contract 5; a pinned older or locally edited revision; a
+trace that explains itself after the file changes; and drift's four states
+and exit codes. Run `npm run test:core`, the CLI tests, lint and typecheck.
+The trace panel change is user-visible: run its render test and an e2e spec
+that opens a CI-produced trace, plus the related specs. A real CI job in a
+workflow repository is not exercised by the suite; record that.
 
 ## Implementation ownership and sequence
 
