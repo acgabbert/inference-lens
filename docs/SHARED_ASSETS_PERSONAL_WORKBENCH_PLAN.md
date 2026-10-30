@@ -557,9 +557,9 @@ prompt files tracked from another repository.
 **Status:** E1 implemented October 30, 2026, under the decisions, review
 recommendations and bounded contracts recorded below, all approved that day.
 The order is E1 → E2 → E3, with Level 3 separate; E2's mapping continuity is
-designed. E1's project version number and the re-import behavior await
-confirmation ([open items](#e1-review-follow-ups-october-30-2026)). E2 and later
-slices need separate approval.
+designed. E1 then took Project v17 and gained a re-import warning
+([follow-ups](#e1-review-follow-ups-october-30-2026)). E2 and later slices need
+separate approval.
 
 Some teams keep n8n workflows in Git with each agent prompt extracted to its own
 `.md` or `.txt` file. A sync step using the n8n API detects drift between those
@@ -840,14 +840,27 @@ identified below must be specified before the affected implementation slice.
   v18, to move to v19 when final output lands. RunTrace and ExperimentPlan are
   unchanged. A v16 project opens as v17 unchanged; a v16 document already
   holding a file receipt is rejected rather than reinterpreted.
-- **Recommended, awaiting confirmation: warn on re-import.** A file's identity
+- **Implemented: warn on re-import.** Approved October 30. A file's identity
   is its bare filename, without path or repository, so blocking would stop
   distinct files that share a name, such as two workflows' `system.md`. The
-  preview warns and names the saved prompts already imported from that
-  filename; importing still creates an independent template and receipt. E2
+  preview warns and names the saved prompts already imported from that exact
+  filename, and separately warns when two files in one batch share a name;
+  importing still creates an independent template and receipt for each. E2
   pulls into a chosen template, so duplicates are not ambiguous there. E3's
   linked sources must establish stronger identity before relying on one file
   per template.
+- **Follow-up verification.** Each regression test ran red on the actual
+  wrong output first: the live `{{ $json.secret }}` copy, a project still at
+  version 16, and a re-import dialog with no warnings. `npm run test:core`
+  passed 1,712 tests; `npm run lint` (four pre-existing warnings),
+  `npm run typecheck` and `npm run typecheck:core` passed; the three
+  rendered template test files passed 22 tests and `tests/theme-tokens.test.ts`
+  passed. `npm run test:e2e -- tests/e2e/file-prompt-import.spec.ts` passed
+  all four scenarios, and `tests/e2e/n8n-template-paste.spec.ts` passed after
+  the import refactor and the version bump, with
+  `evaluation-case-promotion`, `prompt-authoring-workspace`,
+  `prompt-draft-retention` and `saved-prompt-revision-diff` (26 tests in all).
+  The full browser suite and CI have not run.
 
 ## Implementation ownership and sequence
 

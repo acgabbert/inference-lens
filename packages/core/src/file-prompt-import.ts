@@ -94,7 +94,27 @@ export async function importFilePromptCandidates(
   return { project, templateIds };
 }
 
-export type N8nFileCopy = { ok: true; text: string } | { ok: false; message: string };
+/**
+ * Names of the saved prompts already imported from this bare filename, once
+ * each, in import order. A filename is weak identity, so callers warn rather
+ * than block: distinct files can share a name.
+ */
+export function priorFilePromptImports(
+  project: Pick<ProjectFile, "externalImports" | "promptTemplates">,
+  filename: string,
+): string[] {
+  const names = new Map<string, string>();
+  for (const receipt of project.externalImports) {
+    if (!isFileTemplateReceipt(receipt) || receipt.source.resource.id !== filename) continue;
+    if (receipt.projection.kind !== "prompt-template") continue;
+    const { templateId } = receipt.projection;
+    const template = project.promptTemplates.find(({ id }) => id === templateId);
+    if (template && !names.has(template.id)) names.set(template.id, template.name);
+  }
+  return [...names.values()];
+}
+
+export type N8nFileCopy ={ ok: true; text: string } | { ok: false; message: string };
 
 function isFileTemplateReceipt(receipt: ExternalImportReceipt): boolean {
   return receipt.source.adapter === "file" && receipt.projection.kind === "prompt-template";

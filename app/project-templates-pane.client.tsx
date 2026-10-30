@@ -6,6 +6,7 @@ import type { DecisionTemplateEvaluationRetargetPreview } from "../packages/core
 import { discoverDecisionVariables } from "../packages/core/src/decision-variables";
 import type { ExternalPromptCandidate } from "../packages/core/src/external-prompt-import";
 import { FilePromptImportDialog } from "./templates/file-prompt-import-dialog.client";
+import { priorFilePromptImports } from "../packages/core/src/file-prompt-import";
 import type { PromptTemplate, PromptTemplateMessages } from "../packages/core/src/project";
 import type { EvaluationSuiteId, PromptTemplateId, PromptTemplateRevisionId } from "../packages/core/src/run-kernel";
 import {
@@ -300,7 +301,11 @@ export function ProjectTemplatesPane(props: ProjectTemplatesPaneProps) {
           </div>
         </section>
       )}
-      {fileImport && props.onImportFiles && <FilePromptImportDialog initialFiles={fileImport} onClose={() => setFileImport(undefined)} onImport={async (candidates) => {
+      {fileImport && props.onImportFiles && <FilePromptImportDialog
+        initialFiles={fileImport}
+        priorImports={(filename) => priorFilePromptImports({ externalImports: props.externalImports ?? [], promptTemplates: props.templates }, filename)}
+        onClose={() => setFileImport(undefined)}
+        onImport={async (candidates) => {
         if (props.persistenceStatus === "secondary") throw new Error("Take over project editing before importing prompts.");
         const ids = await props.onImportFiles!(candidates);
         setFilters({ status: "active", kind: "all", search: "" });

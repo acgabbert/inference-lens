@@ -3,7 +3,7 @@ import test from "node:test";
 import { createExternalPromptCandidate } from "../packages/core/src/external-prompt-import.ts";
 import { projectExternalPromptTemplate } from "../packages/core/src/external-prompt-project.ts";
 import { renderTemplateMessages } from "../packages/core/src/template-engine.ts";
-import { copyFilePromptAsN8nText, createFilePromptCandidate, decodePromptFile, importFilePromptCandidates } from "../packages/core/src/file-prompt-import.ts";
+import { copyFilePromptAsN8nText, createFilePromptCandidate, decodePromptFile, importFilePromptCandidates, priorFilePromptImports } from "../packages/core/src/file-prompt-import.ts";
 import { createProjectFile, parseProjectFile, parseProjectJson, PROJECT_SCHEMA_VERSION, ProjectValidationError, serializeProjectFile, updatePromptTemplateDraft } from "../packages/core/src/project.ts";
 
 function projectFixture() {
@@ -139,4 +139,15 @@ test("file imports are Project v17: v16 opens as v17, and a v16 file receipt is 
     }]);
     return true;
   });
+});
+
+test("prior imports are found by exact filename, once per surviving template", async () => {
+  const agent = await createFilePromptCandidate({ filename: "agent.md", text: "First", role: "user", plainText: false });
+  const other = await createFilePromptCandidate({ filename: "Agent.md", text: "Other", role: "user", plainText: false });
+  const { project } = await importFilePromptCandidates(projectFixture(), [agent, other, agent]);
+  assert.deepEqual(priorFilePromptImports(project, "agent.md"), ["agent", "agent"]);
+  assert.deepEqual(priorFilePromptImports(project, "Agent.md"), ["Agent"]);
+  assert.deepEqual(priorFilePromptImports(project, "new.md"), []);
+  // A removed template is not named, even while another import of the file survives.
+  assert.deepEqual(priorFilePromptImports({ ...project, promptTemplates: project.promptTemplates.slice(1) }, "agent.md"), ["agent"]);
 });

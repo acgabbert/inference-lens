@@ -15,8 +15,10 @@ interface FileDraft {
 type Preview = { candidate: ExternalPromptCandidate } | { error: string };
 
 /** Owns the entire transient pick/drop/read/review lifecycle. No writes until Apply. */
-export function FilePromptImportDialog({ initialFiles = [], onImport, onClose }: {
+export function FilePromptImportDialog({ initialFiles = [], priorImports = () => [], onImport, onClose }: {
   initialFiles?: File[];
+  /** Saved prompts already imported from a filename; a match warns but never blocks. */
+  priorImports?(filename: string): string[];
   onImport(candidates: ExternalPromptCandidate[]): Promise<void>;
   onClose(): void;
 }) {
@@ -65,12 +67,20 @@ export function FilePromptImportDialog({ initialFiles = [], onImport, onClose }:
           const preview = previews?.[index];
           const candidate = preview && "candidate" in preview ? preview.candidate : undefined;
           const projection = candidate ? projectExternalPromptTemplate(candidate) : undefined;
+          const prior = priorImports(draft.file.name);
+          const sameNameInBatch = drafts.some((other, position) => position !== index && other.file.name === draft.file.name);
           return <fieldset key={index} disabled={busy}>
             <legend>{draft.file.name}</legend>
             <label>Message role<select value={draft.role} onChange={(event) => update(index, { role: event.target.value as FileDraft["role"] })}>
               <option value="user">User</option><option value="system">System</option><option value="assistant">Assistant</option>
             </select></label>
             <label className="file-prompt-checkbox"><input type="checkbox" checked={draft.plainText} onChange={(event) => update(index, { plainText: event.target.checked })} />Treat as plain text</label>
+            {prior.length > 0 && <p className="file-prompt-warning">
+              Already imported as {prior.map((name) => `“${name}”`).join(", ")}. Importing again creates a separate saved prompt.
+            </p>}
+            {sameNameInBatch && <p className="file-prompt-warning">
+              Another file in this batch is also named {draft.file.name}. Each becomes a separate saved prompt.
+            </p>}
             {preview && "error" in preview && <p role="alert">{preview.error}</p>}
             {candidate && projection ? <>
               <details><summary>Source text</summary><pre>{candidate.authored[0].text}</pre></details>

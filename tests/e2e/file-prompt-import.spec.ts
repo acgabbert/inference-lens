@@ -143,3 +143,34 @@ test("file receipts survive folder reopen and literal text reaches a real provid
   await expect(copy.getByRole("alert")).toHaveText("No unambiguous n8n expression is recorded for: local.");
   await expect(copy.getByRole("button", { name: "Copy text", exact: true })).toHaveCount(0);
 });
+
+test("re-importing a filename warns, names the existing prompts, and still imports", async ({ page }) => {
+  await seedProfile(page);
+  await page.goto("/");
+  await waitForHydration(page);
+  await openMode(page, "Prompts");
+  const opener = page.getByRole("button", { name: "Import prompts from files…" });
+  const dialog = page.getByRole("dialog", { name: "Import prompts from files" });
+  await opener.click();
+  await dialog.getByLabel("Prompt files").setInputFiles([{ name: "agent.md", mimeType: "text/markdown", buffer: Buffer.from("First") }]);
+  await expect(dialog.getByRole("group", { name: "agent.md" }).locator(".file-prompt-warning")).toHaveCount(0);
+  await dialog.getByRole("button", { name: "Import 1 prompt", exact: true }).click();
+  await expect(dialog).toBeHidden();
+
+  await opener.click();
+  await dialog.getByLabel("Prompt files").setInputFiles([
+    { name: "agent.md", mimeType: "text/markdown", buffer: Buffer.from("Second") },
+    { name: "agent.md", mimeType: "text/markdown", buffer: Buffer.from("Third") },
+  ]);
+  const groups = dialog.getByRole("group", { name: "agent.md" });
+  await expect(groups).toHaveCount(2);
+  for (const index of [0, 1]) {
+    await expect(groups.nth(index).locator(".file-prompt-warning")).toHaveText([
+      "Already imported as “agent”. Importing again creates a separate saved prompt.",
+      "Another file in this batch is also named agent.md. Each becomes a separate saved prompt.",
+    ]);
+  }
+  await dialog.getByRole("button", { name: "Import 2 prompts" }).click();
+  await expect(dialog).toBeHidden();
+  await expect(page.locator(".template-list-item")).toHaveCount(3);
+});
