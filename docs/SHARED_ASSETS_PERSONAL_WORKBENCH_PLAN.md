@@ -554,12 +554,13 @@ prompt files tracked from another repository.
 
 ## External prompt sources
 
-**Status:** E1 implemented October 30, 2026, under the decisions, review
+**Status:** E1 and E2 implemented October 30, 2026, under the decisions, review
 recommendations and bounded contracts recorded below, all approved that day.
 The order is E1 → E2 → E3, with Level 3 separate; E2's mapping continuity is
 designed. E1 then took Project v17 and gained a re-import warning
-([follow-ups](#e1-review-follow-ups-october-30-2026)). E2 and later slices need
-separate approval.
+([follow-ups](#e1-review-follow-ups-october-30-2026)). E2's
+[contracts](#e2-implementation-contracts-approved-october-30-2026) are
+approved; E3 and later slices need separate approval.
 
 Some teams keep n8n workflows in Git with each agent prompt extracted to its own
 `.md` or `.txt` file. A sync step using the n8n API detects drift between those
@@ -862,6 +863,112 @@ identified below must be specified before the affected implementation slice.
   `prompt-draft-retention` and `saved-prompt-revision-diff` (26 tests in all).
   The full browser suite and CI have not run.
 
+### E2 implementation contracts (approved October 30, 2026)
+
+These settle recommendation 2's publication, base and open-draft details and
+narrow recommendation 5 and the E1 mapping-continuity design where the code
+showed them to be incomplete (noted inline).
+
+- **No format change.** A pull appends one chat revision anchored to one new
+  file receipt, which Project v17 validation already accepts and reproduces.
+  E1 builds open projects holding pulls.
+- **Eligibility and entry.** "Update from file…" sits beside "Copy as n8n
+  text…" for an active, project-backed chat prompt with at least one file
+  receipt. Its dialog takes one chosen or dropped file. Dropping on the prompt
+  library still starts an import, so a drop is never ambiguous. Pulls are
+  whole-file: when the current revision has several messages, the preview
+  shows the others removed.
+- **Publication.** The pulled revision's messages are exactly the file's
+  projection, with no merge of local edits, and confirming makes it current.
+  The preview names the local revisions it supersedes; they are retained and
+  can be made current again. Pinned uses do not move.
+- **Comparison base.** The last file receipt for the template, in
+  `externalImports` order, and its anchored revision. The preview names that
+  revision, because removing a revision also removes its receipt. It shows
+  "File changes since last pull" (that revision → new) and, when the current
+  revision differs, "Replaces current" (current → new) in the existing revision
+  diff. Text drift (CRLF and lone CR normalized to LF), role change,
+  plain-text change and local revisions after the last pull are reported
+  separately. A changed filename warns but is allowed. Role and plain-text
+  default to the last receipt's. Apply is disabled only when the result would
+  equal the current revision, so an unchanged file can still restore its text
+  over local edits.
+- **Variable defaults.** The new revision carries the current revision's
+  defaults for variables it still uses; the preview lists them.
+- **Open drafts.** A pull never touches `template.draft`: the draft keeps its
+  `sourceRevisionId` and edits. `appendPromptTemplateRevision` clears the
+  draft, so pulls use their own append path. An editor showing a draft whose
+  source is not the current revision says so and offers to compare with the
+  current revision; saving works as before. An editor not on a draft moves to
+  the pulled revision.
+- **Mapping continuity.** Names are reused per expression identity from every
+  file receipt for the template, in order. Reserved names cover every mapped
+  name and every variable in any retained revision, the draft and this
+  template's pinned uses' values; the receipts alone are not enough, because
+  removing a revision removes its receipt. New expressions allocate around the
+  reserved set. A pull is blocked, naming the variable, only when the name it
+  would use is unsafe:
+  - *Ambiguous history:* the expression maps to two names, or its name maps to
+    two expressions across receipts (for example after merging two branches
+    that each pulled).
+  - *Local reintroduction:* the pull would reuse name N for its historical
+    expression, and a revision that is not a file pull uses N after a pulled
+    revision that lacked N. Keeping or renaming a mapped variable locally is
+    continuity, not a conflict; the E1 wording "a local variable conflicting
+    with a historical mapping" is narrowed to this case.
+  Resolution is outside the dialog: change the local revision or import the
+  file as a new prompt.
+- **Ownership.** Core (`packages/core/src/file-prompt-update.ts`) owns the
+  comparison, mapping continuity, preview and immutable apply.
+  `useProjectTemplates.updateFilePrompt` applies it. The update dialog owns
+  file reading and staging; the chat prompt editor owns the action, selection
+  after a pull and the draft notice.
+- **Revision removal.** No UI or CLI removes revisions today. A future one must
+  account for file-tracked prompts: removing every pulled revision untracks
+  the prompt and drops Copy as n8n text and Update from file.
+
+### E2 delivery evidence (October 30, 2026)
+
+- `tests/file-prompt-update.test.ts` was written before
+  `packages/core/src/file-prompt-update.ts` existed and first failed on the
+  missing module, which is the absence of the feature, not a wrong value. Its
+  first run against the implementation failed on an actual wrong value: a file
+  differing only in CRLF line endings reported unchanged text yet offered a
+  new revision (`change: true`); the change check now normalizes line endings
+  too. The receipt-removal regression failed on the recycled name (`{{a}}`
+  instead of `{{a_2}}`) with revision-name reservation disabled, and passed
+  with it restored. The cases cover reuse and allocation around local names,
+  current/draft/pin/default behavior, removal and reintroduction, local
+  reintroduction, merged ambiguous history, text/role/reading/filename
+  comparison, unchanged refusal, restore over local edits and digest
+  tampering.
+- `npm run test:core` passed all 1,719 tests. `npm run lint` (the four
+  pre-existing warnings), `npm run typecheck`, `npm run typecheck:core` and
+  `git diff --check` passed. `node --test tests/project-templates-render.test.mjs
+  tests/project-templates-interaction.test.mjs tests/n8n-import-render.test.mjs`
+  passed 22 tests.
+- `npm run test:e2e -- tests/e2e/file-prompt-update.spec.ts` passed both new
+  scenarios: the action list, modal keyboard contract, short and phone dialog
+  layout, kept/new mappings, carried default, both diffs, Replace current,
+  editor moving to the pulled revision, Copy as n8n text of the new file, and
+  an unchanged request; and, in a folder project, a pull with an open draft
+  (draft kept, notice, Compare with current), the persisted receipts, draft
+  and current revision, reload, and a CRLF/renamed file refused with a
+  warning. The spec was written after the UI, so it was not run red; its
+  first run failed on a wrong selector, not on behavior. Related specs
+  passed: `file-prompt-import`, `n8n-template-paste`,
+  `prompt-authoring-workspace`, `prompt-draft-retention`,
+  `saved-prompt-revision-diff`, `evaluation-case-promotion` (30 tests), and
+  `first-use-prompt-authoring`, `pr2-workbench`, `saved-prompt-picker`,
+  `project-tab-coordination`, `evaluation-prompt-retarget`,
+  `wide-prompt-dialogs`, `n8n-template-native-whitespace`,
+  `ui-ux-workflow-review` (57 tests).
+- Not run: the full browser suite and CI. Rust is unchanged. Native Tauri,
+  Docker, a real n8n sync step and a real prompt repository were not
+  exercised; folder handles are memory-backed fixtures. Human review should
+  check the update dialog's wording, the replacement warning and the draft
+  notice against a real tracked prompt.
+
 ## Implementation ownership and sequence
 
 Before each behavior-changing slice, approve its material contracts from the
@@ -946,7 +1053,7 @@ review covers slice 2a; Level 3 decisions remain deferred.
    files.
 5. Specify the bounded [external prompt source review details](#accepted-review-recommendations-october-30-2026)
    before their affected slices. E1 → E2 → E3 is approved, with E2's mapping
-   continuity designed alongside E1. E1 implementation is approved and delivered
+   continuity designed alongside E1. E1 and E2 are approved and delivered
    under the bounded contracts above; later slices need separate approval.
 
 The target is fewer incidental conflicts, explicit intentional contributions,

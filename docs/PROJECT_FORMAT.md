@@ -252,7 +252,10 @@ In the projected template every literal `{{` gains one backslash (`\{{`), so
 native rendering reproduces the file's text; receipt validation reproduces
 that projection. Other adapters keep their unescaped projection. A v16
 reader applies no escaping, which is why file receipts need v17 and a v16
-document holding one is rejected. See the
+document holding one is rejected. Updating a prompt from its file appends a
+revision anchored to one more file receipt for the same template, so a
+template may hold several, in `externalImports` order; this needs no new
+version. See the
 [external prompt sources plan](SHARED_ASSETS_PERSONAL_WORKBENCH_PLAN.md#external-prompt-sources).
 
 ## Template authoring session
