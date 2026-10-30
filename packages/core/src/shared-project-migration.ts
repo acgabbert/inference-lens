@@ -1,6 +1,6 @@
 import { parseProjectJson, ProjectValidationError } from "./project.ts";
 import { parseSharedProjectFile } from "./shared-project.ts";
-import type { SharedProjectFileV17 } from "./shared-project.ts";
+import type { SharedProjectFileV18 } from "./shared-project.ts";
 import { parseWorkbenchRecord } from "./personal-workbench.ts";
 import type { WorkbenchPromptDraftV1, WorkbenchSelectionsV1 } from "./personal-workbench.ts";
 
@@ -8,7 +8,7 @@ export interface SharedProjectMigrationPlan {
   sourceVersion: 10 | 11 | 12 | 13 | 14 | 15 | 16;
   /** Untouched bytes, copied before decoding or legacy normalization. */
   sourceBytes: Uint8Array;
-  shared: SharedProjectFileV17;
+  shared: SharedProjectFileV18;
   drafts: WorkbenchPromptDraftV1[];
   /** A candidate seed, never an instruction to overwrite existing selections. */
   selections: WorkbenchSelectionsV1;
@@ -59,7 +59,7 @@ export function planSharedProjectMigration(sourceBytes: Uint8Array): SharedProje
     delete sharedTemplate.draft;
     return sharedTemplate;
   });
-  const shared = parseSharedProjectFile({ ...project, schemaVersion: 17, promptTemplates: templates });
+  const shared = parseSharedProjectFile({ ...project, schemaVersion: 18, promptTemplates: templates });
   const { defaults } = project;
   const selections = parseWorkbenchRecord({
     schemaVersion: 1,

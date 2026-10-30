@@ -15,8 +15,8 @@ const example = (name: string) => readFileSync(new URL(`../docs/examples/shared-
 test("migration separates the example's drafts while preserving every saved definition", () => {
   const source = example("project-v15.json");
   const plan = planSharedProjectMigration(source);
-  assert.equal(plan.shared.schemaVersion, 17);
-  assert.deepEqual(plan.shared, JSON.parse(example("project-v17.proposed.json").toString()));
+  assert.equal(plan.shared.schemaVersion, 18);
+  assert.deepEqual(plan.shared, JSON.parse(example("project-v18.proposed.json").toString()));
   assert.equal(plan.sourceVersion, 15);
   assert.deepEqual(Array.from(plan.sourceBytes), Array.from(source));
 });
@@ -37,11 +37,11 @@ test("the active application codec stays v16 and preserves legacy drafts", () =>
   assert.equal(PROJECT_SCHEMA_VERSION, 16);
   const legacy = parseProjectJson(example("project-v15.json").toString());
   assert.equal(legacy.promptTemplates.filter(template => template.draft).length, 2);
-  assert.throws(() => parseProjectJson(example("project-v17.proposed.json").toString()), /schema v17 is not supported/);
+  assert.throws(() => parseProjectJson(example("project-v18.proposed.json").toString()), /schema v18 is not supported/);
 });
 
-test("v17 codec accepts the shared example with deterministic serialization", () => {
-  const parsed = parseSharedProjectJson(example("project-v17.proposed.json").toString());
+test("v18 codec accepts the shared example with deterministic serialization", () => {
+  const parsed = parseSharedProjectJson(example("project-v18.proposed.json").toString());
   const serialized = serializeSharedProjectFile(parsed);
   assert.deepEqual(parseSharedProjectJson(serialized), parsed);
   assert.equal(serializeSharedProjectFile(parseSharedProjectJson(serialized)), serialized);
@@ -50,19 +50,19 @@ test("v17 codec accepts the shared example with deterministic serialization", ()
   assert.throws(() => parseSharedProjectJson("{"), /not valid JSON/);
 });
 
-test("v17 rejects personal fields for both prompt kinds, even undefined ones", () => {
+test("v18 rejects personal fields for both prompt kinds, even undefined ones", () => {
   const before = parseProjectJson(example("project-v15.json").toString());
   for (const template of before.promptTemplates) {
     for (const draft of [template.draft, undefined, null]) {
-      const value = JSON.parse(example("project-v17.proposed.json").toString());
+      const value = JSON.parse(example("project-v18.proposed.json").toString());
       value.promptTemplates.find((item: { id: string }) => item.id === template.id).draft = draft;
       assert.throws(() => parseSharedProjectFile(value), /Personal prompt drafts/);
     }
   }
 });
 
-test("v17 preserves strict nested validation, references and uniqueness rules", () => {
-  const shared = () => JSON.parse(example("project-v17.proposed.json").toString());
+test("v18 preserves strict nested validation, references and uniqueness rules", () => {
+  const shared = () => JSON.parse(example("project-v18.proposed.json").toString());
   const unexpected = shared();
   unexpected.workbench = {};
   assert.throws(() => parseSharedProjectFile(unexpected), /workbench/);
@@ -80,14 +80,14 @@ test("v17 preserves strict nested validation, references and uniqueness rules", 
   assert.throws(() => parseSharedProjectFile(decisionPin), /decisionRequestRevisionId/);
 });
 
-test("v17 rejects known secret fields nested in provider-option arrays that v15 still accepts", () => {
+test("v18 rejects known secret fields nested in provider-option arrays that v15 still accepts", () => {
   const nestedSecret = { extra: [{ api_key: "sk-example" }] };
   const legacy = JSON.parse(example("project-v15.json").toString());
   legacy.defaults.options.providerOptions = nestedSecret;
   legacy.tools[0].providerOptions = nestedSecret;
   // Opening an existing v15 folder keeps working; only the new format tightens.
   assert.doesNotThrow(() => parseProjectJson(JSON.stringify(legacy)));
-  const shared = JSON.parse(example("project-v17.proposed.json").toString());
+  const shared = JSON.parse(example("project-v18.proposed.json").toString());
   shared.defaults.options.providerOptions = nestedSecret;
   shared.tools[0].providerOptions = nestedSecret;
   assert.throws(() => parseSharedProjectFile(shared), (error: unknown) => {
@@ -119,7 +119,7 @@ test("workbench codecs round-trip the proposed individual records", () => {
   }
   // Nested saved content serializes in the same key order as project.json.
   const draft = JSON.parse(serializeWorkbenchRecord(records["drafts/draft_template_chat.json"] as WorkbenchRecordV1));
-  const shared = JSON.parse(serializeSharedProjectFile(parseSharedProjectJson(example("project-v17.proposed.json").toString())));
+  const shared = JSON.parse(serializeSharedProjectFile(parseSharedProjectJson(example("project-v18.proposed.json").toString())));
   const savedRevision = shared.promptTemplates.find((template: { id: string }) => template.id === "template_chat").revisions[0];
   assert.deepEqual(Object.keys(draft.base.snapshot), Object.keys(savedRevision));
   assert.throws(() => parseWorkbenchRecord({ records }), WorkbenchValidationError);
@@ -209,7 +209,7 @@ for (const sourceVersion of [10, 11, 12, 13, 14, 15] as const) {
     assert.deepEqual(plan.sourceBytes, new Uint8Array(source));
     const saved = { ...current.promptTemplates[0]! };
     delete saved.draft;
-    assert.deepEqual(plan.shared, { ...current, schemaVersion: 17, promptTemplates: [saved] });
+    assert.deepEqual(plan.shared, { ...current, schemaVersion: 18, promptTemplates: [saved] });
     assert.deepEqual(plan.drafts[0]!.edited.variableDefaults, { topic: "" });
     assert.equal(plan.drafts[0]!.edited.revisionName, "");
     assert.equal("decision" in plan.selections, false);
@@ -293,7 +293,7 @@ test("migration without explicit drafts retains every saved revision and produce
   const single = JSON.parse(example("project-v15.json").toString());
   single.promptTemplates.slice(1).forEach((template: { draft?: unknown }) => delete template.draft);
   assert.equal(planSharedProjectMigration(Buffer.from(JSON.stringify(single))).preview.messages[0], "Move 1 prompt draft into this folder's personal workbench.");
-  assert.deepEqual(plan.shared, { ...source, schemaVersion: 17, environments: [] });
+  assert.deepEqual(plan.shared, { ...source, schemaVersion: 18, environments: [] });
 });
 
 test("shared and personal codecs preserve authored decision/question/choice and tool-schema ordering", () => {
