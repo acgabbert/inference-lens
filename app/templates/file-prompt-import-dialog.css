@@ -27,3 +27,5 @@
 .file-prompt-body .file-prompt-warning { margin-block: var(--space-xs); padding: var(--space-sm); border: 1px solid var(--warning-border); border-radius: var(--radius-sm); background: var(--warning-surface); color: var(--warning-strong); }
 .file-prompt-body input[type="checkbox"] { width: auto; }
 .file-prompt-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--space-sm); margin-top: var(--space-md); }
+.file-prompt-body .file-prompt-update-status { padding-inline-start: var(--space-lg); }
+.file-prompt-body section h3 { margin-block: var(--space-md) var(--space-xs); }

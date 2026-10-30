@@ -23,6 +23,7 @@ import type {
   ProjectConversationItem,
   ProjectFile,
   ChatPromptTemplate,
+  ChatPromptTemplateRevision,
   PromptTemplate,
   PromptTemplateMessages,
   PromptTemplateRecommendedTarget,
@@ -36,6 +37,7 @@ import {
 } from "../../packages/core/src/external-prompt-project";
 import type { ExternalPromptCandidate } from "../../packages/core/src/external-prompt-import";
 import { importFilePromptCandidates } from "../../packages/core/src/file-prompt-import";
+import { applyFilePromptUpdate, planFilePromptUpdate, type FilePromptUpdatePlan } from "../../packages/core/src/file-prompt-update";
 import { createEntityId } from "../../packages/core/src/run-kernel";
 import type {
   ConversationMessage,
@@ -187,6 +189,8 @@ export interface ProjectTemplatesHandle {
   removeComposerMessage(id: MessageId): void;
   importN8nPrompt(candidate: ExternalPromptCandidate, mode: "resolved-snapshot" | "reusable-template", options: { recommendModel: boolean }): Promise<void>;
   importFilePrompts(candidates: ExternalPromptCandidate[]): Promise<PromptTemplateId[]>;
+  planFileUpdate(templateId: PromptTemplateId, candidate: ExternalPromptCandidate): FilePromptUpdatePlan;
+  updateFilePrompt(templateId: PromptTemplateId, candidate: ExternalPromptCandidate): Promise<ChatPromptTemplateRevision>;
   clearTransientOverrides(): void;
   markExecutedRevision(revisionId: ConversationRevisionId): void;
 }
@@ -740,6 +744,19 @@ export function useProjectTemplates(input: UseProjectTemplatesInput): ProjectTem
     input.adoptProjectMutation(imported.project);
     return imported.templateIds;
   }
+  function planFileUpdate(templateId: PromptTemplateId, candidate: ExternalPromptCandidate): FilePromptUpdatePlan {
+    // Only saved project prompts carry file receipts; never materialize one to preview.
+    if (!input.projectFile) throw new Error("Open a project to update a prompt from a file.");
+    return planFilePromptUpdate(input.ensureProjectDocument(), templateId, candidate);
+  }
+  async function updateFilePrompt(templateId: PromptTemplateId, candidate: ExternalPromptCandidate): Promise<ChatPromptTemplateRevision> {
+    const updated = await applyFilePromptUpdate(input.ensureProjectDocument(), templateId, candidate);
+    // Pinned uses do not move, so the request draft is unchanged.
+    input.adoptProjectMutation(updated.project);
+    const template = updated.project.promptTemplates.find(({ id }) => id === templateId);
+    if (template?.kind !== "chat") throw new Error("Choose a saved chat prompt to update.");
+    return template.revisions.find(({ id }) => id === updated.revisionId)!;
+  }
   return {
     modelWarnings,
     decisionEditorMemory,
@@ -778,6 +795,8 @@ export function useProjectTemplates(input: UseProjectTemplatesInput): ProjectTem
     removeComposerMessage,
     importN8nPrompt,
     importFilePrompts,
+    planFileUpdate,
+    updateFilePrompt,
     clearTransientOverrides: () => { setTemplateRunOverrides({}); decisionEditorMemory.clear(); },
     markExecutedRevision: (id) => executedRevisionIdsRef.current.add(id),
   };

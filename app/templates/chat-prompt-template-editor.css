@@ -753,3 +753,11 @@
   color: var(--danger);
 }
 
+
+.template-draft-source-notice {
+  margin: 0 0 var(--space-sm);
+  padding: var(--space-sm);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  background: var(--surface-subtle);
+}
