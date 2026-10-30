@@ -553,7 +553,9 @@ prompt files tracked from another repository.
 
 ## External prompt sources
 
-**Status:** Proposed October 30, 2026. No slice is approved.
+**Status:** Proposed October 30, 2026; its decisions were settled the same day
+and are recorded below. The slice order awaits confirmation, and no slice is
+approved for implementation.
 
 Some teams keep n8n workflows in Git with each agent prompt extracted to its own
 `.md` or `.txt` file. A sync step using the n8n API detects drift between those
@@ -616,7 +618,7 @@ repositories, scoped to prompt text.
 | L3 | Links and receipts live in the prompt's asset file; source-root requirements become an asset kind like connection requirements. | E3 and Level 3 |
 
 E1 and E2 deliver the sync loop by hand and need neither folder access nor a
-format change if recommendation 1 below is approved. E3 does not need to wait for
+format change, because decision 1 below reuses the current receipt. E3 does not need to wait for
 Level 3, but Level 3's asset format must have room for what E3 adds.
 
 A later possibility: an n8n execution import could be matched to a tracked
@@ -643,7 +645,7 @@ Decided October 30, 2026:
   form: the copy names each such variable rather than passing it off as an
   n8n expression.
 
-Recommended, awaiting approval:
+Recommended and approved October 30, 2026:
 
 1. **Reuse the current receipt; no format change for E1 and E2.** The
    receipt already separates the source (`source.resource`, for n8n the
@@ -754,8 +756,8 @@ review covers slice 2a; Level 3 decisions remain deferred.
    operations, plus old-reader/writer and export compatibility. Include how
    bundles created with the Level 1 definitions policy come to share new asset
    files.
-5. Approve the two recommended [external prompt source](#external-prompt-sources)
-   decisions before slice E1, and confirm that slice order.
+5. Confirm the [external prompt source](#external-prompt-sources) slice order
+   before slice E1. Its contract decisions are recorded.
 
 The target is fewer incidental conflicts, explicit intentional contributions,
 and selective sharing with understandable dependencies. Same-asset edits still
