@@ -9,6 +9,7 @@ import {
 } from "../../runner/src/repeated-start.ts";
 import { startHeadlessEvaluation } from "./evaluation-run.ts";
 import type { HeadlessConcurrency, HeadlessRun, HeadlessRunOptions } from "./headless-experiment.ts";
+import { formatDriftSummary, parseSourceRootFlags, runDrift } from "./prompt-sources.ts";
 import { startHeadlessRepeat } from "./repeated-run.ts";
 import { formatHeadlessRepeatedSummary, formatHeadlessSummary, EXIT_SETUP } from "./summary.ts";
 import { parseToolGrants } from "./tool-grants.ts";
@@ -16,14 +17,18 @@ import { createInProcessTransport, isContainerizedProcess } from "./transport.ts
 
 export const USAGE = `Usage: inference-lens run <project-folder> [options]
        inference-lens repeat <project-folder> [options]
+       inference-lens drift <project-folder> [options]
 
 Runs work from a project folder with no browser and no server, writing the
-same plan, result, and trace files the app writes. Never writes project.json.
+same plan, result, and trace files the app writes. Never writes project.json,
+and never writes a prompt's source file.
 
   run      Runs one evaluation suite, chat or decision (System One). A
            decision suite's connections are called as System One endpoints.
   repeat   Repeats the project's current conversation, as last saved, with
            its saved model, temperature, and enabled tools.
+  drift    Reports whether each linked prompt's file still matches its last
+           pull. Sends nothing and writes nothing.
 
 Options for run:
   --suite <id-or-name>   Suite to run. Optional when the project has one suite.
@@ -31,6 +36,15 @@ Options for run:
   --configuration <id-or-name>
                          Run only this configuration. Repeatable. Every
                          configuration by default.
+  --prompts-from-files   Run every linked prompt the suite uses from its
+                         file's current text instead of its pinned revision,
+                         for this run only. No revision is saved. Any file
+                         that cannot be read or used stops the run.
+
+Options for run and drift:
+  --source-root <name>=<path>
+                         Read the project's source root <name> from the
+                         folder <path>. Repeatable. Wins over the catalog.
 
 Options for repeat:
   --repetitions <n>      How many times, from ${MIN_REPETITION_COUNT} to ${MAX_REPETITION_COUNT}. Default ${DEFAULT_REPETITION_COUNT}.
@@ -69,10 +83,15 @@ Tool catalogs (environment only; what --allow-tool may name):
   INFERENCE_LENS_COMMAND_TOOLS   Path to the command catalog.
   INFERENCE_LENS_MCP_SERVERS     Path to the MCP server catalog.
 
+Source roots (environment; --source-root wins for its name):
+  INFERENCE_LENS_SOURCE_ROOTS    Path to the source root catalog.
+
 Exit codes:
   0  run: every case that ran passed. repeat: every repetition completed.
+     drift: every linked file matches its last pull, or none is linked.
   1  It ran to completion, and a case failed (run) or a repetition failed
-     other than by rate limiting (repeat).
+     other than by rate limiting (repeat). drift: a linked file changed, is
+     missing, or cannot be read.
   2  Usage or setup error. Nothing was sent and no plan was written.
   3  The run started but did not complete, or its only shortfall was rate
      limiting.
@@ -101,6 +120,14 @@ const RUN_OPTIONS = {
   suite: { type: "string" },
   case: { type: "string", multiple: true },
   configuration: { type: "string", multiple: true },
+  "source-root": { type: "string", multiple: true },
+  "prompts-from-files": { type: "boolean", default: false },
+} as const;
+
+const DRIFT_OPTIONS = {
+  "source-root": { type: "string", multiple: true },
+  json: { type: "boolean", default: false },
+  help: { type: "boolean", short: "h", default: false },
 } as const;
 
 const REPEAT_OPTIONS = {
@@ -121,7 +148,9 @@ export async function runCli(argv: readonly string[], io: CliIo): Promise<number
       args: [...argv],
       allowPositionals: true,
       strict: true,
-      options: command === "repeat" ? REPEAT_OPTIONS : command === "run" ? RUN_OPTIONS : SHARED_OPTIONS,
+      options: command === "repeat"
+        ? REPEAT_OPTIONS
+        : command === "run" ? RUN_OPTIONS : command === "drift" ? DRIFT_OPTIONS : SHARED_OPTIONS,
     });
   } catch (error) {
     io.stderr(`${error instanceof Error ? error.message : String(error)}\n\n${USAGE}`);
@@ -133,19 +162,45 @@ export async function runCli(argv: readonly string[], io: CliIo): Promise<number
     return 0;
   }
   const [, projectFolder, ...extra] = positionals;
-  if ((command !== "run" && command !== "repeat") || !projectFolder || extra.length > 0) {
-    io.stderr(`${command && command !== "run" && command !== "repeat" ? `Unknown command "${command}".\n\n` : ""}${USAGE}`);
+  const known = command === "run" || command === "repeat" || command === "drift";
+  if (!known || !projectFolder || extra.length > 0) {
+    io.stderr(`${command && !known ? `Unknown command "${command}".\n\n` : ""}${USAGE}`);
     return EXIT_SETUP;
+  }
+
+  let sourceRoots: Map<string, string>;
+  try {
+    sourceRoots = parseSourceRootFlags((values as { "source-root"?: string[] })["source-root"] ?? []);
+    // Mapping a folder for a run that reads none would look like a file test
+    // that passed without reading anything.
+    if (command === "run" && sourceRoots.size > 0 && !(values as { "prompts-from-files"?: boolean })["prompts-from-files"]) {
+      throw new Error("--source-root reads files only with --prompts-from-files; add it, or drop --source-root.");
+    }
+  } catch (error) {
+    io.stderr(`inference-lens: ${error instanceof Error ? error.message : String(error)}\n`);
+    return EXIT_SETUP;
+  }
+
+  if (command === "drift") {
+    const outcome = await runDrift({ projectDirectory: projectFolder, sourceRoots, environment: io.environment });
+    if (outcome.error) io.stderr(`inference-lens: ${outcome.error}\n`);
+    if (outcome.summary) {
+      io.stdout(values.json ? `${JSON.stringify(outcome.summary, null, 2)}\n` : formatDriftSummary(outcome.summary));
+    }
+    return outcome.exitCode;
   }
 
   let shared: HeadlessRunOptions;
   try {
     shared = {
       projectDirectory: projectFolder,
-      noAuth: new Set(values["no-auth"] ?? []),
-      concurrency: parseConcurrency(values.concurrency, values["connection-concurrency"] ?? []),
-      toolGrants: parseToolGrants(values["allow-tool"] ?? []),
-      retryRateLimits: values["retry-rate-limits"],
+      noAuth: new Set((values as { "no-auth"?: string[] })["no-auth"] ?? []),
+      concurrency: parseConcurrency(
+        (values as { concurrency?: string }).concurrency,
+        (values as { "connection-concurrency"?: string[] })["connection-concurrency"] ?? [],
+      ),
+      toolGrants: parseToolGrants((values as { "allow-tool"?: string[] })["allow-tool"] ?? []),
+      retryRateLimits: (values as { "retry-rate-limits"?: boolean })["retry-rate-limits"] ?? false,
       environment: io.environment,
       transport: createInProcessTransport({ containerized: isContainerizedProcess(io.environment) }),
       onProgress: (line) => io.stderr(`${line}\n`),
@@ -175,9 +230,15 @@ export async function runCli(argv: readonly string[], io: CliIo): Promise<number
     });
     format = formatHeadlessRepeatedSummary;
   } else {
-    const runValues = values as { suite?: string; case?: string[]; configuration?: string[] };
+    const runValues = values as {
+      suite?: string;
+      case?: string[];
+      configuration?: string[];
+      "prompts-from-files"?: boolean;
+    };
     run = startHeadlessEvaluation({
       ...shared,
+      ...(runValues["prompts-from-files"] ? { promptsFromFiles: true, sourceRoots } : {}),
       ...(runValues.suite === undefined ? {} : { suite: runValues.suite }),
       ...(runValues.case === undefined ? {} : { cases: runValues.case }),
       ...(runValues.configuration === undefined ? {} : { configurations: runValues.configuration }),

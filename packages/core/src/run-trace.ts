@@ -14,11 +14,12 @@ import {
 } from "./run-kernel/reducer.ts";
 import { environmentProvenanceIssue } from "./environment.ts";
 import { isSensitiveTemplateVariableName } from "./project.ts";
+import { sourceFilePathSchema, sourceRootNameSchema } from "./source-root-rules.ts";
 import { RunTraceValidationError } from "./run-trace-error.ts";
 import { ORDER_SENSITIVE_KEYS, stableJsonValue } from "./stable-json.ts";
 import { renderTemplateMessages } from "./template-engine.ts";
 
-export const RUN_TRACE_SCHEMA_VERSION = 9;
+export const RUN_TRACE_SCHEMA_VERSION = 10;
 /**
  * Older traces upgrade on read to this version, the last one without value
  * sources: version 9's provenance cannot be inferred from what they recorded.
@@ -182,17 +183,18 @@ const resolvedTemplateUseSchema = resolvedTemplateUseBaseSchema
 
 const templateVariableNameSchema = z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/);
 
-/** Version 9: every recorded value names the layer that supplied it. */
-const sourcedResolvedTemplateUseSchema = resolvedTemplateUseBaseSchema
-  .extend({
-    messages: resolvedTemplateMessagesSchema,
-    valueSources: ownKeyRecord(
-      templateVariableNameSchema,
-      z.enum(["template-default", "environment", "authored-use", "run-override", "case"]),
-    ),
-  })
-  .strict()
-  .superRefine((resolution, context) => {
+const sourcedResolvedTemplateUseShape = {
+  messages: resolvedTemplateMessagesSchema,
+  valueSources: ownKeyRecord(
+    templateVariableNameSchema,
+    z.enum(["template-default", "environment", "authored-use", "run-override", "case"]),
+  ),
+};
+
+function refineSourcedResolvedTemplateUse(
+  resolution: { variableDefaults: Record<string, string>; values: Record<string, string>; valueSources: Record<string, string> },
+  context: z.RefinementCtx,
+): void {
     rejectSensitiveTemplateProvenance(resolution, context);
     const valueNames = Object.keys(resolution.values).sort();
     const sourceNames = Object.keys(resolution.valueSources).sort();
@@ -201,6 +203,42 @@ const sourcedResolvedTemplateUseSchema = resolvedTemplateUseBaseSchema
         code: "custom",
         path: ["valueSources"],
         message: "Template provenance must name a source for every value, and only for values.",
+      });
+    }
+}
+
+/** Version 9: every recorded value names the layer that supplied it. */
+const sourcedResolvedTemplateUseSchema = resolvedTemplateUseBaseSchema
+  .extend(sourcedResolvedTemplateUseShape)
+  .strict()
+  .superRefine(refineSourcedResolvedTemplateUse);
+
+/**
+ * Version 10: a use may record that its messages came from a linked prompt's
+ * file, read for this run only. The relative path and digest are portable;
+ * no host path is ever recorded.
+ */
+const fileSourcedResolvedTemplateUseSchema = resolvedTemplateUseBaseSchema
+  .extend({
+    ...sourcedResolvedTemplateUseShape,
+    fileSource: z
+      .object({
+        sourceRootName: sourceRootNameSchema,
+        path: sourceFilePathSchema,
+        sourceDigest: z.string().regex(/^[a-f0-9]{64}$/),
+        baseTemplateRevisionId: z.string().regex(/^template-revision_.+/),
+      })
+      .strict()
+      .optional(),
+  })
+  .strict()
+  .superRefine((resolution, context) => {
+    refineSourcedResolvedTemplateUse(resolution, context);
+    if (resolution.fileSource && resolution.fileSource.baseTemplateRevisionId !== resolution.templateRevisionId) {
+      context.addIssue({
+        code: "custom",
+        path: ["fileSource", "baseTemplateRevisionId"],
+        message: "A template use's file source must name the revision the use pins.",
       });
     }
   });
@@ -329,6 +367,19 @@ const traceV9EnvelopeSchema = traceV6EnvelopeSchema.extend({
     .passthrough(),
 });
 
+/** Version 10 adds file sources to template uses (E4); otherwise version 9. */
+const traceV10EnvelopeSchema = traceV6EnvelopeSchema.extend({
+  schemaVersion: z.literal(10),
+  input: z
+    .object({
+      runId: z.string().regex(/^run_.+/),
+      templateResolutions: z.array(fileSourcedResolvedTemplateUseSchema),
+      responseMode: z.enum(["streaming", "buffered"]),
+      environment: runEnvironmentSnapshotSchema.optional(),
+    })
+    .passthrough(),
+});
+
 // Discriminated on the version so a rejection reports the offending field in
 // the matching envelope, rather than collapsing every branch's complaint into
 // one union error.
@@ -342,6 +393,7 @@ const traceEnvelopeSchema = z.discriminatedUnion("schemaVersion", [
   traceV7EnvelopeSchema,
   traceV8EnvelopeSchema,
   traceV9EnvelopeSchema,
+  traceV10EnvelopeSchema,
 ]);
 
 export function traceFileName(runId: RunId): string {

@@ -18,6 +18,7 @@ import { environmentProvenanceIssue } from "./environment.ts";
 import { isSensitiveTemplateVariableName } from "./project.ts";
 import { runMetrics } from "./run-metrics.ts";
 import { finalAssistantOutput, outputCharacterCount } from "./run-output.ts";
+import { sourceFilePathSchema, sourceRootNameSchema } from "./source-root-rules.ts";
 import { stableJsonValue } from "./stable-json.ts";
 import { toolNameSchema } from "./tool-name.ts";
 import {
@@ -44,7 +45,10 @@ import type {
   InferenceOptions,
   JsonObject,
   JsonValue,
+  PromptTemplateId,
+  PromptTemplateRevisionId,
   ResolvedRunInput,
+  ResolvedTemplateMessage,
   ResolvedTemplateUse,
   RunId,
   RunState,
@@ -60,9 +64,12 @@ import { isTerminalRunStatus, PROVIDER_WIRE_PROTOCOLS } from "./run-kernel/types
  * Version 6 adds prompt environments: inputs record value sources and the
  * environment they consumed, and an evaluation case holds one input per
  * environment its configurations use. Older plans open as Version 6 with one
- * input, no environment, and no value sources.
+ * input, no environment, and no value sources. Version 7 lets an evaluation
+ * run linked prompts from their files (E4): the suite records each file's
+ * snapshot, and each template use it replaced names the file. A Version 6
+ * plan opens as Version 7 with no file sources.
  */
-export const EXPERIMENT_SCHEMA_VERSION = 6;
+export const EXPERIMENT_SCHEMA_VERSION = 7;
 /**
  * Results moved to Version 5 alone, to record a batch that stopped itself, and
  * to Version 6 to record the concurrency and retry policy they ran under and
@@ -187,6 +194,32 @@ export interface EvaluationExperimentCellV4 extends ExperimentCellBase {
   repetition: number;
 }
 
+/**
+ * A linked prompt's file as one evaluation read it, frozen during preparation
+ * (E4). Every template use of `templateId` in the plan sent `messages` in
+ * place of `baseTemplateRevisionId`'s, with `variableDefaults` in place of
+ * its defaults. No host path is recorded.
+ */
+export interface PromptFileSnapshot {
+  templateId: PromptTemplateId;
+  /** The revision the suite's conversation pins, which the file replaced. */
+  baseTemplateRevisionId: PromptTemplateRevisionId;
+  sourceRootName: string;
+  /** Relative to the source root, `/`-separated. */
+  path: string;
+  /** The file receipt digest this text would have had as a pull. */
+  sourceDigest: string;
+  /** The file's decoded text, with its line endings, and the role it was read as. */
+  authored: { role: ResolvedTemplateMessage["role"]; text: string };
+  interpretation: "expression-v1" | "plain-text-v1";
+  /** Each n8n expression and the native variable it became, reusing earlier pulls' names. */
+  bindings: Array<{ expression: string; variableName: string }>;
+  messages: [ResolvedTemplateMessage, ...ResolvedTemplateMessage[]];
+  variableDefaults: Record<string, string>;
+  /** The pinned revision is not the last one pulled from the file. */
+  replacedLocalRevisions: boolean;
+}
+
 /** A chat evaluation: a conversation revision run per case and configuration. */
 export interface EvaluationExperimentPlan {
   schemaVersion: typeof EXPERIMENT_SCHEMA_VERSION;
@@ -207,6 +240,8 @@ export interface EvaluationExperimentPlan {
     tools: ToolDefinition[];
     cases: EvaluationCaseSnapshotV6[];
     variants: EvaluationVariantSnapshotV6[];
+    /** Version 7: the linked prompts this run read from their files, if any. */
+    promptSources?: PromptFileSnapshot[];
   };
   cells: EvaluationExperimentCellV4[];
 }
@@ -685,6 +720,52 @@ const sourcedResolvedTemplateUseSchema: z.ZodType<ResolvedTemplateUse> =
       }
     });
 
+/** Version 7: a use may name the linked prompt file its messages came from. */
+const fileSourcedResolvedTemplateUseSchema: z.ZodType<ResolvedTemplateUse> =
+  resolvedTemplateUseBaseSchema
+    .extend({
+      messages: templateMessagesSchema,
+      valueSources: ownKeyRecord(
+        templateVariableNameSchema,
+        z.enum(["template-default", "environment", "authored-use", "run-override", "case"]),
+      ).optional(),
+      fileSource: z.object({
+        sourceRootName: sourceRootNameSchema,
+        path: sourceFilePathSchema,
+        sourceDigest: z.string().regex(/^[a-f0-9]{64}$/),
+        baseTemplateRevisionId: entityId("template-revision"),
+      }).strict().optional(),
+    })
+    .strict()
+    .superRefine((resolution, context) => {
+      if (!resolution.valueSources) return;
+      const sourceNames = Object.keys(resolution.valueSources).sort();
+      if (JSON.stringify(Object.keys(resolution.values).sort()) !== JSON.stringify(sourceNames)) {
+        context.addIssue({
+          code: "custom",
+          path: ["valueSources"],
+          message: "Template provenance must name a source for every value, and only for values.",
+        });
+      }
+    });
+
+const promptFileSnapshotSchema = z.object({
+  templateId: entityId("template"),
+  baseTemplateRevisionId: entityId("template-revision"),
+  sourceRootName: sourceRootNameSchema,
+  path: sourceFilePathSchema,
+  sourceDigest: z.string().regex(/^[a-f0-9]{64}$/),
+  authored: z.object({ role: z.enum(["system", "user", "assistant"]), text: z.string() }).strict(),
+  interpretation: z.enum(["expression-v1", "plain-text-v1"]),
+  bindings: z.array(z.object({
+    expression: z.string().min(1),
+    variableName: templateVariableNameSchema,
+  }).strict()),
+  messages: templateMessagesSchema,
+  variableDefaults: ownKeyRecord(templateVariableNameSchema, z.string()),
+  replacedLocalRevisions: z.boolean(),
+}).strict();
+
 const runEnvironmentSnapshotSchema = z
   .object({
     environmentId: entityId("environment"),
@@ -756,6 +837,10 @@ const commonInputV6Schema = commonInputBaseSchema
   })
   .strict();
 
+const commonInputV7Schema = commonInputV6Schema
+  .extend({ templateResolutions: z.array(fileSourcedResolvedTemplateUseSchema) })
+  .strict();
+
 const experimentCellBaseSchema = z.object({
   cellId: entityId("experiment-cell"),
   ordinal: z.number().int().positive(),
@@ -786,8 +871,13 @@ const repeatedPlanSchema = planBaseSchema.extend({
   .strict();
 
 const repeatedPlanV6Schema = repeatedPlanSchema.extend({
-  schemaVersion: z.literal(EXPERIMENT_SCHEMA_VERSION),
+  schemaVersion: z.literal(6),
   commonInput: commonInputV6Schema,
+}).strict();
+
+// A repeated request never reads a file, so Version 7 changes only its label.
+const repeatedPlanV7Schema = repeatedPlanV6Schema.extend({
+  schemaVersion: z.literal(EXPERIMENT_SCHEMA_VERSION),
 }).strict();
 
 const evaluationInputBindingSchema = z.object({
@@ -864,10 +954,29 @@ const evaluationPlanSchema = planBaseSchema.extend({
 }).strict();
 
 const evaluationPlanV6Schema = evaluationPlanSchema.extend({
-  schemaVersion: z.literal(EXPERIMENT_SCHEMA_VERSION),
+  schemaVersion: z.literal(6),
   suite: evaluationPlanSchema.shape.suite.extend({
     cases: z.array(evaluationCaseSnapshotV6Schema).min(1),
     variants: z.array(evaluationVariantSnapshotV6Schema).min(1),
+  }).strict(),
+}).strict();
+
+const evaluationCaseSnapshotV7Schema = evaluationCaseSnapshotV6Schema.extend({
+  inputs: z.array(commonInputV7Schema.pick({
+    conversationId: true,
+    conversationRevisionId: true,
+    messages: true,
+    templateResolutions: true,
+    resolvedAt: true,
+    environment: true,
+  })).min(1),
+}).strict();
+
+const evaluationPlanV7Schema = evaluationPlanV6Schema.extend({
+  schemaVersion: z.literal(EXPERIMENT_SCHEMA_VERSION),
+  suite: evaluationPlanV6Schema.shape.suite.extend({
+    cases: z.array(evaluationCaseSnapshotV7Schema).min(1),
+    promptSources: z.array(promptFileSnapshotSchema).min(1).optional(),
   }).strict(),
 }).strict();
 
@@ -886,9 +995,9 @@ const decisionInputSchema = z.custom<DecisionInput>(
   "Expected a decision request with a state and at least one question.",
 );
 
-// A decision plan's shape did not change in Version 6; a Version 5 one is relabelled.
+// A decision plan's shape did not change in Version 6 or 7; an older one is relabelled.
 const decisionPlanSchema = planBaseSchema.extend({
-  schemaVersion: z.union([z.literal(5), z.literal(EXPERIMENT_SCHEMA_VERSION)]),
+  schemaVersion: z.union([z.literal(5), z.literal(6), z.literal(EXPERIMENT_SCHEMA_VERSION)]),
   kind: z.literal("decision-evaluation"),
   checkSchemaVersion: z.literal(CHECK_SCHEMA_VERSION),
   scoringPolicy: z.literal("strict"),
@@ -928,10 +1037,17 @@ const decisionPlanSchema = planBaseSchema.extend({
 }).strict();
 
 const planSchema = z.discriminatedUnion("kind", [
+  repeatedPlanV7Schema,
+  evaluationPlanV7Schema,
+  decisionPlanSchema,
+]) as unknown as z.ZodType<ExperimentPlan>;
+
+/** Version 6 plans, relabelled Version 7 after parsing: they read no files. */
+const planV6Schema = z.discriminatedUnion("kind", [
   repeatedPlanV6Schema,
   evaluationPlanV6Schema,
   decisionPlanSchema,
-]) as unknown as z.ZodType<ExperimentPlan>;
+]) as unknown as z.ZodType<Omit<ExperimentPlan, "schemaVersion">>;
 
 /** Version 4 and 5 chat plans, upgraded to Version 6 after parsing. */
 const legacyPlanSchema = z.discriminatedUnion("kind", [
@@ -1209,7 +1325,10 @@ function assertPlanReferences(plan: ExperimentPlan): void {
     if (issue) throw new ExperimentValidationError(issue);
     return;
   }
-  if (plan.kind === "evaluation") assertEvaluationInputs(plan);
+  if (plan.kind === "evaluation") {
+    assertEvaluationInputs(plan);
+    assertPromptFileSources(plan);
+  }
   const bindingIds = new Set(plan.suite.inputBindings.map(({ id }) => id));
   if (bindingIds.size !== plan.suite.inputBindings.length) {
     throw new ExperimentValidationError("Evaluation input binding identities must be unique.");
@@ -1262,6 +1381,57 @@ function environmentInputIssue(
     return "An input that records an environment must record valueSources for every template use.";
   }
   return environmentProvenanceIssue(input);
+}
+
+/**
+ * A file snapshot and the template uses it replaced agree: every use of a
+ * snapshot's prompt names that file and sends its messages under the pinned
+ * revision, no other use names a file, and every snapshot replaced something.
+ */
+function assertPromptFileSources(plan: EvaluationExperimentPlan): void {
+  const snapshots = new Map<string, PromptFileSnapshot>();
+  for (const snapshot of plan.suite.promptSources ?? []) {
+    if (snapshots.has(snapshot.templateId)) {
+      throw new ExperimentValidationError(`Evaluation records more than one file source for prompt ${snapshot.templateId}.`);
+    }
+    snapshots.set(snapshot.templateId, snapshot);
+  }
+  const used = new Set<string>();
+  const same = (left: unknown, right: unknown) =>
+    JSON.stringify(stableJsonValue(left)) === JSON.stringify(stableJsonValue(right));
+  for (const evaluationCase of plan.suite.cases) {
+    for (const input of evaluationCase.inputs) {
+      for (const resolution of input.templateResolutions) {
+        const snapshot = snapshots.get(resolution.templateId);
+        if (!snapshot) {
+          if (resolution.fileSource) {
+            throw new ExperimentValidationError(
+              `Evaluation case ${evaluationCase.caseId}: template use ${resolution.templateUseId} names a file source the plan does not record.`,
+            );
+          }
+          continue;
+        }
+        used.add(snapshot.templateId);
+        const expected = {
+          sourceRootName: snapshot.sourceRootName,
+          path: snapshot.path,
+          sourceDigest: snapshot.sourceDigest,
+          baseTemplateRevisionId: snapshot.baseTemplateRevisionId,
+        };
+        if (
+          resolution.templateRevisionId !== snapshot.baseTemplateRevisionId ||
+          !same(resolution.fileSource, expected) ||
+          !same(resolution.messages, snapshot.messages)
+        ) {
+          throw new ExperimentValidationError(
+            `Evaluation case ${evaluationCase.caseId}: template use ${resolution.templateUseId} does not match the file source recorded for its prompt.`,
+          );
+        }
+      }
+    }
+  }
+  const unused = [...snapshots.keys()].find((templateId) => !used.has(templateId));
+  if (unused) throw new ExperimentValidationError(`Evaluation records a file source for prompt ${unused}, which no template use sends.`);
 }
 
 /**
@@ -1517,14 +1687,17 @@ function assertPlanVocabulary(plan: ExperimentPlan): void {
 
 export function parseExperimentPlanFile(value: unknown): ExperimentPlan {
   const version = unsupportedPlanVersionSchema.safeParse(value);
-  if (version.success && ![4, 5, EXPERIMENT_SCHEMA_VERSION].includes(version.data.schemaVersion)) {
+  if (version.success && ![4, 5, 6, EXPERIMENT_SCHEMA_VERSION].includes(version.data.schemaVersion)) {
     throw new ExperimentValidationError(
-      `Experiment plan schema Version ${version.data.schemaVersion} is unsupported; expected Version 4, 5, or ${EXPERIMENT_SCHEMA_VERSION}.`,
+      `Experiment plan schema Version ${version.data.schemaVersion} is unsupported; expected Version 4, 5, 6, or ${EXPERIMENT_SCHEMA_VERSION}.`,
     );
   }
-  const plan: ExperimentPlan = version.success && version.data.schemaVersion === EXPERIMENT_SCHEMA_VERSION
-    ? parseWith(planSchema, value, "experiment plan")
-    : upgradeLegacyPlan(parseWith(legacyPlanSchema, value, "experiment plan"));
+  const schemaVersion = version.success ? version.data.schemaVersion : undefined;
+  const plan: ExperimentPlan = schemaVersion === EXPERIMENT_SCHEMA_VERSION
+    ? { ...parseWith(planSchema, value, "experiment plan"), schemaVersion: EXPERIMENT_SCHEMA_VERSION } as ExperimentPlan
+    : schemaVersion === 6
+      ? { ...parseWith(planV6Schema, value, "experiment plan"), schemaVersion: EXPERIMENT_SCHEMA_VERSION } as ExperimentPlan
+      : upgradeLegacyPlan(parseWith(legacyPlanSchema, value, "experiment plan"));
   assertPlanVocabulary(plan);
   assertPlanReferences(plan);
   assertNoSensitiveProviderOptions(plan);

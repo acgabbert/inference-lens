@@ -129,7 +129,7 @@ function sentText(evaluation: EvaluationExperimentPlan, variantId: string): stri
 test("a case is rendered once per environment its variants use, and each variant sends its own", () => {
   const evaluation = plan(project(variants, staging.id));
 
-  assert.equal(EXPERIMENT_SCHEMA_VERSION, 6);
+  assert.equal(EXPERIMENT_SCHEMA_VERSION, 7);
   const [evaluationCase] = evaluation.suite.cases;
   assert.deepEqual(
     evaluationCase!.inputs.map(({ environment }) => environment),
@@ -209,10 +209,10 @@ test("preflight names the variant whose environment leaves a variable unfilled",
   );
 });
 
-test("a version 6 plan round-trips, and a version 5 plan opens with one input and no environment", () => {
+test("a current plan round-trips, and a version 5 plan opens with one input and no environment", () => {
   const evaluation = plan(project(variants, staging.id));
   const serialized = serializeExperimentPlan(evaluation);
-  assert.equal(JSON.parse(serialized).schemaVersion, 6);
+  assert.equal(JSON.parse(serialized).schemaVersion, 7);
   assert.deepEqual(parseExperimentPlanJson(serialized), evaluation);
 
   const bare = plan(project([{ id: "evaluation-variant_only", name: "Only", overrides: {} }], undefined, { customer: "Default Co" }));
@@ -232,7 +232,7 @@ test("a version 6 plan round-trips, and a version 5 plan opens with one input an
   };
 
   const opened = parseExperimentPlanFile(v5);
-  assert.equal(opened.schemaVersion, 6);
+  assert.equal(opened.schemaVersion, 7);
   assert.deepEqual((opened as EvaluationExperimentPlan).suite.cases[0]!.inputs, [legacyInput]);
   assert.throws(
     () => parseExperimentPlanFile({ ...v5, suite: { ...v5.suite, cases: [{ ...rest, input }] } }),
