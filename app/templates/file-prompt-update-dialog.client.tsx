@@ -98,7 +98,12 @@ export function FilePromptUpdateDialog({ template, lastReceipt, plan, onApply, o
     onClose={() => { if (!busy) onClose(); }}
   >
     <WorkbenchPanel header={<h2 id="file-update-title">Update “{template.name}” from file</h2>}>
-      <div className="file-prompt-body" onDragOver={(event) => { event.preventDefault(); }} onDrop={(event) => { event.preventDefault(); choose(Array.from(event.dataTransfer.files)); }}>
+      <div className="file-prompt-body" onDragOver={(event) => { event.preventDefault(); event.stopPropagation(); }} onDrop={(event) => {
+        event.preventDefault();
+        // The library also accepts file drops; this drop belongs only to the update.
+        event.stopPropagation();
+        choose(Array.from(event.dataTransfer.files));
+      }}>
         <p>Choose or drop the .md or .txt file this prompt tracks, last pulled from {lastFilename}. The file is only read, never written.</p>
         <label>Prompt file<input type="file" accept=".md,.txt,text/plain,text/markdown" disabled={busy} onChange={(event) => choose(Array.from(event.target.files ?? []))} /></label>
         <fieldset disabled={busy}>

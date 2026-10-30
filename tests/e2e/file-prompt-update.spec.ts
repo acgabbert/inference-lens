@@ -106,6 +106,7 @@ test("a pull keeps an open draft, persists through reopen, and refuses a file th
   await expect(notice).toContainText("This draft started from Revision 1; the current revision is Revision 2 (current).");
   await notice.getByRole("button", { name: "Compare with current" }).click();
   await expect(page.getByRole("region", { name: "Revision diff" })).toContainText("vs Revision 2 (current)");
+  await expect(page.getByRole("region", { name: "Revision diff" })).toContainText("My draft about");
 
   await expect.poll(() => parseProjectJson(directory.read("project.json")!).externalImports.length).toBe(2);
   const saved = parseProjectJson(directory.read("project.json")!);
@@ -132,4 +133,31 @@ test("a pull keeps an open draft, persists through reopen, and refuses a file th
   await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
   await expect(dialog).toBeHidden();
   expect(parseProjectJson(directory.read("project.json")!).externalImports.length).toBe(2);
+});
+
+
+test("dropping an update stays in the update dialog and updates the existing prompt", async ({ page }) => {
+  await seedProfile(page);
+  await page.goto("/");
+  await waitForHydration(page);
+  await importProject(page, createProjectFile({ name: "Drop update", request: {
+    provider: "openai-compatible", endpoint: BUFFERED_FIXTURE_ENDPOINT, model: "buffered-test-model", messages: [{ role: "user", content: "Existing" }],
+  } }), "Drop update");
+  await openMode(page, "Prompts");
+  await importAgent(page, "Original");
+  await page.getByRole("button", { name: "Update from file…" }).click();
+  const dialog = page.getByRole("dialog", { name: "Update “agent” from file" });
+  const transfer = await page.evaluateHandle(() => {
+    const transfer = new DataTransfer();
+    transfer.items.add(new File(["Changed"], "agent.md", { type: "text/markdown" }));
+    return transfer;
+  });
+  await dialog.locator(".file-prompt-body").dispatchEvent("drop", { dataTransfer: transfer });
+  await transfer.dispose();
+  await expect(dialog.getByRole("list", { name: "Changes from file" })).toContainText("File text changed");
+  await expect(page.getByRole("dialog")).toHaveCount(1);
+  await dialog.getByRole("button", { name: "Update from file", exact: true }).click();
+  await expect(dialog).toBeHidden();
+  await expect(page.getByLabel("Prompt message 1 content", { exact: true })).toHaveValue("Changed");
+  await expect(page.getByLabel("Revision", { exact: true }).locator("option")).toHaveCount(2);
 });

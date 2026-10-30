@@ -268,8 +268,13 @@ export function ChatPromptTemplateEditor({
   const comparedRevision = selected?.revisions.find(
     ({ id }) => id === comparedRevisionId,
   );
-  const revisionDiff = viewedRevision && comparedRevision
-    ? diffPromptTemplateRevisions(comparedRevision, viewedRevision)
+  // A draft comparison follows the edited content, not its immutable source.
+  // Drafts have no import receipt of their own.
+  const diffRevision = viewedRevision && candidateSourceRevisionId
+    ? { id: viewedRevision.id, createdAt: viewedRevision.createdAt, messages, variableDefaults: defaults }
+    : viewedRevision;
+  const revisionDiff = diffRevision && comparedRevision
+    ? diffPromptTemplateRevisions(comparedRevision, diffRevision)
     : undefined;
   const discovery = useMemo(
     () => discoverTemplateVariables(messages),
@@ -785,15 +790,15 @@ export function ChatPromptTemplateEditor({
               </div>
               {diffOpen && <>
                 <label className="template-revision-diff-compare">
-                  Compare this revision with
+                  {candidateSourceRevisionId ? "Compare this draft with" : "Compare this revision with"}
                   <select
                     value={comparedRevision?.id ?? ""}
-                    disabled={selected.revisions.length < 2}
+                    disabled={!candidateSourceRevisionId && selected.revisions.length < 2}
                     onChange={(event) =>
                       setComparedRevisionId(event.target.value as PromptTemplateRevisionId)
                     }
                   >
-                    {selected.revisions.filter(({ id }) => id !== viewedRevision.id).map((revision) => (
+                    {selected.revisions.filter(({ id }) => candidateSourceRevisionId || id !== viewedRevision.id).map((revision) => (
                       <option key={revision.id} value={revision.id}>
                         {promptRevisionLabel(selected, revision.id)}
                       </option>
@@ -803,7 +808,7 @@ export function ChatPromptTemplateEditor({
                 {!revisionDiff ? (
                   <p className="template-empty">Save another revision to compare this prompt’s message and default history.</p>
                 ) : revisionDiff.identical ? (
-                  <p className="template-empty">These revisions have identical messages, defaults, and import provenance.</p>
+                  <p className="template-empty">{candidateSourceRevisionId ? "The draft and revision" : "These revisions"} have identical messages, defaults, and import provenance.</p>
                 ) : (
                   <ChatRevisionDiff
                     key={`${comparedRevision!.id}:${viewedRevision.id}`}
