@@ -124,10 +124,12 @@ test("copy refuses edited expression-mode text that n8n would read as different 
   });
 });
 
-test("file imports are Project v17: v16 opens as v17, and a v16 file receipt is rejected rather than reinterpreted", async () => {
-  assert.equal(PROJECT_SCHEMA_VERSION, 17);
-  assert.equal(projectFixture().schemaVersion, 17);
-  assert.equal(parseProjectFile({ ...projectFixture(), schemaVersion: 16 }).schemaVersion, 17);
+test("file imports need Project v17: v16 opens as current, and a v16 file receipt is rejected rather than reinterpreted", async () => {
+  assert.equal(PROJECT_SCHEMA_VERSION, 18);
+  assert.equal(projectFixture().schemaVersion, 18);
+  const v16: Record<string, unknown> = { ...projectFixture(), schemaVersion: 16 };
+  delete v16.sourceRoots;
+  assert.equal(parseProjectFile(v16).schemaVersion, 18);
 
   const candidate = await createFilePromptCandidate({ filename: "literal.txt", text: "Keep {{x}}", role: "user", plainText: true });
   const { project } = await importFilePromptCandidates(projectFixture(), [candidate]);

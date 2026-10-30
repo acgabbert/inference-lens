@@ -30,10 +30,12 @@ function DiffSection({ title, before, after }: { title: string; before: ChatProm
  * Owns reading one file and previewing a pull into a file-tracked prompt.
  * Nothing is written until Apply; the source file is never written.
  */
-export function FilePromptUpdateDialog({ template, lastReceipt, plan, onApply, onClose }: {
+export function FilePromptUpdateDialog({ template, lastReceipt, source, plan, onApply, onClose }: {
   template: ChatPromptTemplate;
   /** The last pull; its role and reading are the defaults. */
   lastReceipt: ExternalImportReceipt;
+  /** A linked file already read from its source folder; replaces the picker. */
+  source?: { label: string; path: string; text: string };
   plan(candidate: ExternalPromptCandidate): FilePromptUpdatePlan;
   onApply(candidate: ExternalPromptCandidate): Promise<void>;
   onClose(): void;
@@ -45,10 +47,15 @@ export function FilePromptUpdateDialog({ template, lastReceipt, plan, onApply, o
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
   useEffect(() => {
-    if (!file) return;
+    if (!file && !source) return;
     let cancelled = false;
     void (async (): Promise<Reading> => {
       try {
+        if (source) {
+          const filename = source.path.slice(source.path.lastIndexOf("/") + 1);
+          return { candidate: await createFilePromptCandidate({ filename, path: source.path, text: source.text, role, plainText }) };
+        }
+        if (!file) throw new Error("Choose a file.");
         if (!/\.(md|txt)$/i.test(file.name)) throw new Error("Choose a .md or .txt file.");
         const text = decodePromptFile(await file.arrayBuffer());
         return { candidate: await createFilePromptCandidate({ filename: file.name, text, role, plainText }) };
@@ -57,7 +64,7 @@ export function FilePromptUpdateDialog({ template, lastReceipt, plan, onApply, o
       }
     })().then((next) => { if (!cancelled) setReading(next); });
     return () => { cancelled = true; };
-  }, [file, role, plainText]);
+  }, [file, source, role, plainText]);
   // Planned on every render, so the preview follows the latest project.
   let preview: Preview | undefined;
   if (reading && "error" in reading) {
@@ -102,10 +109,13 @@ export function FilePromptUpdateDialog({ template, lastReceipt, plan, onApply, o
         event.preventDefault();
         // The library also accepts file drops; this drop belongs only to the update.
         event.stopPropagation();
-        choose(Array.from(event.dataTransfer.files));
+        // A linked pull reads its file from the folder, not from a drop.
+        if (!source) choose(Array.from(event.dataTransfer.files));
       }}>
-        <p>Choose or drop the .md or .txt file this prompt tracks, last pulled from {lastFilename}. The file is only read, never written.</p>
-        <label>Prompt file<input type="file" accept=".md,.txt,text/plain,text/markdown" disabled={busy} onChange={(event) => choose(Array.from(event.target.files ?? []))} /></label>
+        {source ? <p>Pull {source.label}, last pulled from {lastFilename}. The file is only read, never written.</p> : <>
+          <p>Choose or drop the .md or .txt file this prompt tracks, last pulled from {lastFilename}. The file is only read, never written.</p>
+          <label>Prompt file<input type="file" accept=".md,.txt,text/plain,text/markdown" disabled={busy} onChange={(event) => choose(Array.from(event.target.files ?? []))} /></label>
+        </>}
         <fieldset disabled={busy}>
           <legend>Read as</legend>
           <label>Message role<select value={role} onChange={(event) => { setReading(undefined); setRole(event.target.value as FilePromptInput["role"]); }}>
@@ -113,7 +123,7 @@ export function FilePromptUpdateDialog({ template, lastReceipt, plan, onApply, o
           </select></label>
           <label className="file-prompt-checkbox"><input type="checkbox" checked={plainText} onChange={(event) => { setReading(undefined); setPlainText(event.target.checked); }} />Treat as plain text</label>
         </fieldset>
-        {file && !preview && <p role="status">Reading file…</p>}
+        {(file || source) && !preview && <p role="status">Reading file…</p>}
         {preview && "error" in preview && <p role="alert">{preview.error}</p>}
         {current && pulled && <>
           <ul aria-label="Changes from file" className="file-prompt-update-status">
@@ -123,7 +133,7 @@ export function FilePromptUpdateDialog({ template, lastReceipt, plan, onApply, o
             {current.interpretationChanged && <li>Reading changes from {readingLabel(current.lastPulled.receipt.invocation.version)} to {readingLabel(current.candidate.invocation.version)}.</li>}
           </ul>
           {current.filenameChanged && <p className="file-prompt-warning">
-            This prompt was last pulled from {lastFilename}; this file is {file?.name}. Check it is the right file.
+            This prompt was last pulled from {lastFilename}; this file is {source?.path ?? file?.name}. Check it is the right file.
           </p>}
           {replacesLocal && <p className="file-prompt-warning">
             Replaces {promptRevisionLabel(template, current.current.id)} as current.

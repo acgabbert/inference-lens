@@ -13,6 +13,7 @@ import type {
   PromptTemplateRecommendedTarget,
   PromptTemplateUse,
   EvaluationSuite,
+  SourceRootRequirement,
 } from "../../packages/core/src/project";
 import { isSensitiveTemplateVariableName } from "../../packages/core/src/project";
 import type {
@@ -45,6 +46,9 @@ import { shouldSuggestN8nTemplatePaste } from "./n8n-template-paste";
 import { n8nPasteSuggestionsEnabled, setN8nPasteSuggestionsEnabled } from "./n8n-template-paste-preference.client";
 import { FilePromptCopy } from "./file-prompt-copy.client";
 import { FilePromptUpdateDialog } from "./file-prompt-update-dialog.client";
+import { FilePromptLinkDialog } from "./file-prompt-link-dialog.client";
+import { LinkedPromptSource, type LinkedPromptSourceView } from "./linked-prompt-source.client";
+import type { LinkedPromptSourcesHandle } from "./use-linked-prompt-sources.client";
 import { filePromptReceipts, type FilePromptUpdatePlan } from "../../packages/core/src/file-prompt-update";
 import type { ExternalPromptCandidate } from "../../packages/core/src/external-prompt-import";
 
@@ -130,6 +134,12 @@ export interface ChatPromptTemplateEditorProps {
   onPlanFileUpdate?(templateId: PromptTemplateId, candidate: ExternalPromptCandidate): FilePromptUpdatePlan;
   /** Applies a reviewed pull and returns the revision it made current. */
   onUpdateFromFile?(templateId: PromptTemplateId, candidate: ExternalPromptCandidate): Promise<ChatPromptTemplateRevision>;
+  /** The project's source roots, which name a linked prompt's folder. */
+  sourceRoots?: SourceRootRequirement[];
+  /** Server folders and linked file reads; absent where links are not offered. */
+  linkedSources?: LinkedPromptSourcesHandle;
+  onLinkFile?(templateId: PromptTemplateId, rootName: string, path: string): void;
+  onUnlinkFile?(templateId: PromptTemplateId): void;
 }
 
 function newPrompt(): PromptTemplateMessages {
@@ -170,6 +180,10 @@ export function ChatPromptTemplateEditor({
   onFocusHandled,
   onPlanFileUpdate,
   onUpdateFromFile,
+  sourceRoots = [],
+  linkedSources,
+  onLinkFile,
+  onUnlinkFile,
 }: ChatPromptTemplateEditorProps) {
   // The shell mounts an editor per prompt; the guards below predate that.
   const selected: ChatPromptTemplate | undefined = template;
@@ -230,6 +244,9 @@ export function ChatPromptTemplateEditor({
     messageIndex: number; start: number; end: number; source: string; pastedSource?: string; revisionId?: PromptTemplateRevisionId; textarea: HTMLTextAreaElement; automatic: boolean;
   }>();
   const [fileUpdateOpen, setFileUpdateOpen] = useState(false);
+  // Set when a pull reads the linked file; the dialog then has no picker.
+  const [fileUpdateSource, setFileUpdateSource] = useState<{ label: string; path: string; text: string }>();
+  const [linkOpen, setLinkOpen] = useState(false);
   const [evaluateRequest, setEvaluateRequest] = useState<undefined | { templateId: PromptTemplateId; revisionId: PromptTemplateRevisionId }>();
   // Open by default when browsing a historical revision (that's why the user
   // navigated here); collapsed while the current draft is being edited. A
@@ -261,6 +278,11 @@ export function ChatPromptTemplateEditor({
   const canUpdateFromFile = Boolean(
     onPlanFileUpdate && onUpdateFromFile && !archived && !sessionOwned && persistenceStatus !== "secondary",
   );
+  const canLinkFile = canUpdateFromFile && Boolean(onLinkFile && onUnlinkFile);
+  const linkRoot = selected?.fileSource && sourceRoots.find(({ id }) => id === selected.fileSource!.sourceRootId);
+  const link: LinkedPromptSourceView | undefined = selected?.fileSource && linkRoot && linkedSources
+    ? { rootName: linkRoot.name, path: selected.fileSource.path, state: linkedSources.stateFor(selected.id) ?? { kind: "checking" } }
+    : undefined;
   const readOnly = Boolean(
     selected &&
       (archived || (viewedRevision?.id !== selected.currentRevisionId && !candidateSourceRevisionId)),
@@ -678,7 +700,15 @@ export function ChatPromptTemplateEditor({
             {fileReceipts.length > 0 && <FilePromptCopy
               messages={messages}
               receipts={fileReceipts}
-              {...(canUpdateFromFile ? { onUpdate: () => setFileUpdateOpen(true) } : {})}
+              {...(canUpdateFromFile ? { onUpdate: () => { setFileUpdateSource(undefined); setFileUpdateOpen(true); } } : {})}
+            />}
+            {fileReceipts.length > 0 && linkedSources && <LinkedPromptSource
+              {...(link ? { link } : {})}
+              sources={linkedSources}
+              canEdit={canLinkFile}
+              onPull={(source) => { setFileUpdateSource(source); setFileUpdateOpen(true); }}
+              onOpenLink={() => setLinkOpen(true)}
+              onUnlink={() => onUnlinkFile?.(selected.id)}
             />}
             <div className="template-editor-body">
               <TemplateMessagesEditor
@@ -913,8 +943,9 @@ export function ChatPromptTemplateEditor({
       {fileUpdateOpen && selected && fileReceipts.length > 0 && onPlanFileUpdate && onUpdateFromFile && <FilePromptUpdateDialog
         template={selected}
         lastReceipt={fileReceipts.at(-1)!}
+        {...(fileUpdateSource ? { source: fileUpdateSource } : {})}
         plan={(candidate) => onPlanFileUpdate(selected.id, candidate)}
-        onClose={() => setFileUpdateOpen(false)}
+        onClose={() => { setFileUpdateOpen(false); setFileUpdateSource(undefined); }}
         onApply={async (candidate) => {
           const revision = await onUpdateFromFile(selected.id, candidate);
           // An open draft keeps its source and edits; the notice above says
@@ -928,6 +959,14 @@ export function ChatPromptTemplateEditor({
           setDiffOpen(true);
           onSelectionChange?.(selected.id, revision.id);
         }}
+      />}
+      {linkOpen && selected && fileReceipts.length > 0 && linkedSources && onLinkFile && <FilePromptLinkDialog
+        template={selected}
+        lastReceipt={fileReceipts.at(-1)!}
+        sources={linkedSources}
+        {...(link ? { current: { path: link.path, ...(linkedSources.folderFor(link.rootName) ? { folder: linkedSources.folderFor(link.rootName)! } : {}) } } : {})}
+        onLink={(rootName, path) => onLinkFile(selected.id, rootName, path)}
+        onClose={() => setLinkOpen(false)}
       />}
       {evaluateRequest && <ModalDialog className="confirmation-dialog" label="Evaluate in a suite" onClose={() => { onDismissEvaluateRevisionError?.(); setEvaluateRequest(undefined); }}>
         <h2>Evaluate in a suite</h2>

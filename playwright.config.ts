@@ -30,6 +30,13 @@ const commandToolCatalog = fileURLToPath(
 const mcpServerCatalog = fileURLToPath(
   new URL("./tests/fixtures/mcp-servers/catalog.json", import.meta.url),
 );
+/**
+ * Linked prompt source folders. Both roots live under `test-results/`, where
+ * each spec writes its own files (`tests/e2e/support/source-roots.ts`).
+ */
+const sourceRootCatalog = fileURLToPath(
+  new URL("./tests/fixtures/source-roots/catalog.json", import.meta.url),
+);
 
 /**
  * The specs whose assertions a colour scheme can actually change.
@@ -106,6 +113,7 @@ export default defineConfig({
         INFERENCE_LENS_N8N_API_KEY: "",
         INFERENCE_LENS_COMMAND_TOOLS: commandToolCatalog,
         INFERENCE_LENS_MCP_SERVERS: mcpServerCatalog,
+        INFERENCE_LENS_SOURCE_ROOTS: sourceRootCatalog,
       },
     },
     {

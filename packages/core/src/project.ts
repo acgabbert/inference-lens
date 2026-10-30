@@ -74,6 +74,7 @@ import type {
   DecisionRequestId,
   DecisionRequestRevisionId,
   EnvironmentId,
+  SourceRootId,
   ExternalImportId,
   InferenceOptions,
   JsonObject,
@@ -94,6 +95,7 @@ import type {
 } from "./run-kernel/types.ts";
 import { createEntityId, PROVIDER_WIRE_PROTOCOLS } from "./run-kernel/types.ts";
 import { randomUUID } from "./random-id.ts";
+import { sourceFilePathSchema, sourceRootNameSchema } from "./source-root-rules.ts";
 import {
   discoverTemplateVariables,
   renderTemplateMessages,
@@ -125,9 +127,9 @@ export function projectGitignoreContents(policy: ProjectGitPolicy): string | nul
   }
 }
 
-export const PROJECT_SCHEMA_VERSION = 17;
+export const PROJECT_SCHEMA_VERSION = 18;
 /** Older versions this build opens through the explicit one-version migration chain. */
-const OPENABLE_PROJECT_SCHEMA_VERSIONS: readonly number[] = [10, 11, 12, 13, 14, 15, 16];
+const OPENABLE_PROJECT_SCHEMA_VERSIONS: readonly number[] = [10, 11, 12, 13, 14, 15, 16, 17];
 
 /**
  * Turns the portable project display name into one safe, visible directory
@@ -268,10 +270,22 @@ export interface ChatPromptTemplateDraft extends PromptTemplateDraftMetadata {
 export interface DecisionPromptTemplateDraft extends PromptTemplateDraftMetadata {
   decision: DecisionInput;
 }
+/**
+ * Where a file-tracked prompt's source lives: a path inside a project source
+ * root, which each deployment maps to a real folder. Current state rather
+ * than a record of one import, so it is not part of any receipt.
+ */
+export interface PromptTemplateFileSource {
+  sourceRootId: SourceRootId;
+  /** Relative to the root, `/`-separated (source-root-rules.ts). */
+  path: string;
+}
+
 export interface ChatPromptTemplate extends PromptTemplateMetadata {
   kind: "chat";
   revisions: ChatPromptTemplateRevision[];
   draft?: ChatPromptTemplateDraft;
+  fileSource?: PromptTemplateFileSource;
 }
 export interface DecisionPromptTemplate extends PromptTemplateMetadata {
   kind: "decision";
@@ -449,7 +463,19 @@ export interface ProjectFileV17 extends Omit<ProjectFileV16, "schemaVersion"> {
   schemaVersion: 17;
 }
 
-export type ProjectFile = ProjectFileV17;
+/** A portable folder name a deployment maps to a real folder, like a connection requirement. */
+export interface SourceRootRequirement {
+  id: SourceRootId;
+  name: string;
+}
+
+/** v18 adds linked prompt sources (docs/SHARED_ASSETS_PERSONAL_WORKBENCH_PLAN.md, E3). */
+export interface ProjectFileV18 extends Omit<ProjectFileV17, "schemaVersion"> {
+  schemaVersion: 18;
+  sourceRoots: SourceRootRequirement[];
+}
+
+export type ProjectFile = ProjectFileV18;
 
 const entityId = <Kind extends Parameters<typeof createEntityId>[0]>(
   kind: Kind,
@@ -730,7 +756,8 @@ const promptTemplateMetadataSchema = {
 };
 const promptTemplateSchema: z.ZodType<PromptTemplate> = z.discriminatedUnion("kind", [
   z.object({ ...promptTemplateMetadataSchema, kind: z.literal("chat"),
-    draft: promptTemplateDraftSchema.optional(), revisions: z.array(promptTemplateRevisionSchema).min(1) }).strict(),
+    draft: promptTemplateDraftSchema.optional(), revisions: z.array(promptTemplateRevisionSchema).min(1),
+    fileSource: z.object({ sourceRootId: entityId("source-root"), path: sourceFilePathSchema }).strict().optional() }).strict(),
   z.object({ ...promptTemplateMetadataSchema, kind: z.literal("decision"),
     draft: decisionPromptTemplateDraftSchema.optional(), revisions: z.array(decisionPromptTemplateRevisionSchema).min(1) }).strict(),
 ]);
@@ -1051,7 +1078,11 @@ const evaluationSuiteSchema = z.unknown().transform((value, context): Evaluation
   return z.NEVER;
 });
 
-const projectFileV17Schema: z.ZodType<ProjectFileV17> = z
+const sourceRootRequirementSchema: z.ZodType<SourceRootRequirement> = z
+  .object({ id: entityId("source-root"), name: sourceRootNameSchema })
+  .strict();
+
+const projectFileV18Schema: z.ZodType<ProjectFileV18> = z
   .object({
     schemaVersion: z.literal(PROJECT_SCHEMA_VERSION),
     projectId: entityId("project"),
@@ -1067,19 +1098,50 @@ const projectFileV17Schema: z.ZodType<ProjectFileV17> = z
     decisionRequests: z.array(decisionRequestSchema),
     decisionRequestRevisions: z.array(decisionRequestRevisionSchema),
     environments: z.array(projectEnvironmentSchema),
+    sourceRoots: z.array(sourceRootRequirementSchema),
     defaults: projectDefaultsSchema,
   })
   .strict()
   .superRefine((project, context) => {
     validateProjectReferences(project, context);
     validateEnvironments(project, context);
+    validateSourceRoots(project, context);
   });
+
+/**
+ * A link names a declared root, belongs to a prompt that a file import
+ * tracks, and is the only link to its file, so a pull has one destination.
+ */
+function validateSourceRoots(project: ProjectFileV18, context: z.RefinementCtx): void {
+  addDuplicateIssues(project.sourceRoots.map(({ id }) => id), ["sourceRoots"], context);
+  addDuplicateIssues(project.sourceRoots.map(({ name }) => name), ["sourceRoots"], context);
+  const rootIds = new Set(project.sourceRoots.map(({ id }) => id));
+  const linked = new Set<string>();
+  project.promptTemplates.forEach((template, index) => {
+    if (template.kind !== "chat" || !template.fileSource) return;
+    const path = ["promptTemplates", index, "fileSource"];
+    const { sourceRootId, path: filePath } = template.fileSource;
+    requireReference(rootIds.has(sourceRootId), [...path, "sourceRootId"], "References an unknown source root.", context);
+    requireReference(
+      project.externalImports.some((receipt) =>
+        receipt.source.adapter === "file" &&
+        receipt.projection.kind === "prompt-template" &&
+        receipt.projection.templateId === template.id),
+      path,
+      "Only a prompt imported from a file can be linked to a source file.",
+      context,
+    );
+    const key = JSON.stringify([sourceRootId, filePath]);
+    requireReference(!linked.has(key), path, "Another prompt is already linked to this file.", context);
+    linked.add(key);
+  });
+}
 
 /**
  * Environment content rules, then every selection of one. A suite or variant
  * that names a missing environment would silently render without it.
  */
-function validateEnvironments(project: ProjectFileV17, context: z.RefinementCtx): void {
+function validateEnvironments(project: ProjectFileV18, context: z.RefinementCtx): void {
   for (const { path, message } of environmentIssues(project.environments)) {
     context.addIssue({ code: "custom", path: ["environments", ...path], message });
   }
@@ -1347,7 +1409,7 @@ function validateSharedProjectReferences(
 }
 
 function validateProjectReferences(
-  project: ProjectFileV17,
+  project: ProjectFileV18,
   context: z.RefinementCtx,
 ): void {
   validateSharedProjectReferences(
@@ -1588,7 +1650,7 @@ function validateProjectReferences(
  * one, because values are portable project data (D40).
  */
 function validateDecisionRequests(
-  project: ProjectFileV17,
+  project: ProjectFileV18,
   context: z.RefinementCtx,
 ): void {
   addDuplicateIssues(project.decisionRequests.map(({ id }) => id), ["decisionRequests"], context);
@@ -1666,7 +1728,7 @@ function checkSuiteKindIssue(
 }
 
 function validateEvaluationSuites(
-  project: ProjectFileV17,
+  project: ProjectFileV18,
   templates: ReadonlyMap<PromptTemplateId, PromptTemplate>,
   context: z.RefinementCtx,
 ): void {
@@ -2083,6 +2145,27 @@ function migrateV16Project(value: Record<string, unknown>): unknown {
   return { ...value, schemaVersion: 17 };
 }
 
+/**
+ * v18 adds linked prompt sources. A v17 project has none, so it gains an
+ * empty list; one that already declares a root or a link was not written by a
+ * v17 build, and is rejected rather than reinterpreted.
+ */
+function migrateV17Project(value: Record<string, unknown>): unknown {
+  const declared = (path: Array<string | number>) => new ProjectValidationError([{
+    code: "custom",
+    path,
+    message: "Linked prompt sources require project schema v18; this document declares v17.",
+  }]);
+  if ("sourceRoots" in value && !(Array.isArray(value.sourceRoots) && value.sourceRoots.length === 0)) {
+    throw declared(["sourceRoots"]);
+  }
+  const templates = Array.isArray(value.promptTemplates) ? (value.promptTemplates as unknown[]) : [];
+  templates.forEach((template, index) => {
+    if (isRecord(template) && "fileSource" in template) throw declared(["promptTemplates", index, "fileSource"]);
+  });
+  return { ...value, schemaVersion: 18, sourceRoots: [] };
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -2104,7 +2187,8 @@ export function parseProjectFile(value: unknown): ProjectFile {
   if (isRecord(value) && value.schemaVersion === 14) value = migrateV14Project(value);
   if (isRecord(value) && value.schemaVersion === 15) value = migrateV15Project(value);
   if (isRecord(value) && value.schemaVersion === 16) value = migrateV16Project(value);
-  const parsed = projectFileV17Schema.safeParse(value);
+  if (isRecord(value) && value.schemaVersion === 17) value = migrateV17Project(value);
+  const parsed = projectFileV18Schema.safeParse(value);
   if (!parsed.success) throw new ProjectValidationError(parsed.error.issues);
   return parsed.data;
 }
@@ -2125,6 +2209,7 @@ const preferredFieldOrder = new Map(
     "decisionRequests",
     "decisionRequestRevisions",
     "environments",
+    "sourceRoots",
     "defaults",
     "id",
     "provider",
@@ -2156,6 +2241,8 @@ const preferredFieldOrder = new Map(
     "currentRevisionId",
     "archivedAt",
     "recommendedTarget",
+    "fileSource",
+    "sourceRootId",
     "draft",
     "sourceRevisionId",
     "revisionName",
@@ -3973,6 +4060,7 @@ export function createProjectFile({
     decisionRequests: [],
     decisionRequestRevisions: [],
     environments: [],
+    sourceRoots: [],
     defaults: {
       conversationRevisionId: revisionId,
       target: {

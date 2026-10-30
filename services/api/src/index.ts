@@ -12,3 +12,4 @@ export * from "./request-security.ts";
 export * from "./run-executor.ts";
 export * from "./runtime-environment.ts";
 export * from "./server-connection-store.ts";
+export * from "./source-root-files.ts";

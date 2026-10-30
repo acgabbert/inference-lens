@@ -6,12 +6,18 @@ import type { PromptTemplateId } from "./run-kernel/types.ts";
 import { scanN8nExpressionRegions } from "../../n8n/src/expression-regions.ts";
 import { externalPromptProjectedMessages } from "./external-prompt-projection.ts";
 import { n8nExpressionIdentity } from "../../n8n/src/expression-naming.ts";
+import { sourceFileBasename, sourceFilePathProblem } from "./source-root-rules.ts";
 
 export interface FilePromptInput {
   filename: string;
   text: string;
   role: "system" | "user" | "assistant";
   plainText: boolean;
+  /**
+   * The file's path inside a linked source root, recorded as the receipt's
+   * resource in place of the bare filename. It must end with `filename`.
+   */
+  path?: string;
 }
 
 /** Decode once at the host boundary; retain line endings and every other code point. */
@@ -27,6 +33,12 @@ export async function createFilePromptCandidate(
   if (!filename || /[\\/]/.test(filename)) {
     throw new Error("Choose a file with a filename, without a path.");
   }
+  if (input.path !== undefined) {
+    const problem = sourceFilePathProblem(input.path);
+    if (problem) throw new Error(problem);
+    if (sourceFileBasename(input.path) !== filename) throw new Error("A source file path must end with its filename.");
+  }
+  const resource = input.path ?? filename;
   const scan = input.plainText
     ? { ok: true as const, regions: [] }
     : scanN8nExpressionRegions(input.text);
@@ -38,7 +50,7 @@ export async function createFilePromptCandidate(
   const candidate = await createExternalPromptCandidate({
     source: {
       adapter: "file",
-      resource: { kind: "file", id: filename, name: filename },
+      resource: { kind: "file", id: resource, name: resource },
     },
     invocation: {
       type: "file",

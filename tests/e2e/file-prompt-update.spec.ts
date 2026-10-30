@@ -25,7 +25,7 @@ test("updates a tracked prompt from a file, keeping variable names and defaults 
   await openMode(page, "Prompts");
   await importAgent(page, "Hello {{ $json.chatInput }}");
   // Assert the actual available actions before using any new selector.
-  expect(await page.locator(".template-editor-scroll .file-prompt-actions button").allTextContents()).toEqual(["Copy as n8n text…", "Update from file…"]);
+  expect(await page.locator(".template-editor-scroll .file-prompt-actions button").allTextContents()).toEqual(["Copy as n8n text…", "Update from file…", "Link to source file…"]);
 
   // A local revision that sets a default; the pull must supersede it, not lose it.
   await page.getByLabel("{{chatInput}}", { exact: true }).fill("cats");

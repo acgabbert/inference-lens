@@ -29,3 +29,9 @@
 .file-prompt-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--space-sm); margin-top: var(--space-md); }
 .file-prompt-body .file-prompt-update-status { padding-inline-start: var(--space-lg); }
 .file-prompt-body section h3 { margin-block: var(--space-md) var(--space-xs); }
+.file-prompt-body .file-prompt-link-files { margin: var(--space-xs) 0 0; padding: 0; list-style: none; }
+.file-prompt-body .file-prompt-link-files code { overflow-wrap: anywhere; }
+.linked-prompt-source .file-prompt-actions { justify-content: flex-start; align-items: center; margin-top: var(--space-xs); }
+.linked-prompt-source .file-prompt-actions > span { margin-inline-end: auto; overflow-wrap: anywhere; }
+.linked-prompt-source-status { margin: var(--space-2xs) 0 0; padding-inline-start: var(--space-lg); color: var(--text-muted); }
+.linked-prompt-source-mapping { display: grid; gap: var(--space-2xs); margin-top: var(--space-xs); }

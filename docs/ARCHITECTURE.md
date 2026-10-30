@@ -124,6 +124,13 @@ only part that cannot be provider-neutral, which is spawning
 than by the page — see [tool execution](TOOL_EXECUTION.md) and
 [command tools](COMMAND_TOOLS.md).
 
+Linked prompt sources split the same way. A project names a portable source
+root and a relative path (`packages/core/src/source-roots.ts`); the operator
+maps root names to folders with `INFERENCE_LENS_SOURCE_ROOTS`, and
+`services/api/src/source-root-files.ts`, reached through `/api/source-roots`,
+reads only inside them. Ordinary runs never read these files: a pull copies a
+file's text into a revision. See [Docker](DOCKER.md#linked-prompt-source-folders).
+
 `packages/core/src/run-trace.ts` owns the versioned diagnostic artifact
 boundary. It validates the file envelope, reconstructs canonical run state from
 the ordered event stream, rejects projections that disagree with those events,

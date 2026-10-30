@@ -263,9 +263,9 @@ test("assessments accept vocabularies 3 to 5 and gate v4 constructs the same way
 });
 
 test("a v11 project opens as the current schema unless it carries a v4 construct", () => {
-  assert.equal(PROJECT_SCHEMA_VERSION, 17);
+  assert.equal(PROJECT_SCHEMA_VERSION, 18);
   const current = suiteProject([schemaCheckJson]);
-  assert.equal(current.schemaVersion, 17);
+  assert.equal(current.schemaVersion, 18);
 
   const v11 = { ...suiteProject([containsCheckJson]), schemaVersion: 11 };
   assert.equal(parseProjectFile(v11).schemaVersion, PROJECT_SCHEMA_VERSION);
