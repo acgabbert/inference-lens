@@ -19,12 +19,12 @@ async function renderRequestEvidence(request) {
 test("request evidence reformats a JSON body and lists the redacted headers", async () => {
   const html = await renderRequestEvidence({
     method: "POST",
-    url: "http://127.0.0.1:44014/v1/systemone",
+    url: "http://127.0.0.1:24014/v1/systemone",
     headers: { authorization: "[redacted]", "content-type": "application/json" },
     body: '{"state":"hi","questions":{"q":{"type":"noul","instructions":"?"}}}',
   });
 
-  assert.match(html, /POST http:\/\/127\.0\.0\.1:44014\/v1\/systemone/);
+  assert.match(html, /POST http:\/\/127\.0\.0\.1:24014\/v1\/systemone/);
   assert.match(html, /Copy raw request/);
   assert.match(html, /&quot;state&quot;: &quot;hi&quot;/);
   assert.match(html, /Headers: authorization: \[redacted\], content-type: application\/json/);

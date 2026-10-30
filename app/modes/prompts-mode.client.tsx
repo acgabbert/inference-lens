@@ -12,6 +12,7 @@ import { isChatEvaluationSuite } from "../../packages/core/src/evaluation-suites
 import { decisionTemplateEvaluationSuites, previewDecisionTemplateEvaluationRetarget } from "../../packages/core/src/decision-template-evaluation";
 
 import type { PromptModelCatalog } from "../templates/recommended-model-editor.client";
+import { useLinkedPromptSources } from "../templates/use-linked-prompt-sources.client";
 
 interface PromptsModeProps {
   modelCatalog?: PromptModelCatalog;
@@ -81,6 +82,8 @@ export function PromptsMode({
   onEvaluationSuiteOpened,
 }: PromptsModeProps) {
   const { target } = navigation;
+  // Mounted only while the Prompts mode is open, so opening it reads linked files.
+  const linkedSources = useLinkedPromptSources(project);
   return (
     <section aria-label="Prompt authoring" className="prompt-mode-workspace">
       <ProjectTemplatesPane
@@ -105,6 +108,14 @@ export function PromptsMode({
         }
         {...(n8nImportDisabledReason ? { n8nImportDisabledReason } : {})}
         onOpenN8nImport={onOpenN8nImport}
+        onImportFiles={templates.importFilePrompts}
+        onPlanFileUpdate={templates.planFileUpdate}
+        onUpdateFromFile={templates.updateFilePrompt}
+        sourceRoots={project?.sourceRoots ?? []}
+        linkedSources={linkedSources}
+        onLinkFile={templates.linkFilePrompt}
+        onUnlinkFile={templates.unlinkFilePrompt}
+        externalImports={project?.externalImports}
         onCreate={templates.createProjectTemplate}
         decisionEditorMemory={templates.decisionEditorMemory}
         onCreateDecision={templates.createDecisionTemplate}

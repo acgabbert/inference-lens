@@ -87,7 +87,7 @@ test("a tool has one grant of any kind, so a second replaces the first", () => {
 });
 
 test("an MCP grant resolves only for the snapshot it was granted against, with no approval mode", () => {
-  const servers = [{ id: "execution-fixture", label: "Fixture", endpointIdentity: "http://127.0.0.1:44019" }];
+  const servers = [{ id: "execution-fixture", label: "Fixture", endpointIdentity: "http://127.0.0.1:24019" }];
   const binding = mcpToolBinding(mcpGrant, lookupTool, servers);
   assert.deepEqual(binding, {
     kind: "mcp",

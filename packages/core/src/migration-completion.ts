@@ -154,19 +154,21 @@ export async function completeSharedProjectMigration(storage: MigrationCompletio
     if (result.kind === "stale-plan") return { kind: "stale-plan" };
     if (result.kind === "blocked") return { kind: "blocked", reason: result.reason, message: result.message };
     // Claims come from reinspection of persisted bytes, not from the host's report.
-    const after = copySnapshot(await storage.read());
-    const shared: SharedOutcome = result.manifest === "failed" ? "uncertain"
+    const asError = (error: unknown) => error instanceof Error ? error : new Error(String(error));
+    // The host may already have written, so an unreadable store is uncertain rather than blocked.
+    const after = await storage.read().then(copySnapshot, asError);
+    const shared: SharedOutcome = after instanceof Error || result.manifest === "failed" ? "uncertain"
       : sameMigrationBytes(after.manifest, verified.sharedBytes) ? "confirmed-shared"
         : sameMigrationBytes(after.manifest, verified.sourceBytes) ? "unchanged-source" : "diverged";
-    const final = await verify(after, projectId, operationId).catch((error: unknown) => error instanceof Error ? error : new Error(String(error)));
+    const final = after instanceof Error ? after : await verify(after, projectId, operationId).catch(asError);
     // A blocked reinspection must not fall back to pre-write dispositions, which could still read as eligible.
-    const finalCandidates = final instanceof Error || "blocked" in final
-      ? candidates.map(({ kind, candidate, destination }): CandidateAssessment => ({
+    const finalCandidates = !(after instanceof Error) && !(final instanceof Error) && !("blocked" in final)
+      ? assess(after, final)
+      : candidates.map(({ kind, candidate, destination }): CandidateAssessment => ({
         kind, candidate, destination, disposition: "unavailable",
         reason: final instanceof Error ? `Reinspection after execution failed: ${final.message}`
-          : `Reinspection after execution was blocked: ${final.blocked.kind}${final.blocked.message ? ` (${final.blocked.message})` : ""}.`,
-      }))
-      : assess(after, final);
+          : "blocked" in final ? `Reinspection after execution was blocked: ${final.blocked.kind}${final.blocked.message ? ` (${final.blocked.message})` : ""}.` : "",
+      }));
     const activated = result.activated.filter(destination => finalCandidates.some(item => item.destination === destination && item.disposition === "present"));
     const unresolved = finalCandidates.some(item => item.disposition === "pending-draft" || item.disposition === "unavailable" || item.disposition === "activate");
     // Activation requires a confirmed shared write; a host reporting otherwise broke the contract.

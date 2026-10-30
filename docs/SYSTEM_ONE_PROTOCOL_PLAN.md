@@ -1724,7 +1724,7 @@ appears only once Decision is usable:
   when the server declares its list (D9a).
 
 D21 browser coverage: `tests/e2e/system-one-decisions.spec.ts` against the
-fixture provider, which the suite now starts on port 44028, plus additions to
+fixture provider, which the suite now starts on port 24028, plus additions to
 `runs-result-discovery` (the history row opens Decision Compose) and
 `provider-protocols` (the server's declaration is shown locked and offered
 for decisions). Not covered in the browser: the batch direction of D24 (a

@@ -110,7 +110,7 @@ test("the recommendation picker discovers models, accepts custom IDs, and can cl
 
 test("connection-only differences are described separately from model mismatches", async ({ page }) => {
   const project = fixture();
-  const other = { ...project.connectionRequirements[0]!, id: "connection_other" as typeof project.connectionRequirements[number]["id"], name: "Other connection", endpoint: "http://127.0.0.1:44015/v1" };
+  const other = { ...project.connectionRequirements[0]!, id: "connection_other" as typeof project.connectionRequirements[number]["id"], name: "Other connection", endpoint: "http://127.0.0.1:24015/v1" };
   project.connectionRequirements.push(other);
   const changed = setPromptTemplateRecommendedTarget(project, project.promptTemplates[0]!.id, { connectionRequirementId: other.id, model: "buffered-test-model" });
   await importProject(page, changed, PROJECT_NAME);

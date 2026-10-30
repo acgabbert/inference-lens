@@ -4,7 +4,7 @@
     {
       "id": "fixture",
       "label": "Synthetic MCP fixture",
-      "endpoint": "http://127.0.0.1:44018/mcp",
+      "endpoint": "http://127.0.0.1:24018/mcp",
       "transport": "streamable-http",
       "callTimeoutMs": 200,
       "authorization": { "kind": "none" }
@@ -12,7 +12,7 @@
     {
       "id": "execution-fixture",
       "label": "Synthetic MCP execution fixture",
-      "endpoint": "http://127.0.0.1:44019/mcp",
+      "endpoint": "http://127.0.0.1:24019/mcp",
       "transport": "streamable-http",
       "callTimeoutMs": 200,
       "authorization": { "kind": "none" }
@@ -20,7 +20,7 @@
     {
       "id": "batch-fixture",
       "label": "Synthetic MCP batch fixture",
-      "endpoint": "http://127.0.0.1:44020/mcp",
+      "endpoint": "http://127.0.0.1:24020/mcp",
       "transport": "streamable-http",
       "connectTimeoutMs": 2000,
       "callTimeoutMs": 200,
@@ -29,7 +29,7 @@
     {
       "id": "interruption-fixture",
       "label": "Synthetic MCP interruption fixture",
-      "endpoint": "http://127.0.0.1:44023/mcp",
+      "endpoint": "http://127.0.0.1:24023/mcp",
       "transport": "streamable-http",
       "connectTimeoutMs": 2000,
       "callTimeoutMs": 30000,

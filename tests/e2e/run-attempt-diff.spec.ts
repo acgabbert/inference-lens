@@ -4,7 +4,7 @@ import { seedProfile, waitForHydration } from "./support";
 
 test("a retry defaults to distinct attempts and explains identical request evidence", async ({ page }) => {
   await seedProfile(page, {
-    endpoint: "http://127.0.0.1:44015/v1",
+    endpoint: "http://127.0.0.1:24015/v1",
     model: "flaky-test-model",
     name: "Flaky fixture",
     streaming: "stream",

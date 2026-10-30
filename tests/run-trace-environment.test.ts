@@ -84,18 +84,18 @@ function withInput(source: RunTrace, change: (input: Record<string, unknown>) =>
   return value;
 }
 
-test("a run with value sources and an environment is written as version 9 and reads back whole", () => {
+test("a run with value sources and an environment is written as the current version and reads back whole", () => {
   const written = JSON.parse(serializeRunTrace(trace([resolution], environment)));
 
-  assert.equal(RUN_TRACE_SCHEMA_VERSION, 9);
-  assert.equal(written.schemaVersion, 9);
+  assert.equal(RUN_TRACE_SCHEMA_VERSION, 10);
+  assert.equal(written.schemaVersion, 10);
   const reopened = parseRunTraceFile(written);
   assert.deepEqual(reopened.input.environment, environment);
   assert.deepEqual(reopened.input.templateResolutions[0]!.valueSources, resolution.valueSources);
 });
 
-test("a run without template uses is version 9; one whose uses lack sources stays version 8", () => {
-  assert.equal(JSON.parse(serializeRunTrace(trace([]))).schemaVersion, 9);
+test("a run without template uses is the current version; one whose uses lack sources stays version 8", () => {
+  assert.equal(JSON.parse(serializeRunTrace(trace([]))).schemaVersion, 10);
 
   const legacy: ResolvedTemplateUse = { ...resolution };
   delete legacy.valueSources;

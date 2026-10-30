@@ -23,7 +23,7 @@ import { executeDecision } from "../services/api/src/index.ts";
  * captures, not something the fixture made up.
  */
 
-const port = 44031;
+const port = 24031;
 const base = `http://127.0.0.1:${port}`;
 let child: ChildProcess;
 

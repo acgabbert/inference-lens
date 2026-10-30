@@ -28,6 +28,7 @@ import { recordedRetryLabel } from "../run/experiment-retry.client.tsx";
 import { formatTokens } from "../run-metrics-format.client.ts";
 import { SideDrawer } from "../workbench-shell.client.tsx";
 import { EvaluationReassessmentDrawer } from "./evaluation-reassessment-drawer.client.tsx";
+import { PromptFileSources } from "./prompt-file-sources.client.tsx";
 import { StructuredCheckDiagnostics } from "./structured-check-diagnostics.client.tsx";
 import type { EvaluationReassessmentHandle } from "./use-evaluation-reassessment.client.ts";
 import { useScheduledDerivation } from "./use-scheduled-derivation.client.ts";
@@ -303,6 +304,7 @@ export function EvaluationResultsWorkspace({
           {placement === "response" && !live && onDismiss && <button className="button" type="button" onClick={onDismiss}>Back to editing</button>}
         </div>
       </header>
+      <PromptFileSources plan={execution.plan} />
 
       {live && <progress aria-label="Evaluation progress" className="experiment-progress" max={live.requested} value={live.finished}>{live.finished} of {live.requested}</progress>}
       {live?.pausedConnections.map((pause) => (

@@ -104,7 +104,7 @@ test("editing a pinned source returns to the exact request use", async ({ page }
 
   await useCard.getByRole("button", { name: "Edit source" }).click();
 
-  await expect(page.getByRole("button", { name: "Prompts" })).toHaveAttribute(
+  await expect(page.getByRole("button", { name: "Prompts", exact: true })).toHaveAttribute(
     "aria-current",
     "page",
   );

@@ -1,7 +1,7 @@
 """Small, read-only MCP server for trying Inference Lens on this machine.
 
 Requires Python 3.10+ and mcp==2.1.1. Run directly with the commands in
-docs/MCP_LOCAL_TRYOUT.md; the endpoint is http://127.0.0.1:44020/mcp.
+docs/MCP_LOCAL_TRYOUT.md; the endpoint is http://127.0.0.1:24020/mcp.
 INFERENCE_LENS_LOCAL_MCP_PORT moves it, which the Python browser lane uses to
 run beside the suite's own fixtures.
 """
@@ -35,7 +35,7 @@ if __name__ == "__main__":
     server.run(
         transport="streamable-http",
         host="127.0.0.1",
-        port=int(os.environ.get("INFERENCE_LENS_LOCAL_MCP_PORT", "44020")),
+        port=int(os.environ.get("INFERENCE_LENS_LOCAL_MCP_PORT", "24020")),
         streamable_http_path="/mcp",
         stateless_http=True,
         json_response=True,

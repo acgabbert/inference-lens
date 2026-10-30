@@ -49,8 +49,8 @@ Do not substitute current n8n behavior for those references without a new,
 separately identified capture.
 
 Playwright owns all listeners and teardown. Do not manually start the app,
-Python server, or providers. The matrix adds Python on 44030 and providers on
-44026–44029 to the base suite's listeners. Run capture lanes sequentially;
+Python server, or providers. The matrix adds Python on 24030 and providers on
+24026–24029 to the base suite's listeners. Run capture lanes sequentially;
 they share the base app port. In a restricted sandbox request loopback
 permission before starting, as described in `tests/e2e/README.md`.
 

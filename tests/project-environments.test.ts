@@ -79,22 +79,22 @@ function rejection(run: () => unknown): Array<{ path: string; message: string }>
   assert.fail("Expected the project to be rejected.");
 }
 
-test("the active project format is v16 and new projects have no environments", () => {
+test("the active project format is v18 and new projects have no environments", () => {
   const project = baseProject();
 
-  assert.equal(PROJECT_SCHEMA_VERSION, 16);
-  assert.equal(project.schemaVersion, 16);
+  assert.equal(PROJECT_SCHEMA_VERSION, 18);
+  assert.equal(project.schemaVersion, 18);
   assert.deepEqual(project.environments, []);
   assert.equal(project.defaults.environmentId, undefined);
 });
 
-test("a v15 project opens as v16 with no environments", () => {
+test("a v15 project opens as v18 with no environments", () => {
   const v15: Record<string, unknown> = { ...baseProject(), schemaVersion: 15 };
   delete v15.environments;
 
   const opened = parseProjectFile(v15);
 
-  assert.equal(opened.schemaVersion, 16);
+  assert.equal(opened.schemaVersion, 18);
   assert.deepEqual(opened.environments, []);
 });
 
@@ -108,7 +108,7 @@ test("a v15 document that already carries environments is rejected, not reinterp
 });
 
 test("a newer project version is refused as newer, not as malformed", () => {
-  const issues = rejection(() => parseProjectFile({ ...baseProject(), schemaVersion: 17 }));
+  const issues = rejection(() => parseProjectFile({ ...baseProject(), schemaVersion: 19 }));
 
   assert.equal(issues[0]?.path, "schemaVersion");
   assert.match(issues[0]!.message, /saved by a newer Inference Lens/);

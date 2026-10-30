@@ -7,6 +7,7 @@ import {
   resolveEvaluationVariant,
 } from "../../core/src/evaluation-suites.ts";
 import { experimentExposedTools } from "../../core/src/experiment.ts";
+import type { PromptFileSnapshot } from "../../core/src/experiment.ts";
 import type { ProjectFile } from "../../core/src/project.ts";
 import { supportsProtocol } from "../../core/src/provider-protocols.ts";
 import { createEntityId } from "../../core/src/run-kernel/types.ts";
@@ -154,6 +155,8 @@ export interface EvaluationStartPlanInput {
   mappedProfileIds: Readonly<Record<string, string>>;
   /** The host-local binding that will serve one of the suite's exposed tools. */
   bindingForTool(tool: ToolDefinition): ToolBinding | undefined;
+  /** Linked prompts this run reads from their files (E4); see `createEvaluationExperimentPlan`. */
+  promptSources?: readonly PromptFileSnapshot[];
 }
 
 /**
@@ -184,6 +187,7 @@ export function createEvaluationStartPlan(input: EvaluationStartPlanInput) {
     selectedCaseIds: input.selectedCaseIds,
     selectedVariantIds: input.selectedVariantIds,
     runtimeTargets,
+    ...(input.promptSources ? { promptSources: input.promptSources } : {}),
   });
   return {
     plan,

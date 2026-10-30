@@ -41,7 +41,7 @@ test("a project model that differs from the profile keeps the budget and the pro
     name: "Header budget project",
     request: {
       provider: "openai-compatible",
-      endpoint: "http://127.0.0.1:44014/v1",
+      endpoint: "http://127.0.0.1:24014/v1",
       model: "a-long-dated-model-identifier-2026-10-28-preview",
       messages: [{ role: "user", content: "Check the header." }],
     },

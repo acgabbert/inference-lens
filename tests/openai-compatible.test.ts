@@ -324,7 +324,7 @@ test("endpoints that dial elsewhere are not the same target", () => {
   assert.equal(
     sameChatCompletionsTarget(
       "http://127.0.0.1:8080/v1",
-      "http://127.0.0.1:44014/v1",
+      "http://127.0.0.1:24014/v1",
     ),
     false,
   );

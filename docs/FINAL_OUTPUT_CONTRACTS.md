@@ -62,6 +62,26 @@ when environments land and carries them. When this feature's PR 2 lands active
 v17, the staged format renumbers to v18 and derives from active v17, the same
 mechanical renumber as before. No version is skipped.
 
+**Revised 2026-10-30: Project v18.** [External prompt file imports](SHARED_ASSETS_PERSONAL_WORKBENCH_PLAN.md#external-prompt-sources)
+landed first and took active Project v17, so this feature takes active
+**Project v18**. RunTrace v10 and ExperimentPlan v7 are unchanged, because file
+imports did not need them. The staged shared format is now v18 in code; when
+PR 2 lands active v18, it renumbers to v19 and derives from active v18. No
+version is skipped.
+
+**Revised 2026-10-30: Project v19.** [Linked prompt sources](SHARED_ASSETS_PERSONAL_WORKBENCH_PLAN.md#e3-implementation-contracts-approved-october-30-2026)
+landed first and took active Project v18, so this feature takes active
+**Project v19**. RunTrace v10 and ExperimentPlan v7 are unchanged. The staged
+shared format is now v19 in code; when PR 2 lands active v19, it renumbers to
+v20 and derives from active v19.
+
+**Revised 2026-10-30: RunTrace v11 and ExperimentPlan v8.** [Linked prompt
+files in the CLI](SHARED_ASSETS_PERSONAL_WORKBENCH_PLAN.md#e4-implementation-contracts-approved-october-30-2026)
+(E4) landed first and took active RunTrace v10 and ExperimentPlan v7, under
+the rule that whichever lands first takes the next number. This feature
+therefore takes **RunTrace v11 and ExperimentPlan v8**; Project v19 is
+unchanged. No version is skipped.
+
 ### D2. Where the adopted message's attribution lives
 
 The agreed policy materializes a "clearly attributed" assistant message when a
@@ -418,14 +438,14 @@ so it uses `effectiveAnswer` and needs no materialization.
 
 Version numbers are from D1, as revised.
 
-- **Project v17.** `ProjectConversationRevision.finalOutput?` is added in a
+- **Project v19.** `ProjectConversationRevision.finalOutput?` is added in a
   strict new version. Older documents upgrade with no contract. A document from the
   new version is rejected by old readers with a version error.
-- **RunTrace v10.** `ResolvedRunInput.finalOutput?`, the two events, the
+- **RunTrace v11.** `ResolvedRunInput.finalOutput?`, the two events, the
   `final_output_error` code and replay validation are added. Older traces
   parse unchanged, get no inferred finalization, and keep `effectiveAnswer`
   equal to `finalAssistantOutput`.
-- **ExperimentPlan v7.** `commonInput` and evaluation case inputs embed
+- **ExperimentPlan v8.** `commonInput` and evaluation case inputs embed
   `ResolvedRunInput`, so they gain `finalOutput?` in a new plan version.
   Execution hashes include it.
 - **ExperimentResult.** No bump. Its shape does not change, and the only runs

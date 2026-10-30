@@ -13,7 +13,7 @@ const FINGERPRINT = "a".repeat(64);
 const declaration: McpServerDeclaration = {
   id: "fixture",
   label: "Fixture",
-  endpoint: "http://127.0.0.1:44019/mcp",
+  endpoint: "http://127.0.0.1:24019/mcp",
   transport: "streamable-http",
   authorization: { kind: "none" },
   connectTimeoutMs: 1_000,
@@ -23,7 +23,7 @@ const declaration: McpServerDeclaration = {
 
 function discovery(tools: McpDiscoveryResponse["tools"]): McpDiscoveryResponse {
   return {
-    server: { id: "fixture", label: "Fixture", endpointIdentity: "http://127.0.0.1:44019" },
+    server: { id: "fixture", label: "Fixture", endpointIdentity: "http://127.0.0.1:24019" },
     serverIdentity: { name: "fixture", version: "1" },
     protocolVersion: "2025-11-25",
     capabilities: { tools: true },
@@ -51,7 +51,7 @@ test("a server that cannot be reached is unavailable and is never called", async
   const invoked: string[] = [];
   const outcome = await executeMcpTool(declaration, target, {}, undefined, dependencies({
     invoked,
-    discover: async () => { throw new Error("connect ECONNREFUSED 127.0.0.1:44019"); },
+    discover: async () => { throw new Error("connect ECONNREFUSED 127.0.0.1:24019"); },
   }));
   assert.deepEqual(outcome, {
     status: "failed",
@@ -79,7 +79,7 @@ test("failures after the call is sent fail only that call", async () => {
   assert.equal(timeout.status === "failed" && timeout.failure.kind, "timeout");
 
   const broken = await executeMcpTool(declaration, target, {}, undefined, dependencies({
-    invoke: async () => { throw new Error("http://127.0.0.1:44019/mcp said no"); },
+    invoke: async () => { throw new Error("http://127.0.0.1:24019/mcp said no"); },
   }));
   assert.deepEqual(broken, {
     status: "failed",

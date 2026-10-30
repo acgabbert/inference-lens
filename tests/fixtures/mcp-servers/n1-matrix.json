@@ -2,7 +2,7 @@
   {
     "id": "primitive-inputs",
     "baseline": "tests/fixtures/n8n/captures/2.39.10/primitive-inputs-tool-workflow",
-    "port": 44026,
+    "port": 24026,
     "toolName": "il_echo_primitives",
     "description": "Return string, number, and boolean inputs with their runtime types for the Inference Lens provider-wire contract fixture.",
     "arguments": {
@@ -15,7 +15,7 @@
   {
     "id": "nested-inputs",
     "baseline": "tests/fixtures/n8n/captures/2.39.10/nested-inputs-tool-workflow",
-    "port": 44027,
+    "port": 24027,
     "toolName": "il_nested_inputs",
     "description": "Synthetic nested inputs contract fixture for Inference Lens.",
     "arguments": {
@@ -33,7 +33,7 @@
   {
     "id": "multiple-output-items",
     "baseline": "tests/fixtures/n8n/captures/2.39.10/multiple-output-items-tool-workflow",
-    "port": 44028,
+    "port": 24028,
     "toolName": "il_multiple_items",
     "description": "Return two ordered workflow output items so the Inference Lens fixture can observe n8n's provider-visible result serialization.",
     "arguments": {
@@ -44,7 +44,7 @@
   {
     "id": "workflow-error",
     "baseline": "tests/fixtures/n8n/captures/2.39.10/workflow-error-tool-workflow",
-    "port": 44029,
+    "port": 24029,
     "toolName": "il_workflow_error",
     "description": "Synthetic workflow error contract fixture for Inference Lens.",
     "arguments": {

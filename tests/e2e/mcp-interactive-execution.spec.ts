@@ -48,7 +48,7 @@ async function allowMcp(page: Page, mode: "ask" | "automatic") {
 }
 
 async function callCount(request: APIRequestContext): Promise<number> {
-  const status = await (await request.get("http://127.0.0.1:44019/status")).json() as { calls: number };
+  const status = await (await request.get("http://127.0.0.1:24019/status")).json() as { calls: number };
   return status.calls;
 }
 
@@ -131,7 +131,7 @@ test("an MCP call waits for approval, then reaches the server and provider conti
   expect(await callCount(request)).toBe(before + 1);
   const trace = await savedTrace(page);
   expect(trace.toolExecutions[0]?.executor).toMatchObject({ kind: "mcp", label: "Synthetic MCP execution fixture" });
-  expect(trace.raw).not.toContain("http://127.0.0.1:44019/mcp");
+  expect(trace.raw).not.toContain("http://127.0.0.1:24019/mcp");
   expect(trace.raw).not.toContain("execution-fixture");
   expect(trace.raw).not.toContain("grantedAt");
 });

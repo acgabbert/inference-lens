@@ -4,6 +4,9 @@ import { useEffect, useRef, useState } from "react";
 import type { DecisionInput } from "../packages/core/src/decision";
 import type { DecisionTemplateEvaluationRetargetPreview } from "../packages/core/src/decision-template-evaluation";
 import { discoverDecisionVariables } from "../packages/core/src/decision-variables";
+import type { ExternalPromptCandidate } from "../packages/core/src/external-prompt-import";
+import { FilePromptImportDialog } from "./templates/file-prompt-import-dialog.client";
+import { priorFilePromptImports } from "../packages/core/src/file-prompt-import";
 import type { PromptTemplate, PromptTemplateMessages } from "../packages/core/src/project";
 import type { EvaluationSuiteId, PromptTemplateId, PromptTemplateRevisionId } from "../packages/core/src/run-kernel";
 import {
@@ -22,6 +25,7 @@ import {
   type PromptLibraryFilters,
   type PromptLibraryKind,
 } from "./templates/prompt-library";
+import { linkedPromptStatusLines } from "./templates/linked-prompt-source.client";
 export { TemplateUseCard } from "./templates/chat-prompt-template-editor.client";
 export type { CompatibleEvaluationSuite } from "./templates/chat-prompt-template-editor.client";
 
@@ -39,6 +43,7 @@ export interface ProjectTemplatesPaneProps
   usageCounts: ReadonlyMap<PromptTemplateId, number>;
   n8nImportDisabledReason?: string;
   onOpenN8nImport(): void;
+  onImportFiles?(candidates: ExternalPromptCandidate[]): Promise<PromptTemplateId[]>;
   onCreate(name: string, messages: PromptTemplateMessages): PromptTemplateId;
   returnLabel?: string;
   onReturn?(): void;
@@ -90,6 +95,7 @@ export function ProjectTemplatesPane(props: ProjectTemplatesPaneProps) {
   const localMemory = useDecisionTemplateEditorMemory();
   const memory = props.decisionEditorMemory ?? localMemory;
   const workspace = useRef<HTMLDivElement>(null);
+  const [fileImport, setFileImport] = useState<File[]>();
   const { focusRequested, onFocusHandled } = props;
   useEffect(() => {
     if (!focusRequested) return;
@@ -150,7 +156,13 @@ export function ProjectTemplatesPane(props: ProjectTemplatesPaneProps) {
   }
 
   return (
-    <div className="templates-workspace" data-readiness-target="prompt-library" ref={workspace} tabIndex={-1}>
+    <div className="templates-workspace" data-readiness-target="prompt-library" ref={workspace} tabIndex={-1}
+      onDragOver={(event) => { if (props.onImportFiles && event.dataTransfer.types.includes("Files")) event.preventDefault(); }}
+      onDrop={(event) => {
+        if (!props.onImportFiles || fileImport || props.persistenceStatus === "secondary") return;
+        event.preventDefault();
+        if (event.dataTransfer.files.length) setFileImport(Array.from(event.dataTransfer.files));
+      }}>
       <aside className="template-sidebar">
         {props.onReturn && (
           <button className="text-button template-return-action" type="button" onClick={props.onReturn}>
@@ -175,6 +187,10 @@ export function ProjectTemplatesPane(props: ProjectTemplatesPaneProps) {
           >
             Import prompt from n8n…
           </button>
+          {props.onImportFiles && <>
+            <button className="button secondary template-import-action" disabled={props.persistenceStatus === "secondary"} type="button" onClick={() => setFileImport([])}>Import prompts from files…</button>
+            <small>Or drop .md or .txt files here.</small>
+          </>}
         </div>
         <input
           aria-label="Search prompts"
@@ -236,6 +252,14 @@ export function ProjectTemplatesPane(props: ProjectTemplatesPaneProps) {
                 {describeEntry(template)} · {props.usageCounts.get(template.id) ?? 0} uses
               </span>
               {template.recommendedTarget && <span>Recommended model: {template.recommendedTarget.model}</span>}
+              {(() => {
+                const state = props.linkedSources?.stateFor(template.id);
+                // A quiet library: only drift and problems are worth a line.
+                const lines = state?.kind === "read"
+                  ? linkedPromptStatusLines(state).filter((line) => line !== "File matches the last pull")
+                  : state && state.kind !== "checking" ? ["Source file unavailable"] : [];
+                return lines.length > 0 && <span className="template-list-source">{lines.join(" · ")}</span>;
+              })()}
             </button>
           ))}
         </div>
@@ -286,6 +310,16 @@ export function ProjectTemplatesPane(props: ProjectTemplatesPaneProps) {
           </div>
         </section>
       )}
+      {fileImport && props.onImportFiles && <FilePromptImportDialog
+        initialFiles={fileImport}
+        priorImports={(filename) => priorFilePromptImports({ externalImports: props.externalImports ?? [], promptTemplates: props.templates }, filename)}
+        onClose={() => setFileImport(undefined)}
+        onImport={async (candidates) => {
+        if (props.persistenceStatus === "secondary") throw new Error("Take over project editing before importing prompts.");
+        const ids = await props.onImportFiles!(candidates);
+        setFilters({ status: "active", kind: "all", search: "" });
+        if (ids[0]) { setSelectedId(ids[0]); onSelectionChange?.(ids[0]); }
+      }} />}
     </div>
   );
 }

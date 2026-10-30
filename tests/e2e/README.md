@@ -12,8 +12,8 @@ npm run test:e2e -- --list                        # what exists
 ```
 
 `npm run test:e2e` starts everything the suite needs: the dev server on
-`127.0.0.1:4300`, the buffered provider fixture on `44014`, the flaky
-provider fixture on `44015`, and the System One capture replay on `44028`
+`127.0.0.1:4300`, the buffered provider fixture on `24014`, the flaky
+provider fixture on `24015`, and the System One capture replay on `24028`
 (`SYSTEM_ONE_FIXTURE_ORIGIN` in `support/`). **Do not start a dev server or a fixture by hand
 for a Playwright run, and do not run a Playwright install step first.** The
 config owns all of it, with `reuseExistingServer: false` — a server you started
@@ -69,7 +69,7 @@ npm run test:e2e -- --config playwright.python-mcp.config.ts
 ```
 
 That config runs only this spec. It starts `scripts/local-mcp-server.py` on
-`44024`, and the kill test starts and kills its own copy on `44025`. The
+`24024`, and the kill test starts and kills its own copy on `24025`. The
 ordinary config skips the spec.
 
 ## Projects

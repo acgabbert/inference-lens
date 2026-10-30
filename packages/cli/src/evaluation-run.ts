@@ -15,7 +15,8 @@ import {
 } from "../../core/src/evaluation-suites.ts";
 import type { ChatEvaluationSuite, DecisionEvaluationSuite } from "../../core/src/evaluation-suites.ts";
 import { evaluationParsedExperimentAggregate } from "../../core/src/experiment.ts";
-import type { EvaluationBakeoffAssessment, EvaluationVariantSnapshot } from "../../core/src/experiment.ts";
+import type { EvaluationBakeoffAssessment, EvaluationVariantSnapshot, PromptFileSnapshot } from "../../core/src/experiment.ts";
+import { projectWithPromptFileSnapshots } from "../../core/src/prompt-file-override.ts";
 import type { EvaluationSuite, ProjectFile } from "../../core/src/project.ts";
 import type { DecisionRun } from "../../core/src/decision.ts";
 import type { RunId, RunState } from "../../core/src/run-kernel/index.ts";
@@ -28,6 +29,7 @@ import {
 } from "./headless-experiment.ts";
 import type { HeadlessConnection, HeadlessRun, HeadlessRunOptions } from "./headless-experiment.ts";
 import { openNodeProjectFolder } from "./project-folder.ts";
+import { namePromptFileDiagnostics, promptSourceSummaries, readPromptFileSnapshots } from "./prompt-sources.ts";
 import { describeDecisionStartBlocker, describeStartBlocker } from "./start-blockers.ts";
 import {
   createHeadlessSummary,
@@ -47,6 +49,13 @@ export interface HeadlessEvaluationOptions extends HeadlessRunOptions {
   cases?: readonly string[];
   /** `--configuration`: configuration IDs or exact names. Every configuration when omitted. */
   configurations?: readonly string[];
+  /**
+   * `--prompts-from-files`: run every linked prompt the suite uses from its
+   * file's text, for this run only (E4). Off when omitted.
+   */
+  promptsFromFiles?: boolean;
+  /** `--source-root <name>=<path>`: folders for the project's source roots, over the catalog's. */
+  sourceRoots?: ReadonlyMap<string, string>;
 }
 
 export interface HeadlessEvaluationOutcome {
@@ -164,6 +173,7 @@ async function runHeadlessEvaluation(
     planPath: folder.planPath(plan.experimentId),
     ...(record.result ? { resultPath: folder.resultPath(plan.experimentId) } : {}),
     tracePaths: record.tracePaths,
+    ...(prepared.promptSources ? { promptSources: promptSourceSummaries(folder.project, prepared.promptSources) } : {}),
   });
   const exitCode = record.error !== undefined ? EXIT_INCOMPLETE : exitCodeForVerdict(summary.verdict);
   return { exitCode, summary, ...(record.error !== undefined ? { error: record.error } : {}) };
@@ -193,9 +203,12 @@ async function prepareHeadlessEvaluation(options: HeadlessEvaluationOptions) {
   };
   const selection = { selectedCaseIds, selectedVariantIds };
   // `run` dispatches on the suite's kind (D36).
+  if (options.promptsFromFiles && !isChatEvaluationSuite(suite)) {
+    throw new HeadlessSetupError(`Suite “${suite.name}” runs decisions; --prompts-from-files reads chat prompts only.`);
+  }
   const prepared = isChatEvaluationSuite(suite)
-    ? prepareChatEvaluation(project, suite, selection, options)
-    : prepareDecisionEvaluation(project, suite, selection, options);
+    ? await prepareChatEvaluation(project, suite, selection, options)
+    : { ...prepareDecisionEvaluation(project, suite, selection, options), promptSources: undefined };
   return { folder, scope, ...prepared };
 }
 
@@ -204,13 +217,20 @@ interface SuiteSelection {
   selectedVariantIds: EvaluationSuite["variants"][number]["id"][];
 }
 
-function prepareChatEvaluation(
+async function prepareChatEvaluation(
   project: ProjectFile,
   suite: ChatEvaluationSuite,
   { selectedCaseIds, selectedVariantIds }: SuiteSelection,
   options: HeadlessEvaluationOptions,
 ) {
   const revisionId = suite.input.conversationRevisionId;
+  // Read before anything else is checked, so a file problem is named first
+  // and nothing is sent when one cannot be used.
+  const promptSources: PromptFileSnapshot[] | undefined = options.promptsFromFiles
+    ? await readPromptFileSnapshots(project, suite, options)
+    : undefined;
+  // Preflight sees the files' text, exactly as the plan will freeze it.
+  const effective = projectWithPromptFileSnapshots(project, promptSources ?? []);
 
   // Only the connections the selected configurations will call need a key.
   const { connections, concurrency } = resolveHeadlessConnections(
@@ -227,7 +247,12 @@ function prepareChatEvaluation(
   const exposed = project.tools.filter(({ id }) => suite.execution.toolIds.includes(id));
   const bindingForTool = headlessBindingForTool(project, exposed, options);
   const blocker = evaluationStartBlocker({
-    diagnostics: evaluationSuitePreflight(project, suite.id, revisionId, selectedCaseIds),
+    diagnostics: namePromptFileDiagnostics(
+      project,
+      suite,
+      promptSources ?? [],
+      evaluationSuitePreflight(effective, suite.id, revisionId, selectedCaseIds),
+    ),
     selectedCaseCount: selectedCaseIds.length,
     selectedVariantCount: selectedVariantIds.length,
     repetitions: suite.execution.repetitions,
@@ -245,8 +270,10 @@ function prepareChatEvaluation(
     profiles,
     mappedProfileIds,
     bindingForTool,
+    ...(promptSources ? { promptSources } : {}),
   });
   return {
+    promptSources,
     work: {
       plan: draft.plan,
       toolBindings: draft.toolBindings.flatMap(({ binding }) => binding ? [binding] : []),

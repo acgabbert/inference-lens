@@ -21,13 +21,13 @@ import {
 /**
  * MCP tools served by repeated runs and evaluations.
  *
- * A dedicated fixture server (port 44020) keeps outage and schema-change
+ * A dedicated fixture server (port 24020) keeps outage and schema-change
  * scenarios away from the interactive specs. The fixture model echoes the
  * tool message into its final answer as `Chicago report: <text>`, so seeing
  * the MCP result in a repetition proves the batch called the server and
  * continued the run — not merely that a run finished.
  */
-const FIXTURE = "http://127.0.0.1:44020";
+const FIXTURE = "http://127.0.0.1:24020";
 const SERVER_ID = "batch-fixture";
 const SERVER_LABEL = "Synthetic MCP batch fixture";
 const MCP_RESULT = "Record sample-42: local MCP result";
@@ -172,7 +172,7 @@ test("a repeated run serves an MCP tool without per-call approval after confirma
   expect(artifacts).toContain('"schemaVersion": 6');
   expect(artifacts).toContain('"startOrder": 2');
   for (const evidence of [artifacts, traces]) {
-    for (const forbidden of [SERVER_ID, "44020", "grantedAt"]) expect(evidence).not.toContain(forbidden);
+    for (const forbidden of [SERVER_ID, "24020", "grantedAt"]) expect(evidence).not.toContain(forbidden);
   }
 
   // Reopening saved results reads evidence only; it never contacts the server.

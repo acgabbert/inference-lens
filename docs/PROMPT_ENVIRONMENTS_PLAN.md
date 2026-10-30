@@ -1,10 +1,10 @@
 # Prompt environments
 
 **Status:** Decision table, limits and format versions accepted 2026-10-29;
-the staged shared format is renumbered to v17. Environments are implemented
+the staged shared format is renumbered to v17, and to v18 on 2026-10-30. Environments are implemented
 before final output, so they keep Project v16 and take RunTrace v9 and
 ExperimentPlan v6; [final output](FINAL_OUTPUT_CONTRACTS.md#d1-format-version-allocation)
-moves to Project v17, RunTrace v10 and ExperimentPlan v7 (see
+moves to Project v18, RunTrace v10 and ExperimentPlan v7 (see
 [Format version](#format-version)). Contract slice accepted and core
 implemented 2026-10-29. The app slice (selector, editor drawer, provenance
 labels) is implemented; evaluation authoring and run comparison remain.
@@ -178,6 +178,14 @@ Project v17, RunTrace v10 and ExperimentPlan v7. This restores option A as
 first accepted: the staged shared format stays v17, carries environments, and
 derives from active v16 when environments land. It renumbers to v18 only when
 final output lands active v17.
+
+**Revised 2026-10-30.** [External prompt file imports](SHARED_ASSETS_PERSONAL_WORKBENCH_PLAN.md#external-prompt-sources) took
+active Project v17 first, so the staged shared format is now v18 and carries
+both. Final output takes Project v18, and the staged format renumbers to v19
+when it lands. Environments keep Project v16, RunTrace v9 and ExperimentPlan v6.
+Later that day [linked prompt sources](SHARED_ASSETS_PERSONAL_WORKBENCH_PLAN.md#e3-implementation-contracts-approved-october-30-2026)
+took Project v18, so final output takes Project v19 and the staged format is
+now v19.
 
 ### Contract slice proposal
 

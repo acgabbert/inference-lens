@@ -15,7 +15,7 @@ const decision: DecisionInput = {
 };
 function base() {
   return createProjectFile({ name: "Saved decisions", idSuffix: "saved", createdAt, request: {
-    provider: "openai-compatible", endpoint: "http://127.0.0.1:44028/v1", model: "chat",
+    provider: "openai-compatible", endpoint: "http://127.0.0.1:24028/v1", model: "chat",
     messages: [{ role: "user", content: "Hi" }], capabilities: resolveProviderCapabilities("openai-compatible"),
   } });
 }
@@ -29,9 +29,9 @@ function document() {
   };
 }
 
-test("a v15 document opens as v16 and round-trips decision template pins with ordered authored content", () => {
+test("a v15 document opens as v18 and round-trips decision template pins with ordered authored content", () => {
   const opened = parseProjectFile(document());
-  assert.equal(opened.schemaVersion, 16);
+  assert.equal(opened.schemaVersion, 18);
   assert.deepEqual(parseProjectJson(serializeProjectFile(opened)), opened);
   const resolved = resolveProjectDecisionRequestRevision(opened, "decision-revision_use")!;
   assert.deepEqual(resolved.decision, decision);
@@ -53,10 +53,10 @@ test("v14 migration adds chat and inline discriminators without changing content
     decisionRequestRevisions: [{ id: "decision-revision_inline", decisionRequestId: "decision-request_inline", createdAt, decision, values: { ticket: "" } }],
   };
   const opened = parseProjectFile(legacy);
-  assert.equal(opened.schemaVersion, 16);
+  assert.equal(opened.schemaVersion, 18);
   assert.deepEqual(opened.promptTemplates[0], { ...legacy.promptTemplates[0], kind: "chat" });
   assert.deepEqual(opened.decisionRequestRevisions[0], { ...legacy.decisionRequestRevisions[0], kind: "inline" });
-  assert.equal(PROJECT_SCHEMA_VERSION, 16);
+  assert.equal(PROJECT_SCHEMA_VERSION, 18);
 });
 
 test("decision request pins and transitive suites are reported as library usages", async () => {

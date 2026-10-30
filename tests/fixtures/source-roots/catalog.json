@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 1,
+  "roots": [
+    { "name": "e2e-prompts", "label": "E2E prompts", "path": "../../../test-results/source-roots/e2e-prompts" },
+    { "name": "e2e-alternate", "path": "../../../test-results/source-roots/e2e-alternate" }
+  ]
+}

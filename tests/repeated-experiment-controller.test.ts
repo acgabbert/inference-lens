@@ -13,7 +13,7 @@ import type { ProjectWorkspaceHandle } from "../app/project-workspace.client.ts"
 
 function plan(count: number): RepeatedExperimentPlanV3 {
   return {
-    schemaVersion: 6,
+    schemaVersion: 7,
     experimentId: "experiment_controller",
     kind: "repeated-request",
     createdAt: "2026-07-30T12:00:00.000Z",
@@ -645,6 +645,10 @@ test("workspace persistence binds plans, terminal traces, and results to PR2 hel
       migration: {
         async read() { throw new Error("not used"); },
         async stage() { throw new Error("not used"); },
+      },
+      migrationCompletion: {
+        async read() { throw new Error("not used"); },
+        async execute() { throw new Error("not used"); },
       },
       workbench: {
         async list() { return []; },

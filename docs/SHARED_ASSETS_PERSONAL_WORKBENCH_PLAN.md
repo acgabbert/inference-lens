@@ -3,7 +3,7 @@
 **Status:** Level 1 implemented October 25, 2026; verification recorded below.
 Level 2 design choices were approved October 25, 2026, as recorded below.
 On October 26, the user approved a bounded first implementation slice: isolated
-v17/workbench v1 core codecs and an in-memory migration planner. That
+v19/workbench v1 core codecs and an in-memory migration planner. That
 [core foundation](SHARED_ASSETS_LEVEL_TWO_DESIGN.md#first-core-slice-october-26-2026)
 is implemented. The subsequent approved
 [recovery-store foundation](archive/SHARED_ASSETS_RECOVERY_STORE_SLICE.md) implements
@@ -14,18 +14,20 @@ opt-in protected staging and read-only restart classification without replacing
 the manifest or activating personal candidates. The next
 [completion design](SHARED_ASSETS_MIGRATION_COMPLETION_DESIGN.md), approved
 October 28, defines an opt-in shared commit, candidate activation and
-stale-handle invalidation; the core module is implemented and the browser and
-native adapters are in progress. Slice 2a's remaining
+stale-handle invalidation; the core module and browser adapter are implemented
+and the native adapter is next. Slice 2a's remaining
 persistence, recovery and compatibility proposals still need review before
 integration. Level 3 remains proposed. The product direction is agreed:
 Inference Lens is a personal workbench for potentially shared assets. Approved
 choices are distinguished from the remaining schema and recovery mechanics that
 still need design review.
 
-**Renumbered 2026-10-29:** the staged shared format is now **v17**; v16 went
-to the active format for [prompt environments](PROMPT_ENVIRONMENTS_PLAN.md),
-which v17 will carry. Dated verification records and archived documents keep
-the number that was current when they were written.
+**Renumbered 2026-10-30:** the staged shared format is now **v19**. Active
+v16 went to [prompt environments](PROMPT_ENVIRONMENTS_PLAN.md) on October 29,
+active v17 to [external prompt file imports](#external-prompt-sources) and
+active v18 to [linked prompt sources](#e3-implementation-contracts-approved-october-30-2026); v19 carries all three.
+Dated verification records and archived documents keep the number that was
+current when they were written.
 
 ## Intended experience
 
@@ -297,11 +299,11 @@ The [slice 2a review](SHARED_ASSETS_LEVEL_TWO_DESIGN.md) inventories the v15
 fields after System One saved prompts/evaluations, supplies concrete before/after
 JSON, and proposes contracts for review. Review revised it on October 26, 2026:
 best-effort write safety (choice 7 above), publication intent kept in the draft
-record, an explicit launch-default writer, the reason for the v17 bump, and a
+record, an explicit launch-default writer, the reason for the v19 bump, and a
 delivery order that limits slice 2b to the arms migration and trial runs need.
 No checklist item below is approved merely by that proposal.
 
-The subsequent core-slice approval covers the shared v17 shape, extracted prompt
+The subsequent core-slice approval covers the shared v19 shape, extracted prompt
 draft and copied-selection v1 records, and pure migration planning while the
 application stays on v15. It does not approve the full 2b persistence contracts
 below. See the [implemented API boundary](SHARED_ASSETS_LEVEL_TWO_DESIGN.md#first-core-slice-october-26-2026).
@@ -553,9 +555,19 @@ prompt files tracked from another repository.
 
 ## External prompt sources
 
-**Status:** Proposed October 30, 2026; its decisions were settled the same day
-and are recorded below. The slice order awaits confirmation, and no slice is
-approved for implementation.
+**Status:** E1–E4 implemented October 30, 2026, under the decisions, review
+recommendations and bounded contracts recorded below, all approved that day.
+The order is E1 → E2 → E3, with Level 3 separate; E2's mapping continuity is
+designed. E1 then took Project v17 and gained a re-import warning
+([follow-ups](#e1-review-follow-ups-october-30-2026)). E2's
+[contracts](#e2-implementation-contracts-approved-october-30-2026) are
+approved. E3's [contracts](#e3-implementation-contracts-approved-october-30-2026)
+were approved and implemented the same day, taking Project v18
+([evidence](#e3-delivery-evidence-october-30-2026)). E4's
+[contracts](#e4-implementation-contracts-approved-october-30-2026) were
+approved as proposed and implemented the same day, taking RunTrace v10 and
+ExperimentPlan v7 ([evidence](#e4-delivery-evidence-october-30-2026)); later
+slices need separate approval.
 
 Some teams keep n8n workflows in Git with each agent prompt extracted to its own
 `.md` or `.txt` file. A sync step using the n8n API detects drift between those
@@ -583,12 +595,14 @@ repositories, scoped to prompt text.
    template itself. Template revisions stay immutable and pinned by uses,
    suites and traces. A changed file produces a new revision only when the user
    pulls it.
-2. **Runs never read the file.** A tracked template carries the text it last
+2. **Ordinary runs never read the file.** A tracked template carries the text it last
    pulled, so a clone without the source repository, the CLI and historical
    traces all work without it. The link drives drift detection and pulling
    only. For Level 3, the source file is therefore not part of an asset's
    dependency closure; a missing source means the template cannot be
-   refreshed, not that it is incomplete.
+   refreshed, not that it is incomplete. E4's explicit working-tree override
+   reads and freezes source text during preparation; execution consumes that
+   snapshot and records its provenance rather than rereading a mutable file.
 3. **Provenance through existing receipts.** Each import or pull records an
    `ExternalImportReceipt` (`packages/core/src/project.ts`) with a new `file`
    adapter beside `n8n`: source identity, `sourceDigest`, authored text,
@@ -674,6 +688,629 @@ Recommended and approved October 30, 2026:
    the text contains `{{`, the files are expression mode by construction and
    the override is only a safety valve.
 
+### Accepted review recommendations (October 30, 2026)
+
+The user approved the following recommendations after review against the current
+receipt and projection code. These settle the direction; the bounded details
+identified below must be specified before the affected implementation slice.
+
+1. **Delivery order.** Proceed in the order E1 → E2 → E3, keeping Level 3
+   separate. E1 is implemented, and E2's mapping
+   continuity was designed alongside it so the initial import does not
+   constrain later updates incorrectly. E4 remains a follow-up to E3.
+2. **Pulling after local edits.** Show an explicit replacement preview and
+   preserve existing local revisions and open drafts. Existing template uses
+   remain pinned; pulling must not silently move them to the new revision.
+   Before E2, specify the new revision's base, whether and how confirmation
+   makes it current, and how an open draft retains its base and edits when the
+   current revision changes. The two drift indicators alone do not settle
+   these publication and draft contracts.
+3. **Content comparison is distinct from receipt identity.** The existing
+   `sourceDigest` hashes validated source metadata, invocation, authored fields
+   and bindings, not just file contents. Keep that receipt-integrity meaning;
+   do not use a changed digest alone to claim that the file text changed.
+   Define a separate content comparison, including newline and BOM handling,
+   before E2. Filename, role and interpretation changes must be distinguishable
+   from text changes. Decide whether the comparison is derived from retained
+   authored text or needs additional representation without assuming that E1
+   and E2 may extend the current serialized receipt.
+4. **Plain text must remain literal through execution and copying.** The
+   current projection copies literal fields through, while the native template
+   engine interprets `{{…}}`. E1 must define escaping for literal spans so the
+   plain-text override preserves them through template rendering, including
+   existing backslashes. Verify import, rendered provider input and Copy as n8n
+   text with round-trip cases; retaining literal text in the receipt alone is
+   insufficient.
+5. **Variable mappings survive updates.** The current projector allocates
+   names afresh for each candidate. Its update contract must reuse prior
+   mappings and specify reserved names, removed expressions and expressions
+   reintroduced by a later pull. Saved inputs must never silently acquire a
+   different meaning because a name was recycled. Design which receipts supply
+   that history and how conflicts with locally authored variables are handled
+   alongside E1, before implementing E2.
+6. **CI overrides are prepared snapshots.** E4 is an explicit exception to
+   ordinary runs using only saved template content. Read source text during
+   preparation, freeze the projected input, and execute that snapshot. Define
+   the evidence representation for source identity, content and projection
+   provenance before E4 so a result remains explainable after the working tree
+   changes, without writing a shared template revision.
+
+### E1 implementation contracts (approved October 30, 2026)
+
+- E1 imports a reviewed batch into the Prompts library without replacing the
+  request, changing its pins or clearing open drafts and run-only values. Each
+  file creates one chat template and one receipt. The dialog previews all files,
+  lets the operator choose each message role and plain-text interpretation, and
+  applies the batch only when every candidate is valid. Picking and dropping
+  `.md` and `.txt` files use the same staging workflow.
+- Core owns candidates, projection, receipt validation and immutable batch
+  application. The file-import dialog owns file reading and preview staging;
+  `useProjectTemplates.importFilePrompts` applies the batch. `PromptsMode`
+  composes the workflow; the page gains no file-reading or import state.
+- Keep the current serialized receipt shape. File receipts require Project v17
+  (see the follow-ups below). Filename goes in
+  `source.resource.id` and `name`; the whole-file invocation is `type: "file"`,
+  `id: "content"`, with the filename stem as its name. `invocation.version`
+  records `expression-v1` or `plain-text-v1`, including expression-mode files
+  with no expressions. Missing bindings carry no execution evidence or values;
+  their inputs must be supplied by the operator. Existing receipt validation
+  permits `user-supplied` evidence only for a resolved value, so E1 does not
+  falsely label missing values as resolved.
+- Decode strict UTF-8, remove one initial BOM, and preserve line endings. E2
+  compares the retained decoded authored text separately from the receipt digest;
+  filename, role and interpretation changes do not establish text drift.
+  Approved October 30: the comparison normalizes CRLF and lone CR to LF on both
+  sides, so a checkout with different line endings (for example
+  `core.autocrlf`) is not drift. The receipt keeps the original text unchanged.
+- Escape every literal opening `{{` with one additional backslash in native
+  content, preserving pre-existing backslashes through native rendering. File
+  receipt validation reproduces that projection. Existing adapters retain their
+  historical projection. Earlier builds do not understand escaped file
+  projections, so a project holding file receipts is Project v17 and those
+  builds report it as saved by a newer Inference Lens. The scanner never
+  evaluates expressions. Unsupported expression syntax gets a preview error and
+  the plain-text override. Native
+  syntax cannot represent an active variable immediately after a backslash;
+  this also gets an explicit preview error, rather than silently losing data.
+- Copy as n8n text previews the editor's current single-message content with
+  native escapes decoded and recorded variables replaced by their expressions.
+  Unmapped or ambiguous variables are named and block copying. No source file
+  is written. Multiple messages cannot be copied as a single file prompt.
+  For an expression-mode file, the copied text must scan back to exactly the
+  recorded expressions in order; an escaped literal `{{` added in the editor
+  would come back as a live n8n expression, so it blocks copying. A plain-text
+  file copies its unescaped literals as written.
+- E2 mapping continuity will use all retained file receipts for the same
+  template, in import order, using the existing expression identity rules.
+  Reserve every historical mapped name and locally authored variable name;
+  reuse a prior expression's name, including after removal and reintroduction.
+  Never recycle a removed expression's name. Ambiguous history or a local
+  variable conflicting with a historical mapping blocks the update for explicit
+  resolution. This is design for E2; E1 implements no update operation. E2's
+  publication/base/open-draft behavior still needs its own bounded approval.
+
+### E1 delivery evidence (October 30, 2026)
+
+- Before the fix, `node --experimental-strip-types --test
+  tests/file-prompt-import.test.ts` failed on actual rendered text: a literal
+  `{{topic}}` became `WRONG` and existing backslashes were consumed. The first
+  browser run failed on the actual action list, which had no file import.
+  A further core regression failed when equivalent expressions sharing a native
+  variable incorrectly blocked copying; unchanged projections now preserve each
+  occurrence's original spelling.
+- `npm run test:core` passed all 1,708 tests, including seven file-import tests.
+  The initial sandboxed full run could not bind fixture listeners; the passing
+  rerun had loopback permissions. Core coverage includes strict UTF-8/BOM/CRLF,
+  interpretation versus content, expression identity and collisions, immutable
+  batch application and digest rejection, retained drafts, project reload,
+  literal rendering, reverse copy and unsupported syntax.
+- `node --test tests/project-templates-render.test.mjs
+  tests/project-templates-interaction.test.mjs tests/n8n-import-render.test.mjs`
+  passed all 22 tests.
+- `npm run test:e2e -- tests/e2e/file-prompt-import.spec.ts
+  tests/e2e/n8n-template-paste.spec.ts
+  tests/e2e/prompt-authoring-workspace.spec.ts
+  tests/e2e/prompt-draft-retention.spec.ts
+  tests/e2e/saved-prompt-revision-diff.spec.ts` passed 25 tests on pinned Chromium.
+  The three new scenarios cover pick/drop, per-file role and interpretation,
+  preview mappings, clipboard contents, cancellation, malformed expressions and
+  invalid UTF-8, keyboard focus, short/phone dialog layout, folder save/reopen,
+  request preservation and unmapped-variable copy refusal. A real buffered
+  fixture run completes, and both browser input and the saved trace's exact
+  serialized provider request contain the expected literal braces/backslashes
+  and supplied expression value. Folder handles are memory-backed test fixtures;
+  these checks do not establish native picker or native filesystem behavior.
+- `npm run lint`, `npm run typecheck`, `npm run typecheck:core` and
+  `git diff --check` passed. Lint reports four pre-existing warnings.
+- The full browser suite and CI have not run. Rust is unchanged, so no Rust
+  checks were needed. Native Tauri interaction, Docker deployment, real n8n
+  synchronization and hosted providers were not exercised. Human review should
+  check the import preview, plain-text wording and copy preview against a real
+  prompt file. E2 update/publication behavior remains unimplemented.
+
+### E1 review follow-ups (October 30, 2026)
+
+- **Fixed: Copy as n8n text could make a literal live.** Editing an
+  expression-mode template to add `\{{ $json.secret }}` copied as
+  `{{ $json.secret }}`, a live n8n expression. The regression test in
+  `tests/file-prompt-import.test.ts` failed on that actual output before the
+  fix. Copying now applies the round-trip rule in the contracts above.
+- **Refactored: batch import adds only library entries.**
+  `externalPromptLibraryAddition` builds one template and its receipt. Template
+  import adds its conversation use on top, and file import uses the builder
+  alone, rather than discarding a conversation revision and defaults after
+  the fact.
+- **Implemented: Project v17.** Approved October 30 so that builds without E1
+  report a newer project rather than rejecting escaped file receipts as
+  malformed. E1 took active v17, which had been reserved for
+  [final output](FINAL_OUTPUT_CONTRACTS.md#d1-format-version-allocation); final
+  output moves to Project v18, and the staged shared format was renumbered to
+  v18, to move to v19 when final output lands. RunTrace and ExperimentPlan are
+  unchanged. A v16 project opens as v17 unchanged; a v16 document already
+  holding a file receipt is rejected rather than reinterpreted.
+- **Implemented: warn on re-import.** Approved October 30. A file's identity
+  is its bare filename, without path or repository, so blocking would stop
+  distinct files that share a name, such as two workflows' `system.md`. The
+  preview warns and names the saved prompts already imported from that exact
+  filename, and separately warns when two files in one batch share a name;
+  importing still creates an independent template and receipt for each. E2
+  pulls into a chosen template, so duplicates are not ambiguous there. E3's
+  linked sources must establish stronger identity before relying on one file
+  per template.
+- **Follow-up verification.** Each regression test ran red on the actual
+  wrong output first: the live `{{ $json.secret }}` copy, a project still at
+  version 16, and a re-import dialog with no warnings. `npm run test:core`
+  passed 1,712 tests; `npm run lint` (four pre-existing warnings),
+  `npm run typecheck` and `npm run typecheck:core` passed; the three
+  rendered template test files passed 22 tests and `tests/theme-tokens.test.ts`
+  passed. `npm run test:e2e -- tests/e2e/file-prompt-import.spec.ts` passed
+  all four scenarios, and `tests/e2e/n8n-template-paste.spec.ts` passed after
+  the import refactor and the version bump, with
+  `evaluation-case-promotion`, `prompt-authoring-workspace`,
+  `prompt-draft-retention` and `saved-prompt-revision-diff` (26 tests in all).
+  The full browser suite and CI have not run.
+
+### E2 implementation contracts (approved October 30, 2026)
+
+These settle recommendation 2's publication, base and open-draft details and
+narrow recommendation 5 and the E1 mapping-continuity design where the code
+showed them to be incomplete (noted inline).
+
+- **No format change.** A pull appends one chat revision anchored to one new
+  file receipt, which Project v17 validation already accepts and reproduces.
+  E1 builds open projects holding pulls.
+- **Eligibility and entry.** "Update from file…" sits beside "Copy as n8n
+  text…" for an active, project-backed chat prompt with at least one file
+  receipt. Its dialog takes one chosen or dropped file. Dropping on the prompt
+  library still starts an import, so a drop is never ambiguous. Pulls are
+  whole-file: when the current revision has several messages, the preview
+  shows the others removed.
+- **Publication.** The pulled revision's messages are exactly the file's
+  projection, with no merge of local edits, and confirming makes it current.
+  The preview names the local revisions it supersedes; they are retained and
+  can be made current again. Pinned uses do not move.
+- **Comparison base.** The last file receipt for the template, in
+  `externalImports` order, and its anchored revision. The preview names that
+  revision, because removing a revision also removes its receipt. It shows
+  "File changes since last pull" (that revision → new) and, when the current
+  revision differs, "Replaces current" (current → new) in the existing revision
+  diff. Text drift (CRLF and lone CR normalized to LF), role change,
+  plain-text change and local revisions after the last pull are reported
+  separately. A changed filename warns but is allowed. Role and plain-text
+  default to the last receipt's. Apply is disabled only when the result would
+  equal the current revision, so an unchanged file can still restore its text
+  over local edits.
+- **Variable defaults.** The new revision carries the current revision's
+  defaults for variables it still uses; the preview lists them.
+- **Open drafts.** A pull never touches `template.draft`: the draft keeps its
+  `sourceRevisionId` and edits. `appendPromptTemplateRevision` clears the
+  draft, so pulls use their own append path. An editor showing a draft whose
+  source is not the current revision says so and offers to compare with the
+  current revision; saving works as before. An editor not on a draft moves to
+  the pulled revision.
+- **Mapping continuity.** Names are reused per expression identity from every
+  file receipt for the template, in order. Reserved names cover every mapped
+  name and every variable in any retained revision, the draft and this
+  template's pinned uses' values; the receipts alone are not enough, because
+  removing a revision removes its receipt. New expressions allocate around the
+  reserved set. A pull is blocked, naming the variable, only when the name it
+  would use is unsafe:
+  - *Ambiguous history:* the expression maps to two names, or its name maps to
+    two expressions across receipts (for example after merging two branches
+    that each pulled).
+  - *Local reintroduction:* the pull would reuse name N for its historical
+    expression, and a revision that is not a file pull uses N after a pulled
+    revision that lacked N. Keeping or renaming a mapped variable locally is
+    continuity, not a conflict; the E1 wording "a local variable conflicting
+    with a historical mapping" is narrowed to this case.
+  Resolution is outside the dialog: change the local revision or import the
+  file as a new prompt.
+- **Ownership.** Core (`packages/core/src/file-prompt-update.ts`) owns the
+  comparison, mapping continuity, preview and immutable apply.
+  `useProjectTemplates.updateFilePrompt` applies it. The update dialog owns
+  file reading and staging; the chat prompt editor owns the action, selection
+  after a pull and the draft notice.
+- **Revision removal.** No UI or CLI removes revisions today. A future one must
+  account for file-tracked prompts: removing every pulled revision untracks
+  the prompt and drops Copy as n8n text and Update from file.
+
+### E2 delivery evidence (October 30, 2026)
+
+- `tests/file-prompt-update.test.ts` was written before
+  `packages/core/src/file-prompt-update.ts` existed and first failed on the
+  missing module, which is the absence of the feature, not a wrong value. Its
+  first run against the implementation failed on an actual wrong value: a file
+  differing only in CRLF line endings reported unchanged text yet offered a
+  new revision (`change: true`); the change check now normalizes line endings
+  too. The receipt-removal regression failed on the recycled name (`{{a}}`
+  instead of `{{a_2}}`) with revision-name reservation disabled, and passed
+  with it restored. The cases cover reuse and allocation around local names,
+  current/draft/pin/default behavior, removal and reintroduction, local
+  reintroduction, merged ambiguous history, text/role/reading/filename
+  comparison, unchanged refusal, restore over local edits and digest
+  tampering.
+- `npm run test:core` passed all 1,719 tests. `npm run lint` (the four
+  pre-existing warnings), `npm run typecheck`, `npm run typecheck:core` and
+  `git diff --check` passed. `node --test tests/project-templates-render.test.mjs
+  tests/project-templates-interaction.test.mjs tests/n8n-import-render.test.mjs`
+  passed 22 tests.
+- `npm run test:e2e -- tests/e2e/file-prompt-update.spec.ts` passed both new
+  scenarios: the action list, modal keyboard contract, short and phone dialog
+  layout, kept/new mappings, carried default, both diffs, Replace current,
+  editor moving to the pulled revision, Copy as n8n text of the new file, and
+  an unchanged request; and, in a folder project, a pull with an open draft
+  (draft kept, notice, Compare with current), the persisted receipts, draft
+  and current revision, reload, and a CRLF/renamed file refused with a
+  warning. The spec was written after the UI, so it was not run red; its
+  first run failed on a wrong selector, not on behavior. Related specs
+  passed: `file-prompt-import`, `n8n-template-paste`,
+  `prompt-authoring-workspace`, `prompt-draft-retention`,
+  `saved-prompt-revision-diff`, `evaluation-case-promotion` (30 tests), and
+  `first-use-prompt-authoring`, `pr2-workbench`, `saved-prompt-picker`,
+  `project-tab-coordination`, `evaluation-prompt-retarget`,
+  `wide-prompt-dialogs`, `n8n-template-native-whitespace`,
+  `ui-ux-workflow-review` (57 tests).
+- Not run: the full browser suite and CI. Rust is unchanged. Native Tauri,
+  Docker, a real n8n sync step and a real prompt repository were not
+  exercised; folder handles are memory-backed fixtures. Human review should
+  check the update dialog's wording, the replacement warning and the draft
+  notice against a real tracked prompt.
+- **Review follow-ups.** A drop inside the update dialog also bubbled to the
+  library's import drop and opened a second dialog; the dialog now stops the
+  drop (its regression failed on two open dialogs before the fix). The
+  editor's diff for a draft now compares the draft's edits rather than its
+  source revision, and a draft with nothing chosen compares with its source,
+  so a single-revision prompt's draft can be compared (its regression failed
+  on "Save another revision to compare" before the fix). Saving a draft
+  creates a revision without a receipt, so comparing a draft with a pulled
+  revision reports the import provenance as removed.
+
+### E3 implementation contracts (approved October 30, 2026)
+
+The user approved these six recommendations together. They link a file-tracked
+prompt to a file in an operator-declared folder, so drift is visible and Pull
+needs no file picker.
+
+1. **Format version.** Whichever of E3 and final output lands first takes
+   active Project v18, and the other renumbers, as E1 did with v17. If E3 lands
+   first, final output moves to Project v19 and the staged shared format
+   renumbers to v19, deriving from active v18. RunTrace and ExperimentPlan are
+   unchanged. A v17 project opens as v18 with no source roots; a v17 document
+   that already declares source roots or a link is rejected rather than
+   reinterpreted.
+2. **What the format stores.**
+   - `ProjectFile.sourceRoots: SourceRootRequirement[]`, each
+     `{ id: "source-root_…", name }`, like `ConnectionRequirement`. `name` is
+     the portable name a deployment maps: lowercase letters, digits and `-`,
+     starting with a letter or digit, at most 63 characters, unique within the
+     project.
+   - `ChatPromptTemplate.fileSource?: { sourceRootId, path }`. `path` is
+     relative to the root: `/`-separated, with no empty, `.`, `..` or hidden
+     (leading `.`) segment, no backslash or control character, at most 1,024
+     characters, ending in `.md` or `.txt`. Validation requires a known root,
+     a chat template with at least one file receipt, and at most one template
+     per root and path, archived templates included.
+   - Receipts keep their shape. A pull through a link records the relative
+     path as `source.resource.id` and `name`; `invocation.name` stays the
+     basename without its extension. E2's filename warning compares basenames,
+     so the first linked pull after a bare-filename import does not warn.
+   - Linking and unlinking change only `fileSource` and `sourceRoots`, never a
+     revision. Unlinking drops a root no other template uses. Level 3 moves
+     `fileSource` into the prompt's asset file unchanged and makes source roots
+     an asset kind, as row L3 of the sequence says.
+3. **How the operator provides folders.** `INFERENCE_LENS_SOURCE_ROOTS` names
+   a JSON catalog read only by `services/api`, per request like the command
+   tool catalog:
+   `{ "schemaVersion": 1, "roots": [{ "name", "path", "label"? }] }`. A
+   relative `path` resolves against the catalog's directory. Unset means no
+   folders; an unreadable or invalid catalog is reported with the variable's
+   name. The API serves the root names and labels, never host paths:
+   `GET /api/source-roots` (the catalog), `GET /api/source-roots/files?root=`
+   (a bounded, sorted list of `.md` and `.txt` paths, skipping hidden entries)
+   and `POST /api/source-roots/read` (a batch of `{ root, path }`, each
+   answered with its text or a named reason). Every route checks the same
+   origin. Reads resolve the real path of the root and of the file and refuse
+   anything outside the root, so a symlink cannot lead out; they accept only
+   regular `.md` and `.txt` files up to 1 MiB of UTF-8. A project's root
+   maps to the operator root with the same name, unless the user picks
+   another for the session. The pick is not saved, like the connection
+   profile mapping.
+4. **One file per template.** Enforced by validation (contract 2). A
+   file-tracked prompt is linked from its editor by choosing an operator
+   folder and one of its files; the preview says whether the file matches the
+   last pull. Linking adds the project root by that name when it is missing.
+   Importing new prompts straight from a folder is a later addition.
+5. **Drift and Pull.** Linked files are read when the Prompts mode opens,
+   after a link or pull, and on Refresh, with no file watching. The library
+   and the editor show "File changed since last pull" (the file's text, with
+   CRLF and lone CR as LF, differs from the last file receipt's authored text)
+   and "Local revisions not from the file" (the current revision is not the
+   last pulled one) separately. Pull opens the E2 dialog with the folder's
+   file already read and no picker; preview and apply are E2's, unchanged.
+6. **When it is unavailable.** Each case is named, as command tools do: no
+   local service (the Tauri desktop app and static hosting), no folders
+   configured (naming the variable), a catalog problem, a project root this
+   server does not declare, and a missing or unreadable file with its reason.
+   A linked prompt keeps working from its last pulled text in every case.
+
+**Ownership.** Core `packages/core/src/source-roots.ts` owns names, path rules,
+the catalog codec, drift derivation and immutable link and unlink;
+`project.ts` owns the v18 schema and migration. `services/api` owns the
+catalog source and confined reads and listings, served by routes under
+`app/api/source-roots/`, with wire types in `packages/contracts`. In the app,
+`useLinkedPromptSources` owns the catalog, the session root mapping, reads and
+drift, composed by the Prompts mode; the link dialog owns choosing a folder and
+file; the update dialog takes an already-read file in place of its picker.
+`deploy/compose.yaml` passes the variable through, and `docs/DOCKER.md`
+describes the mount.
+
+### E3 delivery evidence (October 30, 2026)
+
+- **Implementation notes.** The name, path and catalog rules live in
+  `packages/core/src/source-root-rules.ts`, apart from `source-roots.ts`, so
+  `project.ts` can validate with them without an import cycle. Root ids use
+  the `source-root_` prefix, like the other entity kinds. Refresh also asks
+  for the catalog again, so an operator's edit shows without a reload.
+- `tests/source-roots.test.ts` was written first. A first run in a container
+  without `node_modules` failed on `zod`, which is not evidence; after
+  `npm ci`, run against the unchanged code, it failed on the missing
+  `source-root-rules.ts` module, which is the absence of the feature. Its
+  first run against the implementation failed one case in the test itself (an
+  in-memory `undefined` key compared with a JSON round trip), now compared as
+  serialized bytes. The cases cover the v17 → v18 migration and its
+  rejections, name and path rules, the catalog codec, link, re-link, unlink
+  and root removal, validation (unknown root, duplicate link, untracked
+  prompt), drift with CRLF, and a linked pull recording the relative path
+  without a filename warning.
+- `tests/source-root-files.test.ts` first failed on the missing service
+  export. Against the implementation, one expectation was wrong: a directory
+  symlink pointing outside the root is `outside-root`, not `not-a-file`; the
+  fixture now points one inside the root for `not-a-file`, and the escaping
+  file symlink still covers `outside-root`. The cases cover unset, unreadable
+  and invalid catalogs, relative paths, confinement, the size limit, strict
+  UTF-8, BOM removal, listing order and limits, no host path in any message,
+  and request validation.
+- `npm run test:core` passed all 1,734 tests. `npm run lint` (the four
+  pre-existing warnings), `npm run typecheck`, `npm run typecheck:core` and
+  `git diff --check` passed. `node --test tests/project-templates-render.test.mjs
+  tests/project-templates-interaction.test.mjs tests/n8n-import-render.test.mjs`
+  passed 22 tests.
+- `npm run test:e2e -- tests/e2e/linked-prompt-sources.spec.ts` passed three
+  scenarios against the dev server with `INFERENCE_LENS_SOURCE_ROOTS` set to
+  `tests/fixtures/source-roots/catalog.json`, whose folders live under
+  `test-results/source-roots/`: linking in a folder project (modal contract,
+  short and phone layout, preselected file, persisted `sourceRoots` and
+  `fileSource`, no new revision), drift after an outside edit and Refresh,
+  separate local-revision drift in the editor and the library, Pull with no
+  picker and no filename warning, the persisted relative-path receipt, and a
+  reload; an undeclared root named, read from another folder for the session,
+  a missing file named, and Unlink keeping the root another prompt uses; and
+  the unconfigured message, with the catalog response stubbed. The spec was
+  written after the UI, so it was not run red. To check it is not vacuous,
+  forcing `fileChanged` to `false` made the first scenario fail on
+  "File matches the last pull" where "File changed since last pull" was
+  expected; the change was reverted. `file-prompt-update.spec.ts` now lists
+  "Link to source file…" among the editor's file actions. Related specs
+  passed with it: `file-prompt-update`, `file-prompt-import`,
+  `n8n-template-paste`, `prompt-authoring-workspace`, `prompt-draft-retention`,
+  `saved-prompt-revision-diff`, `evaluation-case-promotion`,
+  `system-one-decision-requests`, `first-use-prompt-authoring`,
+  `saved-prompt-picker`, `project-tab-coordination`, `wide-prompt-dialogs` and
+  `pr2-workbench` (89 tests with the new spec).
+- Not run: the full browser suite and CI. Rust is unchanged. A real Docker
+  container with mounted folders, the Tauri desktop app, a real n8n workflow
+  repository and its sync step were not exercised; the "no local service" and
+  "unreachable" messages were checked only by reading the code. Human review
+  should check the link dialog, the library's drift line and the Docker
+  instructions against a real prompt folder.
+
+### E4 implementation contracts (approved October 30, 2026)
+
+The user chose to record file provenance in RunTrace and asked for
+recommendations on the rest; these are those recommendations. The user
+approved all eight as written on October 30: the plan snapshot and trace
+field, the all-or-nothing override, drift exiting 1 on any changed, missing
+or unreadable file, and contracts 3, 5, 7 and 8 with the ownership below. They let the CLI run a suite against the text in a linked prompt's
+file without saving a revision, and report drift for CI. The principle
+throughout: ordinary runs never read a file, so reading one is an explicit
+opt-in, and a CI run never quietly tests something other than the file.
+
+1. **Format versions.** E4 takes the next RunTrace and ExperimentPlan
+   versions, under the rule E1 and E3 used for Project: if final output lands
+   first with RunTrace v10 and ExperimentPlan v7, E4 takes v11 and v8;
+   otherwise E4 takes v10 and v7 and final output renumbers. Project and
+   ExperimentResult are unchanged. An older trace or plan opens unchanged
+   with no file source; an older-version document that already carries one is
+   rejected rather than reinterpreted. The bump is needed because a resolved
+   template use with a file source still names its pinned revision, and a
+   reader that ignored the source would attribute the file's text to that
+   revision.
+2. **What the formats store.** No host path is recorded anywhere.
+   - The evaluation plan gains `suite.promptSources?: PromptFileSnapshot[]`,
+     one per overridden prompt, frozen during preparation: `templateId`,
+     `baseTemplateRevisionId` (the revision the suite's conversation pins),
+     `sourceRootName`, `path` (relative, E3's rules), `sourceDigest`, the
+     authored text and role, the interpretation version, the
+     expression-to-variable bindings, the projected messages and variable
+     defaults, and `replacedLocalRevisions` (the pinned revision is not the
+     last one pulled from the file).
+   - Each resolved template use in a plan cell and in its RunTrace gains
+     `fileSource?: { sourceRootName, path, sourceDigest, baseTemplateRevisionId }`.
+     `templateRevisionId` keeps the pinned revision; `messages` are already
+     recorded and hold the projected text. The trace therefore explains
+     itself, and the plan holds the full snapshot behind it.
+   - Decision traces are unchanged: decision templates cannot be linked.
+3. **CLI shape.** `run` gains a repeatable `--source-root <name>=<path>` and a
+   boolean `--prompts-from-files`. A relative path resolves against the
+   current directory. `INFERENCE_LENS_SOURCE_ROOTS` supplies names no flag
+   gives; a flag wins for its name. Usage errors (exit 2): a name given twice,
+   a name the project does not declare, and `--source-root` without
+   `--prompts-from-files` on `run`, where it would otherwise look like a file
+   test that read nothing. Reads use the server's confinement unchanged: real
+   paths inside the root, regular `.md` and `.txt` files up to 1 MiB of strict
+   UTF-8, BOM removed.
+4. **What the override covers.** All or nothing: every linked prompt the
+   suite's conversation revision uses, whichever cases and configurations are
+   selected. Each file's text goes through E2's
+   `planFilePromptUpdate` against the project as saved, so variable names are
+   reused exactly as a Pull would reuse them, and replaces the pinned revision
+   in every cell. Template-use values, case bindings and environments apply
+   unchanged, and the existing preflight runs against the projected messages.
+   A selector for single prompts (`--prompt-from-file`) is a later addition.
+5. **When the override cannot run.** Each is a setup error (exit 2) naming the
+   prompt, with nothing sent and no plan written: the suite uses no linked
+   prompt; a root that is not mapped; a missing, unreadable or refused file;
+   a projection problem E2 would show (an expression earlier pulls mapped
+   ambiguously, or a reintroduced name); and a variable that no case binding,
+   use value or default supplies. There is no fallback to saved text. A
+   replaced local revision is not an error: the summary reports it.
+6. **Drift.** A new read-only command,
+   `inference-lens drift <project-folder> [--source-root <name>=<path>]... [--json]`,
+   sends nothing and writes nothing. It reports each non-archived linked
+   prompt as `matches`, `file-changed`, `missing` or `unreadable` (with the
+   reason), using E3's comparison (CRLF and lone CR as LF), and separately
+   whether it has local revisions not from the file. Exit 0 when every file
+   matches (including when nothing is linked, which the output says); 1 when
+   any file changed, is missing or is unreadable; 2 for setup errors (an
+   unmapped root, a catalog or project that cannot be read). Local revisions
+   do not affect the exit code. The JSON summary is its own
+   `kind: "drift"`, schema version 1.
+7. **Run output.** With `--prompts-from-files`, the `run` summary adds
+   `promptSources`: each overridden prompt's root name, path, digest, whether
+   its text differs from the pinned revision, and `replacedLocalRevisions`.
+   It is an additive field on summary v1, as earlier additions were. Drift
+   never fails `run`, and `run`'s exit codes keep their meanings.
+8. **Scope.** `run` with chat suites only. `repeat` does not take the new
+   flags; it can later, unchanged. The browser app runs no overrides; Pull
+   remains its way to bring file text in. The app does read the new fields:
+   the trace panel and plan views name the file and digest beside the pinned
+   revision, so a CI artifact opened in the app is not mistaken for a run of
+   the saved revision.
+
+**Ownership.** Core: a new `packages/core/src/prompt-file-override.ts` builds
+snapshots from a project and file texts through `planFilePromptUpdate`,
+applies them to the template resolutions, and derives the drift report through
+`filePromptDrift`; `experiment.ts` and `run-trace.ts` own their versions and
+migrations. `packages/runner` evaluation start accepts the snapshots when it
+creates the plan. `services/api/src/source-root-files.ts` gains a
+host-neutral way to build a `SourceRootCatalogSource` from mappings, which the
+CLI uses with `readSourceRootFiles`, as it already reuses the command tool
+catalog. The CLI owns flag parsing, the `drift` command and summaries in a new
+`packages/cli/src/prompt-sources.ts`; `main.ts` only routes. In the app,
+`app/run-trace-panel.client.tsx` and the experiment views render the field;
+no route gains state.
+
+**Evidence.** Tests first, red on the actual wrong value: a plan built with
+`--prompts-from-files` whose cells still carry the saved revision's text, and
+a drift run that exits 0 on a changed file. Cover the version migrations and
+rejections; flag parsing and every usage error; confinement (symlink out,
+size, encoding) through the CLI; reuse of variable names across a pull and
+each exit-2 case in contract 5; a pinned older or locally edited revision; a
+trace that explains itself after the file changes; and drift's four states
+and exit codes. Run `npm run test:core`, the CLI tests, lint and typecheck.
+The trace panel change is user-visible: run its render test and an e2e spec
+that opens a CI-produced trace, plus the related specs. A real CI job in a
+workflow repository is not exercised by the suite; record that.
+
+### E4 delivery evidence (October 30, 2026)
+
+- **Implementation notes.** These settle details the contracts left open:
+  - A file is read with its last pull's role and interpretation, as the Pull
+    dialog defaults them. The snapshot's variable defaults are the ones a Pull
+    would give the new revision: the current revision's, for the names the file
+    uses.
+  - A linked prompt pinned at more than one revision in the suite's
+    conversation is a setup error naming it, since one snapshot replaces one
+    revision. A decision suite with `--prompts-from-files` is a setup error.
+  - Preflight runs against the file's text. A finding about a use whose text
+    came from a file is prefixed with the prompt and its file, which is how an
+    unbound new variable names the prompt.
+  - Every new chat trace is written as v10, as every new trace was v9 before;
+    only an overridden use carries `fileSource`. A v9 or older trace, and a v6
+    or older plan, opens unchanged and cannot carry the new fields.
+  - Drift's JSON adds `outcome` (`matches`, `drift` or `nothing-linked`)
+    beside the per-prompt states, so CI can read the result without counting.
+  - `services/api` gained `sourceRootCatalogFromMappings`; the CLI layers
+    `--source-root` over `INFERENCE_LENS_SOURCE_ROOTS` and reads through the
+    unchanged `readSourceRootFiles`.
+  - In the app, `PromptFileSources` (`app/evaluations/prompt-file-sources.client.tsx`)
+    names each file in the evaluation results pane, inside its scroll area, and
+    `TemplateProvenance` names the file and digest beside the pinned revision.
+  - Final output now takes RunTrace v11 and ExperimentPlan v8
+    ([D1](FINAL_OUTPUT_CONTRACTS.md#d1-format-version-allocation)).
+- **Tests first.** `tests/prompt-file-override.test.ts` and
+  `tests/cli-prompt-sources.test.ts` were written before the code. The core
+  test first failed on the missing `prompt-file-override.ts` module, which
+  only shows the feature was absent. Run through `runCli`, the CLI test failed
+  on an unknown `--prompts-from-files` option, which also only shows absence.
+  So the evaluation API was driven directly with the new options against the
+  unchanged code. It exited 0 having sent `"Tell me about addition."`, the
+  saved revision's text, where `"Describe addition in detail."` was expected.
+  That is the red on the actual wrong value, and the test now commits that
+  case. A `drift` run against the unchanged code exited 2 as an unknown command
+  rather than 0, so its red also shows only absence. The render tests for
+  `TemplateProvenance` and the results pane failed on the missing file note,
+  with their fixture plan accepted by the v7 parser.
+- **Coverage.** Version migrations and rejections for both formats. Plan
+  consistency rejections: a use with no file source, other text, other digest.
+  A v6 document carrying only `promptSources`. Every flag usage error. Through
+  the CLI: confinement (a symlink out, over 1 MiB, invalid UTF-8), a missing
+  file and an unmapped root. A suite with no linked prompt. Name reuse across a
+  pull, and a new unbound expression. A pull the dialog would block. A pinned
+  older or locally edited revision. A trace that still explains itself after
+  the file changes. The catalog and flag precedence. Drift's four states,
+  local revisions, and exit codes 0, 1 and 2.
+- **Commands.** `npm run test:core` passed 1,748 tests, including the CLI
+  tests. `npm run lint` (the four pre-existing warnings), `npm run typecheck`,
+  `npm run typecheck:core` and `git diff --check` passed. `node --test
+  tests/run-trace-panel-render.test.mjs tests/run-trace-panel-interaction.test.mjs
+  tests/evaluation-results-render.test.mjs tests/evaluation-results-interaction.test.mjs`
+  passed 22 tests. Older fixtures that wrote plan version 6 or asserted trace
+  version 9 as current now say 7 and 10.
+- **Browser.** `tests/e2e/ci-prompt-file-run.spec.ts` spawns the real CLI
+  with `--prompts-from-files` against the buffered provider fixture. It then
+  opens the folder in the app and checks three things: the results pane names
+  the file, digest and replaced revision; the transcript shows the file's text;
+  the Templates tab names the file. It also checks that the pane fits at the
+  layout audit's sizes. The spec was written after the UI. Reverting both app
+  changes made it fail on the missing "Prompts read from files" region, so it
+  is not vacuous. Its closing layout audit first failed with Run details open
+  at 390×844: the selected run's output and trace scrollers were starved (68
+  and 82 px). The same failure occurs with this change's trace-panel edit
+  reverted, so it predates E4. Any open Run details on a phone does it. The
+  spec closes Run details before it ends rather than exempting the elements.
+  It passed with these related specs, 55 tests in all: `experiment-history`,
+  `linked-prompt-sources`, `run-attempt-diff`, `pr2-workbench`,
+  `evaluation-suite-authoring`, `evaluation-baseline-comparison`,
+  `evaluation-case-promotion`, `evaluation-reassessment`,
+  `evaluation-results-dismissal`, `evaluation-configuration-results` and
+  `file-prompt-update`.
+- Not run: the full browser suite and CI. Rust is unchanged. A real CI job in
+  a workflow repository, the Docker image, a real n8n workflow repository and
+  its sync step were not exercised. Human review should check the wording of
+  the results-pane note and the Templates tab, the CLI's text output, and the
+  starved Run details layout on a phone, which is a separate fix.
+
 ## Implementation ownership and sequence
 
 Before each behavior-changing slice, approve its material contracts from the
@@ -684,7 +1321,7 @@ unresolved persistence, compatibility, or dependency policy during coding.
 | --- | --- | --- |
 | 1 | Creation presets, exact ignore policy, documentation | Core bundle policy; creation dialog; browser/native creation adapters |
 | 2a | Complete field inventory, approved ownership and migration examples | Core shared-definition and personal-state contracts |
-| 2b, core foundation | Isolated v17/workbench v1 codecs and pure migration plan; app remains v15 (implemented October 26) | Core codecs; no workspace integration |
+| 2b, core foundation | Isolated v19/workbench v1 codecs and pure migration plan; app remains v15 (implemented October 26) | Core codecs; no workspace integration |
 | 2b, recovery-store foundation | Protected storage for existing prompt-draft and selections records (implemented October 26); app remains v15 | Core typed store; opt-in browser/native workspace adapters |
 | 2b, integration | Recovery store, migration, prompt/request drafts and scratch inputs, selections, explicit publication and launch defaults | Workspace adapters; personal-workbench, prompt, request, decision and execution-setting owners; compatible app/CLI loaders |
 | 2c | Suite/tool/mock drafts and import staging; explicit saves | Evaluation, tool and import feature owners |
@@ -756,8 +1393,11 @@ review covers slice 2a; Level 3 decisions remain deferred.
    operations, plus old-reader/writer and export compatibility. Include how
    bundles created with the Level 1 definitions policy come to share new asset
    files.
-5. Confirm the [external prompt source](#external-prompt-sources) slice order
-   before slice E1. Its contract decisions are recorded.
+5. Specify the bounded [external prompt source review details](#accepted-review-recommendations-october-30-2026)
+   before their affected slices. E1 → E2 → E3 is approved, with E2's mapping
+   continuity designed alongside E1. E1–E3 are approved and delivered under
+   the bounded contracts above, and E4 is delivered under its approved
+   contracts; later slices need separate approval.
 
 The target is fewer incidental conflicts, explicit intentional contributions,
 and selective sharing with understandable dependencies. Same-asset edits still

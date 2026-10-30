@@ -154,6 +154,64 @@ Container addressing follows the provider rules above:
 The integration issues only public API `GET` requests, refuses redirects, and
 does not run, edit, activate, retry, or delete workflows.
 
+## Linked prompt source folders
+
+A prompt imported from a `.md` or `.txt` file can be linked to that file in a
+folder the server reads, such as a checkout of the repository where n8n agent
+prompts live. The Prompts library then shows when the file has changed since
+the last pull, and **Pull from file…** reads it without a file picker. See the
+[external prompt sources plan](SHARED_ASSETS_PERSONAL_WORKBENCH_PLAN.md#e3-implementation-contracts-approved-october-30-2026).
+Inference Lens only reads these folders; it never writes to them.
+
+Declare the folders in a catalog and name it with
+`INFERENCE_LENS_SOURCE_ROOTS`:
+
+```json
+{
+  "schemaVersion": 1,
+  "roots": [
+    { "name": "n8n-workflows", "label": "n8n workflows", "path": "/sources/n8n-workflows" }
+  ]
+}
+```
+
+| Field | Required | Meaning |
+| --- | --- | --- |
+| `schemaVersion` | yes | `1`. |
+| `name` | yes | The portable name a project's links use: lowercase letters, digits and dash, starting with a letter or digit, at most 63 characters, and unique. A project linked under the same name on another deployment reads from that deployment's folder. |
+| `path` | yes | The folder. A relative path resolves against the catalog's own directory. |
+| `label` | no | What the link dialog shows beside the name. |
+
+With the published Compose template, mount the catalog and each folder
+read-only and add the variable to `.env`:
+
+```yaml
+    volumes:
+      - ~/.config/inference-lens:/config:ro
+      - ~/src/n8n-workflows:/sources/n8n-workflows:ro
+```
+
+```sh
+INFERENCE_LENS_SOURCE_ROOTS=/config/source-roots.json
+```
+
+With `docker run`, add the same two `-v` options and
+`-e INFERENCE_LENS_SOURCE_ROOTS=/config/source-roots.json`. As with
+[key files](#hold-several-server-connections), the image runs as uid 1000, so on
+Linux Docker Engine that user must be able to read the folders.
+
+The catalog is read on every request, so editing it takes effect without a
+restart. Reads accept only regular `.md` and `.txt` files of at most 1 MiB of
+UTF-8, skip hidden files and folders, and refuse a path or symlink that leads
+outside its folder. The browser learns folder names and labels, never host
+paths. Anyone who can open the UI can read every `.md` and `.txt` file in a
+declared folder, so declare only folders you would share with them.
+
+When a project's folder name is not declared on this server, the prompt says
+so and offers to read it from another declared folder for the session; that
+choice is not saved. The desktop app has no local service, so it cannot read
+linked folders yet; linked prompts keep working from their last pulled text.
+
 ## Set a server-side default credential
 
 To avoid entering a key each session, set it on the service and leave the UI
@@ -456,6 +514,32 @@ in-container path. The image provides Node.js and a POSIX shell, nothing more.
 An MCP server must be on a loopback address, which inside a container is the
 container itself; to reach one running on the host, run with `--network host`
 and `-e INFERENCE_LENS_CONTAINER=0`.
+
+**Test a pull request that edits a prompt file.** When a project's prompts are
+[linked to files](#linked-prompt-source-folders) in a workflow repository, CI in that
+repository can run a suite against the files as they are in the pull request,
+without saving a revision. Mount the checkout and name it with
+`--source-root <name>=<path>`, where `<name>` is the source root the project
+declares:
+
+```sh
+inference-lens run /project --suite triage \
+  --prompts-from-files --source-root n8n-workflows=/workflows
+```
+
+`--prompts-from-files` reads every linked prompt the suite uses from its file,
+reuses the variable names its pulls gave each n8n expression, and runs that
+text in place of the pinned revision for this run only. The plan and every
+trace record the file's root name, relative path and digest beside the pinned
+revision, and the app names the file when it opens them. A file that is
+missing, unreadable or cannot be used is a setup error (exit 2): nothing is
+sent and nothing falls back to the saved text. `--source-root` wins over
+`INFERENCE_LENS_SOURCE_ROOTS` for its name, and a relative path resolves
+against the current directory. To check only whether the files still match
+their last pull, run `inference-lens drift /project --source-root
+n8n-workflows=/workflows`: it sends nothing, exits 0 when every file matches,
+1 when one changed, is missing or is unreadable, and 2 for a setup error.
+Local revisions are reported but do not change the exit code.
 
 **Inside a running server container.** `docker compose exec inference-lens
 inference-lens run /project` also works, and reuses the server's environment.

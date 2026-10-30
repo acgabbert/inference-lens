@@ -74,7 +74,22 @@ never ran. A repetition with no openable trace is presented as `Waiting`,
 `Not run`, `Trace missing`, or `Trace could not be read` — never as one
 undifferentiated blank.
 
-Plans use `schemaVersion: 6`. Results use `schemaVersion: 6`.
+Plans use `schemaVersion: 7`. Results use `schemaVersion: 6`.
+
+- Plan Version 7 lets a chat evaluation run linked prompts from their files
+  ([E4](SHARED_ASSETS_PERSONAL_WORKBENCH_PLAN.md#e4-implementation-contracts-approved-october-30-2026)).
+  `suite.promptSources` holds one snapshot per prompt read: `templateId`,
+  `baseTemplateRevisionId` (the revision the conversation pins), the source
+  root name and relative path, `sourceDigest`, the authored text and role,
+  the interpretation, the expression bindings, the projected `messages` and
+  `variableDefaults`, and `replacedLocalRevisions`. Every template use of
+  that prompt carries `fileSource: { sourceRootName, path, sourceDigest,
+  baseTemplateRevisionId }`, keeps `templateRevisionId` as the pinned
+  revision, and must send exactly the snapshot's messages; no other use may
+  carry a file source, and every snapshot must be used. No host path is
+  recorded. Version 6 plans open as Version 7 with no file sources; a Version
+  6 document carrying either field is rejected. Only the CLI's
+  `run --prompts-from-files` writes them.
 
 - Plan Version 6 adds [prompt environments](PROMPT_ENVIRONMENTS_PLAN.md).
   Template resolutions may carry `valueSources`, and an input may carry the
@@ -85,7 +100,7 @@ Plans use `schemaVersion: 6`. Results use `schemaVersion: 6`.
   configuration names its `environmentId`, or none. Every configuration must
   find exactly one input in every case, and every input must be used by some
   configuration. Configurations that share an environment share an input.
-  Version 4 and 5 plans open as Version 6, each evaluation case with one
+  Version 4 and 5 plans open as Version 7, each evaluation case with one
   input, no environment and no value sources.
 
 - Plan Version 5 added the `decision-evaluation` kind. A Version 4 plan is a

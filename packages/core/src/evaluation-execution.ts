@@ -7,6 +7,7 @@ import type {
   EvaluationCaseInputSnapshot,
   EvaluationCaseSnapshot,
   EvaluationExperimentPlan,
+  PromptFileSnapshot,
 } from "./experiment.ts";
 import { resolveEvaluationCase } from "./evaluation-case-resolution.ts";
 import {
@@ -18,6 +19,7 @@ import {
   resolveEvaluationVariant,
 } from "./evaluation-suites.ts";
 import type { ProjectFile } from "./project.ts";
+import { projectWithPromptFileSnapshots, withPromptFileSources } from "./prompt-file-override.ts";
 import { randomUUID } from "./random-id.ts";
 import { createEntityId } from "./run-kernel/types.ts";
 import type {
@@ -48,6 +50,12 @@ export interface CreateEvaluationPlanOptions {
   runtimeTarget?: Omit<ResolvedRunInput["target"], "model">;
   createdAt?: string;
   createSuffix?: () => string;
+  /**
+   * Linked prompts read from their files for this run only (E4). Each one's
+   * text replaces its pinned revision's in every case, and the plan records
+   * the snapshot. The project is never changed.
+   */
+  promptSources?: readonly PromptFileSnapshot[];
 }
 
 /**
@@ -58,11 +66,11 @@ export interface CreateEvaluationPlanOptions {
 export function createEvaluationExperimentPlan(
   options: CreateEvaluationPlanOptions,
 ): EvaluationExperimentPlan {
-  const {
-    project,
-    suiteId,
-    selectedCaseIds,
-  } = options;
+  const { suiteId, selectedCaseIds } = options;
+  const promptSources = options.promptSources ?? [];
+  // Preflight, values and rendering all see the file's text; the uses still
+  // name the revision they pin.
+  const project = projectWithPromptFileSnapshots(options.project, promptSources);
   const found = project.evaluationSuites.find(({ id }) => id === suiteId);
   if (found && !isChatEvaluationSuite(found)) {
     throw new EvaluationSetupError([{
@@ -158,7 +166,7 @@ export function createEvaluationExperimentPlan(
         conversationId: revision.conversationId,
         conversationRevisionId: revision.id,
         messages: resolved.messages,
-        templateResolutions: resolved.templateResolutions,
+        templateResolutions: withPromptFileSources(resolved.templateResolutions, promptSources),
         ...(resolved.environment ? { environment: resolved.environment } : {}),
         resolvedAt: now,
       };
@@ -226,6 +234,7 @@ export function createEvaluationExperimentPlan(
       tools: structuredClone(exposedTools),
       cases,
       variants: variantSnapshots,
+      ...(promptSources.length > 0 ? { promptSources: structuredClone([...promptSources]) } : {}),
     },
     cells,
   };

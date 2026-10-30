@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 17,
+  "schemaVersion": 19,
   "projectId": "project_shared-assets-example",
   "name": "Shared assets migration example",
   "connectionRequirements": [
@@ -371,6 +371,7 @@
     }
   ],
   "environments": [],
+  "sourceRoots": [],
   "defaults": {
     "conversationRevisionId": "revision_chat-2",
     "decisionRequestRevisionId": "decision-revision_use",

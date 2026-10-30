@@ -180,3 +180,8 @@
   }
 }
 
+
+/* Drift and problems only; a matching file needs no line. */
+.template-list-item .template-list-source {
+  color: var(--warning-strong);
+}
