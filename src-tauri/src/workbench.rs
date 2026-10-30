@@ -3,7 +3,9 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+
+pub mod completion;
 
 // Fixed byte contract shared with core, not a second bundle-policy generator.
 const IGNORE: &str = "*\n";
@@ -73,7 +75,8 @@ fn read(path: &Path) -> Result<Option<String>, String> {
     }
 }
 
-pub fn list(directory: &Path) -> Result<Vec<File>, String> {
+/// Active records as raw bytes; text decoding is left to the caller.
+fn active_records(directory: &Path) -> Result<Vec<ByteFile>, String> {
     let workbench = directory.join(".workbench");
     reject_link(&workbench)?;
     let mut files = Vec::new();
@@ -93,16 +96,33 @@ pub fn list(directory: &Path) -> Result<Vec<File>, String> {
             }
             let path = format!("{prefix}{name}");
             // A directory with a record filename is unavailable, never writable.
-            files.push(match read(&entry.path()) {
-                Ok(Some(contents)) => File::Read { path, contents },
-                Ok(None) => File::Unavailable {
+            files.push(match read_bytes(&entry.path()) {
+                Ok(Some(bytes)) => ByteFile::Read { path, bytes },
+                Ok(None) => ByteFile::Unavailable {
                     path,
                     error: "Recovery record disappeared while reading.".into(),
                 },
-                Err(error) => File::Unavailable { path, error },
+                Err(error) => ByteFile::Unavailable { path, error },
             });
         }
     }
+    Ok(files)
+}
+
+pub fn list(directory: &Path) -> Result<Vec<File>, String> {
+    let mut files: Vec<File> = active_records(directory)?
+        .into_iter()
+        .map(|file| match file {
+            ByteFile::Read { path, bytes } => match String::from_utf8(bytes) {
+                Ok(contents) => File::Read { path, contents },
+                Err(error) => File::Unavailable {
+                    error: format!("Could not read {path}: {error}"),
+                    path,
+                },
+            },
+            ByteFile::Unavailable { path, error } => File::Unavailable { path, error },
+        })
+        .collect();
     for file in migration_files(directory)? {
         // Readable but malformed bytes are unparseable identity, as in the browser host.
         files.push(match file {
@@ -497,7 +517,7 @@ mod tests {
     }
 }
 
-#[derive(Clone, serde::Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 pub struct MigrationPayload {
     pub path: String,
     pub bytes: Vec<u8>,
@@ -526,14 +546,14 @@ pub enum MigrationStage {
     },
 }
 
-#[derive(Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(untagged)]
 pub enum ByteFile {
     Read { path: String, bytes: Vec<u8> },
     Unavailable { path: String, error: String },
 }
 
-#[derive(Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct MigrationSnapshot {
     pub manifest: Option<Vec<u8>>,
     pub files: Vec<ByteFile>,
@@ -603,28 +623,19 @@ fn migration_files(directory: &Path) -> Result<Vec<ByteFile>, String> {
     Ok(files)
 }
 
+/// Active records stay raw bytes, so BOMs and invalid UTF-8 survive exact
+/// comparison and reach core's strict validation.
 pub fn read_migration(directory: &Path) -> Result<MigrationSnapshot, String> {
     let mut files = migration_files(directory)?;
-    for record in list(directory)? {
-        let (File::Read { path, .. } | File::Unavailable { path, .. }) = &record;
-        if path.starts_with("migrations/") {
-            continue;
-        }
-        files.push(match record {
-            File::Read { path, contents } => ByteFile::Read {
-                path,
-                bytes: contents.into_bytes(),
-            },
-            File::Unavailable { path, error } => ByteFile::Unavailable { path, error },
-        });
-    }
+    files.extend(active_records(directory)?);
     Ok(MigrationSnapshot {
         manifest: read_bytes(&directory.join("project.json"))?,
         files,
     })
 }
 
-fn migration_destination(directory: &Path, path: &str) -> Result<PathBuf, String> {
+/// The fixed migration layout, as core's `assertMigrationPath`.
+fn valid_migration_path(path: &str) -> bool {
     let parts: Vec<_> = path.split('/').collect();
     fn hash(value: &str) -> bool {
         value.len() == 64
@@ -632,7 +643,7 @@ fn migration_destination(directory: &Path, path: &str) -> Result<PathBuf, String
                 .bytes()
                 .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
     }
-    let valid = parts.len() >= 3
+    parts.len() >= 3
         && parts[0] == "migrations"
         && parts[1].strip_prefix("migration_").is_some_and(hash)
         && match parts.as_slice() {
@@ -643,13 +654,16 @@ fn migration_destination(directory: &Path, path: &str) -> Result<PathBuf, String
                 .and_then(|id| id.strip_suffix(".json"))
                 .is_some_and(hash),
             _ => false,
-        };
-    if !valid {
+        }
+}
+
+fn migration_destination(directory: &Path, path: &str) -> Result<PathBuf, String> {
+    if !valid_migration_path(path) {
         return Err("Invalid migration path.".into());
     }
     let mut target = directory.join(".workbench");
     reject_link(&target)?;
-    for part in parts {
+    for part in path.split('/') {
         target.push(part);
         reject_link(&target)?;
     }
@@ -1076,6 +1090,35 @@ mod migration_tests {
             file,
             ByteFile::Read { path, bytes } if *path == files[1].path && bytes == b"{\"note\":\"\xe2\x82"
         )));
+    }
+    #[test]
+    fn migration_snapshots_read_active_records_as_raw_bytes() {
+        let directory = Directory::new();
+        let workbench = directory.0.join(".workbench");
+        fs::create_dir_all(workbench.join("drafts")).unwrap();
+        // A BOM must stay distinct from the staged bytes, and invalid UTF-8
+        // must reach strict validation rather than becoming an error string.
+        let bom = b"\xef\xbb\xbf{\"projectId\":\"project_one\"}".to_vec();
+        let invalid = b"{\"projectId\":\"project_one\",\"x\":\"\xff\"}".to_vec();
+        fs::write(workbench.join("drafts/draft_bom.json"), &bom).unwrap();
+        fs::write(workbench.join("selections.json"), &invalid).unwrap();
+        let snapshot = read_migration(&directory.0).unwrap();
+        for (path, bytes) in [
+            ("drafts/draft_bom.json", &bom),
+            ("selections.json", &invalid),
+        ] {
+            assert!(
+                snapshot.files.iter().any(|file| matches!(
+                    file,
+                    ByteFile::Read { path: actual, bytes: actual_bytes } if actual == path && actual_bytes == bytes
+                )),
+                "{path} was not read as raw bytes"
+            );
+        }
+        // Ordinary workbench reads keep their text contract.
+        assert!(list(&directory.0).unwrap().iter().any(
+            |file| matches!(file, File::Unavailable { path, .. } if path == "selections.json")
+        ));
     }
     #[cfg(unix)]
     #[test]

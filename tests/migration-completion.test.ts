@@ -295,7 +295,7 @@ test("no application or CLI code path references the completion capability", asy
   const root = new URL("..", import.meta.url).pathname;
   const core = "packages/core/src/migration-completion.ts";
   // Host adapters construct the capability inside the workspace storage factory; nothing else may import it.
-  const adapters = new Set(["app/workbench-directory.client.ts", "app/project-workspace.client.ts"]);
+  const adapters = new Set(["app/workbench-directory.client.ts", "app/migration-native.client.ts", "app/project-workspace.client.ts"]);
   const offenders: string[] = [];
   const walk = (dir: string) => {
     for (const name of readdirSync(dir)) {
