@@ -61,8 +61,12 @@ function same(left: unknown, right: unknown): boolean {
   return JSON.stringify(stableJsonValue(left)) === JSON.stringify(stableJsonValue(right));
 }
 
-function checkPublishable(project: ProjectFile, record: PublishableRecord): void {
+function checkProject(project: ProjectFile, record: PublishableRecord): void {
   if (record.projectId !== project.projectId) refuse(["projectId"], "Workbench record belongs to a different project.");
+}
+
+function checkPublishable(project: ProjectFile, record: PublishableRecord): void {
+  checkProject(project, record);
   if (record.publishing) refuse(["publishing"], "Settle the pending publication before publishing again.");
 }
 
@@ -252,6 +256,7 @@ type PublishedRevision =
   | { kind: "decision"; revision: ProjectDecisionRequestRevision };
 
 function locate(project: ProjectFile, record: PublishableRecord): { state: PublicationState; published?: PublishedRevision } {
+  checkProject(project, record);
   const intent = record.publishing;
   if (!intent) refuse(["publishing"], "The record has no pending publication.");
   const settle = (matches: boolean, published: PublishedRevision) =>
@@ -312,13 +317,29 @@ export function reconcilePublication(project: ProjectFile, record: PublishableRe
   return locate(project, record).state;
 }
 
+export interface PublicationCompletion<R extends PublishableRecord> {
+  /** Replace the publishing record with this value, or delete it when absent. */
+  record: R | undefined;
+  /** Persist and read back ALL rewrites before settling the publishing record. */
+  scratchRewrites: Array<{ before: WorkbenchScratchV1; after: WorkbenchScratchV1 }>;
+}
+
 /**
- * Step 3, after the shared write is confirmed or reconciliation reports
- * `published`. Undefined means delete the record: its content is now saved.
- * Otherwise edits were made while saving; they stay local, based on (for a
- * scratch, parented on) the published revision, without the intent.
+ * Plan step 3 after the shared write is confirmed. `scratches` must be the
+ * complete current project scratch inventory (including any new branches).
+ * Under the owner's serialized local mutation scope, compare each `before`
+ * with storage, write `after`, and confirm it by read-back. On conflict or
+ * failure retain the parent's publishing intent and replan from fresh records.
+ * Only after every rewrite is confirmed may the owner replace/delete `record`.
+ * Replanning after partial writes returns only the children still referencing
+ * the parent. No new child may be added between planning and parent cleanup.
+ * Frozen intents on children are retained: they describe independent writes.
  */
-export function completePublication<R extends PublishableRecord>(project: ProjectFile, record: R): R | undefined {
+export function completePublication<R extends PublishableRecord>(
+  project: ProjectFile,
+  record: R,
+  scratches: readonly WorkbenchScratchV1[],
+): PublicationCompletion<R> {
   const { state, published } = locate(project, record);
   if (state !== "published" || !published) refuse(["publishing"], "The publication has not landed in the shared document.");
   const intent = record.publishing!;
@@ -326,14 +347,31 @@ export function completePublication<R extends PublishableRecord>(project: Projec
   if (next.kind === "scratch") {
     const { request } = next;
     const current = request.kind === "chat" ? { items: request.items } : request.content;
-    if (same(current, intent.content)) return undefined;
     const parent = request.kind === "chat"
       ? { kind: "saved-conversation-revision", revisionId: intent.revisionId }
       : { kind: "saved-decision-request-revision", revisionId: intent.revisionId };
-    return parseWorkbenchRecord({ ...next, request: { ...request, parent } }) as R;
+    const scratchRewrites = scratches.flatMap(child => {
+      if (child.projectId !== project.projectId || child.request.parent?.kind !== "scratch"
+        || child.request.parent.scratchId !== next.scratchId) return [];
+      if (child.scratchId === next.scratchId || child.request.kind !== request.kind) {
+        refuse(["request", "parent"], "A dependent scratch has an invalid parent relationship.");
+      }
+      return [{
+        before: structuredClone(child),
+        after: parseWorkbenchRecord({ ...structuredClone(child), request: { ...structuredClone(child.request), parent } }) as WorkbenchScratchV1,
+      }];
+    });
+    return {
+      record: same(current, intent.content) ? undefined
+        : parseWorkbenchRecord({ ...next, request: { ...request, parent } }) as R,
+      scratchRewrites,
+    };
   }
-  if (same(next.edited, intent.content)) return undefined;
-  return parseWorkbenchRecord({ ...next, base: { revisionId: intent.revisionId, snapshot: structuredClone(published.revision) } }) as R;
+  return {
+    record: same(next.edited, intent.content) ? undefined
+      : parseWorkbenchRecord({ ...next, base: { revisionId: intent.revisionId, snapshot: structuredClone(published.revision) } }) as R,
+    scratchRewrites: [],
+  };
 }
 
 /** A failed or refused shared write keeps the work and drops the intent (step 2). */

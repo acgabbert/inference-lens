@@ -417,6 +417,11 @@ the work, so one file holds both the work and what was done with it:
    the frozen content, delete the record. Otherwise edits were made while saving;
    keep them as a draft whose base becomes the newly published revision (whose
    content is the frozen copy, so this is not a rebase) and remove `publishing`.
+   For a scratch, first reparent every direct child to the published saved
+   revision. Persist and read back those child rewrites before replacing or
+   deleting the publishing scratch; retain its intent until all are confirmed.
+   After interruption, replan from the current inventory to finish only the
+   remaining rewrites.
 4. On restart, a record with `publishing` is resolved against the shared
    document. A revision with the intended ID, the recorded parent and content
    equal to the frozen copy means it was published: finish step 3 without
@@ -1202,10 +1207,25 @@ the approved contracts:
   ancestor, and ignored with one. A new request's ID shares the revision's
   suffix.
 - **Steps 2 and 3 have helpers.** `clearPublication` drops the intent after a
-  failed or refused write. `completePublication` returns `undefined` when the
-  record's content equals the frozen copy (delete it), or the record without
-  its intent: a draft rebased onto the published revision, or a scratch
-  reparented onto it. It refuses unless reconciliation reports `published`.
+  failed or refused write. `completePublication(project, record, scratches)`
+  returns `{ record, scratchRewrites }`. `record` is undefined when the current
+  content equals the frozen copy (delete it); otherwise it retains later edits
+  without the intent, based or parented on the published revision. It refuses
+  unless reconciliation reports `published`, and both recovery operations
+  reject a different project ID before inspecting revisions.
+- **Child cleanup contract (approved during PR #288 review).** Completion takes
+  the complete current scratch inventory and returns `{ before, after }` copies
+  for direct children of the publishing scratch, reparented to the saved
+  revision. The owner serializes local mutations, checks each `before` against
+  storage, and persists and reads back every `after` before replacing/deleting
+  the parent. A failure or conflict retains the parent's intent and replans
+  against fresh records; an interrupted cleanup returns only remaining child
+  rewrites. No new child may appear between planning and cleanup. Descendants
+  continue through their immediate parents. Foreign-project records are left
+  alone, and a child of the wrong request kind refuses completion. Child edits
+  and frozen publication intents remain intact; those intents describe separate
+  shared writes. These operations remain pure: the future application owner
+  must implement and test this write ordering before enabling the gate.
 - **Local input.** `resolveLocalChatInput` and `resolveLocalDecisionInput`
   return `undefined` for a reference that resolves to nothing here: an unknown
   record or revision, a record of the other kind or project, or a local

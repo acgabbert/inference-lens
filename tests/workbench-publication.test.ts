@@ -208,11 +208,11 @@ test("completing a publication deletes a settled record or keeps later edits on 
   const result = publishChatRequestDraft(project, chatRequestDraft, { idSuffix: "published", createdAt });
   assert.ok(result.kind === "publish");
   const record = withIntent(chatRequestDraft, result.intent);
-  assert.equal(completePublication(result.project, record), undefined);
+  assert.equal(completePublication(result.project, record, []).record, undefined);
 
   const laterItems = [literalItem({ id: "message_later" })];
   const edited = withIntent({ ...chatRequestDraft, edited: { items: laterItems } } as WorkbenchChatRequestDraftV1, result.intent);
-  const kept = completePublication(result.project, edited) as WorkbenchChatRequestDraftV1;
+  const kept = completePublication(result.project, edited, []).record as WorkbenchChatRequestDraftV1;
   assert.equal(kept.publishing, undefined);
   assert.equal(kept.base.revisionId, "revision_published");
   assert.deepEqual(kept.base.snapshot, result.project.conversationRevisions.at(-1));
@@ -221,12 +221,12 @@ test("completing a publication deletes a settled record or keeps later edits on 
   const prompt = publishPromptDraft(project, chatPromptDraft, { idSuffix: "published", createdAt });
   assert.ok(prompt.kind === "publish");
   const renamedWhileSaving = withIntent({ ...chatPromptDraft, edited: { ...chatPromptDraft.edited, revisionName: "Later" } } as WorkbenchPromptDraftV1, prompt.intent);
-  const keptPrompt = completePublication(prompt.project, renamedWhileSaving) as WorkbenchPromptDraftV1;
+  const keptPrompt = completePublication(prompt.project, renamedWhileSaving, []).record as WorkbenchPromptDraftV1;
   assert.equal(keptPrompt.base.revisionId, "template-revision_published");
   assert.equal(keptPrompt.base.snapshot.name, "More detail");
 
   // Completion requires the shared write to have landed.
-  assert.throws(() => completePublication(project, record), refusal(/has not landed/));
+  assert.throws(() => completePublication(project, record, []), refusal(/has not landed/));
   // Failure or a refused write keeps the draft and drops the intent.
   assert.deepEqual(clearPublication(record), chatRequestDraft);
 });
@@ -252,10 +252,10 @@ test("a scratch with a local parent chain publishes as one child of its nearest 
   const record = withIntent(leaf, result.intent);
   assert.equal(reconcilePublication(result.project, record), "published");
   assert.equal(reconcilePublication(project, record), "not-published");
-  assert.equal(completePublication(result.project, record), undefined);
+  assert.equal(completePublication(result.project, record, []).record, undefined);
   // Edits made while saving stay local, now parented on the published revision.
   const later = withIntent({ ...leaf, request: { ...leaf.request, items: literalItems } } as WorkbenchScratchV1, result.intent);
-  assert.deepEqual(completePublication(result.project, later), {
+  assert.deepEqual(completePublication(result.project, later, []).record, {
     ...leaf, request: { ...leaf.request, items: literalItems, parent: { kind: "saved-conversation-revision", revisionId: "revision_published" } },
   });
 });
@@ -294,4 +294,82 @@ test("a scratch refuses a parent chain it cannot follow to a saved ancestor or a
   assert.throws(() => publishScratch(project, goneAncestor, { scratches: [] }), refusal(/saved ancestor no longer exists/));
   const pending = withIntent(scratch("scratch_pending", { kind: "chat", items: literalItems }), { conversationId: "conversation_p", name: "P", revisionId: "revision_p", content: { items: literalItems } });
   assert.throws(() => publishScratch(project, pending, { scratches: [], name: "New" }), refusal(/pending publication/));
+});
+
+test("recovery refuses foreign projects before settling any publication", () => {
+  const result = publishChatRequestDraft(project, chatRequestDraft, { idSuffix: "foreign-recovery", createdAt });
+  assert.ok(result.kind === "publish");
+  const record = withIntent(chatRequestDraft, result.intent);
+  const foreign = parseProjectFile({ ...result.project, projectId: "project_other" });
+  assert.throws(() => reconcilePublication(foreign, record), refusal(/different project/));
+  assert.throws(() => completePublication(foreign, record, []), refusal(/different project/));
+  // A missing revision in the wrong project must not clear the pending intent either.
+  const foreignWithoutRevision = parseProjectFile({ ...project, projectId: "project_other" });
+  assert.throws(() => reconcilePublication(foreignWithoutRevision, record), refusal(/different project/));
+  assert.deepEqual(record.publishing, result.intent);
+});
+
+for (const kind of ["chat", "decision"] as const) {
+  test(`completing a ${kind} scratch preserves children across interrupted cleanup`, () => {
+    const request: WorkbenchScratchV1["request"] = kind === "chat"
+      ? { kind, items: literalItems }
+      : { kind, content: decisionRequestDraft.edited };
+    const root = scratch("scratch_completion-root", request);
+    const child = scratch("scratch_completion-child", { ...request, parent: { kind: "scratch", scratchId: root.scratchId } });
+    const sibling = scratch("scratch_completion-sibling", { ...request, parent: { kind: "scratch", scratchId: root.scratchId } });
+    const grandchild = scratch("scratch_completion-grandchild", { ...request, parent: { kind: "scratch", scratchId: child.scratchId } });
+    const foreign: WorkbenchScratchV1 = { ...child, projectId: "project_other" };
+    const saved = publishScratch(project, root, { scratches: [child, sibling, grandchild], name: "Parent", idSuffix: "completion-parent", createdAt });
+    const pending = withIntent(root, saved.intent);
+    const inventory = [pending, child, sibling, grandchild, foreign];
+    const completion = completePublication(saved.project, pending, inventory);
+    assert.equal(completion.record, undefined);
+    assert.equal(completion.scratchRewrites.length, 2);
+    const rewrite = completion.scratchRewrites[0]!;
+    assert.deepEqual(rewrite.before, child);
+    assert.deepEqual(rewrite.after.request.parent, {
+      kind: kind === "chat" ? "saved-conversation-revision" : "saved-decision-request-revision",
+      revisionId: saved.intent.revisionId,
+    });
+    assert.deepEqual(child.request.parent, { kind: "scratch", scratchId: root.scratchId });
+    // Crash after one child write: keep the parent's intent and resume the remaining rewrite.
+    const partial = [pending, rewrite.after, sibling, grandchild, foreign];
+    assert.equal(reconcilePublication(saved.project, pending), "published");
+    const resumed = completePublication(saved.project, pending, partial);
+    assert.deepEqual(resumed.scratchRewrites.map(({ before }) => before.scratchId), [sibling.scratchId]);
+    const remaining = [rewrite.after, resumed.scratchRewrites[0]!.after, grandchild, foreign];
+    assert.deepEqual(completePublication(saved.project, pending, remaining).scratchRewrites, []);
+    for (const descendant of remaining.filter(record => record.projectId === projectId)) {
+      const published = publishScratch(saved.project, descendant, { scratches: remaining, idSuffix: descendant.scratchId, createdAt });
+      assert.equal(published.intent.parentRevisionId, saved.intent.revisionId);
+    }
+    // Rewrites own their snapshots; mutating one cannot mutate the caller's inventory.
+    rewrite.before.request.parent = undefined;
+    assert.deepEqual(child.request.parent, { kind: "scratch", scratchId: root.scratchId });
+  });
+}
+
+test("completion keeps later edits and a child's independent publication intent", () => {
+  const root = scratch("scratch_later-root", { kind: "chat", items: literalItems, parent: { kind: "saved-conversation-revision", revisionId: chatChild.id } });
+  const child = scratch("scratch_later-child", { kind: "chat", items: literalItems, parent: { kind: "scratch", scratchId: root.scratchId } });
+  const childSave = publishScratch(project, child, { scratches: [root], idSuffix: "child-in-flight", createdAt });
+  const childPending = withIntent(child, childSave.intent);
+  const rootSave = publishScratch(childSave.project, root, { scratches: [childPending], idSuffix: "parent-in-flight", createdAt });
+  const laterItems = [literalItem({ id: "message_after-save" })];
+  const rootPending = withIntent({ ...root, request: { ...root.request, items: laterItems } } as WorkbenchScratchV1, rootSave.intent);
+  const completion = completePublication(rootSave.project, rootPending, [rootPending, childPending]);
+  assert.deepEqual(completion.record?.request, {
+    kind: "chat", items: laterItems,
+    parent: { kind: "saved-conversation-revision", revisionId: rootSave.intent.revisionId },
+  });
+  assert.equal(completion.record?.publishing, undefined);
+  const rewritten = completion.scratchRewrites[0]!.after;
+  assert.deepEqual(rewritten.publishing, childPending.publishing);
+  assert.equal(reconcilePublication(rootSave.project, rewritten), "published");
+  assert.equal(completePublication(rootSave.project, rewritten, [completion.record!, rewritten]).record, undefined);
+  const mismatched = scratch("scratch_wrong-kind", {
+    kind: "decision", content: decisionRequestDraft.edited,
+    parent: { kind: "scratch", scratchId: root.scratchId },
+  });
+  assert.throws(() => completePublication(rootSave.project, rootPending, [mismatched]), refusal(/invalid parent relationship/));
 });
