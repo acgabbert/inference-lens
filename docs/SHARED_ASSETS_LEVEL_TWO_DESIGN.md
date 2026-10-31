@@ -829,3 +829,296 @@ revision plus text used.
   connection requirements, renames and archiving keep direct shared writes
   until 2c. The migration preview and the Recovery drawer do not claim they
   are separated.
+
+## Owner interfaces (proposed October 31, 2026)
+
+**Status: proposal for review.** These are the exact owner interfaces that D3
+names as the first deliverable of the 2b slice. Nothing below is implemented.
+They were read against `main` at `6a5600b`. Where they extend workbench v1
+(D9), that is an in-place amendment: no application has written v1.
+
+### Facts at `6a5600b` that shape them
+
+- The active format is v18, not v15: `ProjectFile` is `ProjectFileV18`, and
+  `SharedProjectFileV19` is `ProjectFileV18` without template drafts.
+  Almost every core helper takes `ProjectFile`.
+- `currentProjectDocument()` folds three owners into every save:
+  `updateProjectDraft` (the active revision's items, `defaults.target.model`,
+  `.protocol`, `.options.temperature`, `.enabledToolIds`, and also `tools` and
+  `toolMocks`), and `decision.project.fold` (the active decision revision).
+  `tools` and `toolMocks` are D15 assets that keep direct shared writes.
+- A run commits shared state in two places: `prepareWorkbenchRun` returns a
+  `projectMutation` for a branch (`createBranchRevision`), and
+  `useDecisionProject.freezeForRun` folds the decision draft into the project.
+  Ad hoc runs already mint a fresh `RunConversationIdentity`, which
+  `ResolvedRunInput` requires.
+- Selecting a chat request writes `defaults.conversationRevisionId`. The
+  environment owner reads `defaults.environmentId` on adoption and keeps
+  select separate from `setDefault`. Decisions use no environment. The decision
+  target is session state in `useDecisionTarget`, never in the project.
+- The e2e suite runs one dev server. Nothing in the app reads a
+  `NEXT_PUBLIC_` variable yet.
+
+### Gate (D2)
+
+- `app/workbench/personal-workbench-gate.ts` exports
+  `personalWorkbenchEnabled(): boolean`, reading the build-time
+  `NEXT_PUBLIC_INFERENCE_LENS_PERSONAL_WORKBENCH === "1"`. It is the only reader.
+- `useProjectWorkspace` samples it once per adoption into the session's
+  `mode: "legacy" | "personal"`. A session never changes mode while it is open.
+- With the gate off, every code path is today's, the shared format stays v18,
+  and `completeSharedProjectMigration` keeps its no-application-caller guard.
+- Gated e2e specs run against a second dev server started with the flag on.
+  `tests/e2e/support` exposes it as a `personalWorkbench` fixture with its own
+  `baseURL`. The ungated suite is unchanged.
+- The CLI reads v19 shared definitions whatever the gate says (reading never
+  writes a migration). It never opens `.workbench/`.
+
+### In-memory shared document
+
+Owners keep operating on `ProjectFile`. In a `personal` session the workspace
+holds the invariant that it carries no template `draft` and that
+`schemaVersion` is the active version. Only the persistence boundary converts:
+reads go through `parseSharedProjectJson` and are relabeled to the active
+version, and writes go through `serializeSharedProjectFile`. The v19 serializer
+rejects a stray template draft. That makes a missed routing a loud save error,
+not a silent leak. Threading `SharedProjectFileV19` through every owner and
+helper is the alternative. It is more honest, but it means rewriting every
+core helper's signature while the gate is on.
+
+### Workbench v1 amendment (D9–D11, D7)
+
+Arms are added beside the existing ones. Existing arms do not change.
+
+```ts
+type LocalChatInput =
+  | { kind: "saved-conversation-revision"; revisionId: ConversationRevisionId }
+  | { kind: "draft"; draftId: DraftId }          // a chat-request draft
+  | { kind: "scratch"; scratchId: ScratchId };   // a chat scratch record
+type LocalDecisionInput =
+  | { kind: "saved-decision-request-revision"; revisionId: DecisionRequestRevisionId }
+  | { kind: "draft"; draftId: DraftId }
+  | { kind: "scratch"; scratchId: ScratchId };
+
+// New draft arms. Envelope as today: schemaVersion, kind "draft", projectId, draftId.
+| { asset: { kind: "chat-request"; id: ConversationId };
+    base: { revisionId: ConversationRevisionId; snapshot: ProjectConversationRevision };
+    edited: { items: ProjectConversationItem[] };
+    publishing?: PublicationIntent<{ items: ProjectConversationItem[] }> }
+| { asset: { kind: "decision-request"; id: DecisionRequestId };
+    base: { revisionId: DecisionRequestRevisionId; snapshot: ProjectDecisionRequestRevision };
+    edited: DecisionRequestContent;    // inline or template-use arm, below
+    publishing?: PublicationIntent<DecisionRequestContent> }
+// The two prompt arms gain the same optional `publishing` field.
+
+type DecisionRequestContent =
+  | { kind: "inline"; decision: DecisionInput; values: Record<string, string> }
+  | { kind: "template-use"; templateId; templateRevisionId; overrides: Record<string, string> };
+
+// New record kind: scratch/<scratchId>.json
+{ schemaVersion: 1; kind: "scratch"; projectId; scratchId: `scratch_${string}`;
+  createdAt: string;
+  /** Stable for this scratch's runs, so their traces group. Never in project.json. */
+  localConversationId: ConversationId;
+  request:
+    | { kind: "chat"; items: ProjectConversationItem[]; parent?: ChatParentRef }
+    | { kind: "decision"; content: DecisionRequestContent; parent?: DecisionParentRef };
+  branchedFrom?: { runId: RunId; messageId: MessageId };
+  publishing?: PublicationIntent<...> & { conversationId | decisionRequestId; name: string } }
+type ChatParentRef =
+  | { kind: "saved-conversation-revision"; revisionId: ConversationRevisionId }
+  | { kind: "scratch"; scratchId: ScratchId };
+type DecisionParentRef =
+  | { kind: "saved-decision-request-revision"; revisionId: DecisionRequestRevisionId }
+  | { kind: "scratch"; scratchId: ScratchId };
+
+interface PublicationIntent<C> {
+  revisionId: string;          // allocated once
+  parentRevisionId?: string;   // nearest saved ancestor (D10)
+  content: C;                  // frozen copy
+}
+
+// selections.json gains, all optional, absent inherits the launch default:
+chat.selectedInput: LocalChatInput         // widened from the saved arm only
+chat.execution.environmentId: EnvironmentId | null   // null = explicitly none
+decision.selectedInput: LocalDecisionInput // widened likewise
+```
+
+Decision requests take one asset kind whose `edited` is a discriminated union,
+not two asset kinds. A local detach can turn a template-use base into inline
+content, and the asset is the same request either way. The migration planner
+copies `defaults.environmentId` into `chat.execution.environmentId` when it
+is present (D9). The decision target stays session state as today: 2b adds no
+decision execution overrides.
+
+D7's resolutions record is `migrations/<operationId>/resolutions.json`,
+beside the immutable journal:
+
+```ts
+{ schemaVersion: 1; kind: "migration-resolutions"; projectId; operationId;
+  resolutions: Array<{
+    candidate: string;                       // journal candidate path
+    outcome: "used" | "discarded";
+    settledAt: string;
+    /** "Use this one": the replaced active draft's preserved copy (D6). */
+    replacedCopy?: `migrations/${string}/replaced/${DraftId}.json`;
+  }>;
+  backupRemovedAt?: string }
+```
+
+`WorkbenchStorage.mutate` path validation widens to `scratch/` and these two
+migration paths, and nothing else. Removing the migration backup deletes the
+operation directory only when no candidate is pending.
+
+### Core operations (packages/core)
+
+Pure, and none of them writes files:
+
+- `publishPromptDraft`, `publishChatRequestDraft`,
+  `publishDecisionRequestDraft`, `publishScratch(project, record)` return
+  `{ project, intent }`. The project carries the appended revision (or the new
+  conversation or decision request for a scratch). They validate pins and
+  refuse a local parent chain that has no saved ancestor where one is required.
+- `reconcilePublication(project, record)` returns
+  `"published" | "not-published" | "conflict"`, following the restart rules in
+  [publication](#publication-and-migration-recovery). It compares frozen
+  content, never an ID alone.
+- `resolveLocalChatInput(project, records, input)` and the decision
+  equivalent return the items or content to render. They also return the
+  run identity: a saved revision runs as itself. A request draft runs as
+  `{ conversationId: asset.id, conversationRevisionId: fresh }`. A scratch
+  runs as `{ conversationId: record.localConversationId, conversationRevisionId: fresh }`.
+  No local ID is ever written into `project.json`.
+- `setLaunchDefaults(project, { chat: { revisionId, target, options, enabledToolIds } })`
+  and `setDecisionLaunchDefault(project, revisionId)` (D13). Both refuse a
+  local reference.
+
+### `usePersonalWorkbench` (new, `app/workbench/`)
+
+```ts
+interface PersonalWorkbenchHandle {
+  status:
+    | { kind: "off" }                         // legacy session
+    | { kind: "session" }                     // no folder: in memory only
+    | { kind: "loading" }
+    | { kind: "ready"; saving: boolean }
+    | { kind: "blocked"; reason: "foreign-project" | "protection"; message: string };
+  /** One active draft per asset (D6). Keyed `${asset.kind}:${asset.id}`. */
+  draftFor(asset: WorkbenchAssetRef): WorkbenchDraftV1 | undefined;
+  scratch(id: ScratchId): WorkbenchScratchV1 | undefined;
+  selections: ResolvedSelections;             // read with launch-default fallback
+  unsavedDrafts: UnsavedDraftSummary[];       // D14 list
+  recovery: RecoveryItem[];                   // D8 drawer and pane marks
+  updateDraft(asset: WorkbenchAssetRef, base: DraftBase, edited: DraftContent): void; // debounced
+  discardDraft(asset: WorkbenchAssetRef): Promise<WorkbenchStoreOutcome>;
+  createScratch(request: ScratchRequest, options?: { branchedFrom?: ... }): ScratchId;
+  updateScratch(id: ScratchId, request: ScratchRequest): void;                  // debounced
+  discardScratch(id: ScratchId): Promise<WorkbenchStoreOutcome>;
+  select(input: LocalChatInput | LocalDecisionInput): void;
+  setExecution(patch: ChatExecutionOverrides): void;
+  /**
+   * The four-step protocol: intent then read-back, then the workspace's shared
+   * write, then clear or rebase the record. `write` is the workspace's
+   * explicit shared write.
+   */
+  publish(ref: WorkbenchAssetRef | { scratchId: ScratchId }, name?: string): Promise<PublishOutcome>;
+  reconcile: {
+    compare(item: RecoveryItem): RecoveryComparison;
+    use(candidate: string): Promise<ReconcileOutcome>;
+    discard(candidate: string): Promise<ReconcileOutcome>;
+    removeMigrationBackup(operationId: string): Promise<ReconcileOutcome>;
+  };
+  /** Before replacement or close: persist queued debounced writes. */
+  flush(): Promise<void>;
+}
+
+usePersonalWorkbench(input: {
+  session: { mode: "legacy" | "personal"; projectId: ProjectId; adoption: number } | null;
+  storage: WorkbenchStorage | null;           // null: session-only
+  shared: ProjectFile | null;
+  writeShared(next: ProjectFile): Promise<SharedWriteOutcome>;
+})
+type PublishOutcome =
+  | { kind: "published"; revisionId: string; keptEdits: boolean }
+  | { kind: "conflict" | "failed" | "blocked"; message: string };  // draft kept
+```
+
+It reopens on each `adoption`, settles every `publishing` record with
+`reconcilePublication` before it reports `ready`, and never adopts disk
+contents over in-memory edits on a conflict.
+
+### `useProjectWorkspace` (changed under the gate)
+
+- `currentProjectDocument()` in a `personal` session folds only `tools`
+  and `toolMocks` from the request draft. It does not fold revision items,
+  `defaults` or the decision draft. Auto-save keeps writing D15 edits as today
+  ("direct shared writes"), and nothing else reaches it.
+- New `writeShared(next): Promise<SharedWriteOutcome>`
+  (`confirmed | conflict | failed | blocked`). It shares the existing write
+  queue and tab-role fence (U1). Unlike auto-save, it resolves only once the
+  write is confirmed or refused.
+- New `format: { kind: "legacy"; sourceVersion: 15 | 16 | 17 | 18 } | { kind: "shared" }`
+  and `sharedSaveBlockedReason?: string` (D4). A legacy folder in a `personal`
+  session blocks `writeShared` and auto-save. Viewing, running, evidence and
+  session-only edits still work. Opening never migrates.
+- `onApplyDraft` and `onApplyDecisionRequest` are replaced, in a `personal`
+  session, by the personal workbench's selection. The workspace still applies
+  the shared document itself.
+
+### Migration owner (new `useProjectMigration`, `app/workbench/`)
+
+```ts
+interface ProjectMigrationHandle {
+  available: boolean;                         // personal session, legacy folder
+  preview(): Promise<MigrationPreview>;       // plan only, nothing written
+  stage(): Promise<StageOutcome>;
+  complete(): Promise<MigrationCompletionOutcome>;
+  /** D5: `diverged` and `uncertain` open read-only inspection. */
+  outcome?: { kind: "reopened" } | { kind: "inspection"; shared: "diverged" | "uncertain" };
+}
+```
+
+It composes the existing `planSharedProjectMigration`, migration staging and
+`completeSharedProjectMigration` over the browser and native adapters. On
+`completed` it asks the workspace to reopen the folder. Reconciliation of
+pending candidates belongs to the personal workbench (D3); this owner only
+gets the folder to v19.
+
+### Feature owners
+
+- **`useProjectTemplates`.** `updateProjectTemplateDraft` and
+  `updateDecisionTemplateDraft` call `personal.updateDraft`, and `save*`
+  calls `personal.publish`. `libraryTemplates` reads each template's draft from
+  `personal.draftFor`, not `template.draft`.
+- **New `useChatRequestRecord` (`app/request/`).** This owns which record the
+  composer edits: a clean saved revision, its request draft, or a scratch.
+  It turns composer edits into `updateDraft` or `updateScratch`, and offers
+  `save()`, `saveAsRequest(name)` and `useAsLaunchDefault()` (D13, with a
+  preview). `usePendingBranch` keeps run provenance (`branchedFrom`). Starting
+  a branch creates a scratch whose parent is the branched revision or scratch.
+- **`prepareWorkbenchRun`.** In a `personal` session it takes the
+  identity from `resolveLocalChatInput` and returns no `projectMutation`.
+- **`useDecisionProject`.** `fold` and `freezeForRun` become no-ops in a
+  `personal` session. Edits go to a decision-request draft or scratch through
+  the personal owner. Suite authoring keeps `activate: false`.
+- **`useProjectEnvironments`.** `select` writes
+  `chat.execution.environmentId`, and `setDefault` stays a shared write.
+- **`app/page.tsx`** composes the new handles and the Recovery chip and
+  drawer. It holds no queue, codec or migration state.
+
+### Delivery inside the gate
+
+Every step lands behind the gate. Removing the gate is the last step (D1):
+
+1. Core: v1 arms, resolutions record, publication and resolution operations,
+   with planner environment seeding and tests. No app caller.
+2. Gate and second e2e server; workspace `personal` mode, `writeShared`,
+   `usePersonalWorkbench` with template drafts and publication.
+3. Chat request drafts, scratch, branches and run identity.
+4. Decision request drafts and scratch.
+5. Selections, execution overrides, environment selection, launch-default
+   actions and the differs-from-default status.
+6. Legacy-folder blocking, `useProjectMigration`, the completion dialog and
+   the Recovery drawer and reconciliation.
+7. The ExperimentPlan local-input version (D12), after its own contract
+   review.
