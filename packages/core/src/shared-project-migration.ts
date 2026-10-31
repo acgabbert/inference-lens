@@ -1,7 +1,7 @@
 import { parseProjectJson, ProjectValidationError } from "./project.ts";
 import { parseSharedProjectFile } from "./shared-project.ts";
 import type { SharedProjectFileV19 } from "./shared-project.ts";
-import { parseWorkbenchRecord } from "./personal-workbench.ts";
+import { isPromptDraft, parseWorkbenchRecord } from "./personal-workbench.ts";
 import type { WorkbenchPromptDraftV1, WorkbenchSelectionsV1 } from "./personal-workbench.ts";
 
 export interface SharedProjectMigrationPlan {
@@ -52,7 +52,7 @@ export function planSharedProjectMigration(sourceBytes: Uint8Array): SharedProje
         base: { revisionId: sourceRevisionId, snapshot },
         edited,
       }, project.projectId);
-      if (record.kind !== "draft") throw new Error("Expected a migration draft record.");
+      if (!isPromptDraft(record)) throw new Error("Expected a migration prompt draft record.");
       drafts.push(record);
     }
     const sharedTemplate = { ...template };
@@ -67,7 +67,10 @@ export function planSharedProjectMigration(sourceBytes: Uint8Array): SharedProje
     projectId: project.projectId,
     chat: {
       selectedInput: { kind: "saved-conversation-revision", revisionId: defaults.conversationRevisionId },
-      execution: { target: defaults.target, options: defaults.options, enabledToolIds: defaults.enabledToolIds },
+      execution: {
+        target: defaults.target, options: defaults.options, enabledToolIds: defaults.enabledToolIds,
+        ...(defaults.environmentId === undefined ? {} : { environmentId: defaults.environmentId }),
+      },
     },
     ...(defaults.decisionRequestRevisionId === undefined ? {} : {
       decision: { selectedInput: { kind: "saved-decision-request-revision", revisionId: defaults.decisionRequestRevisionId } },

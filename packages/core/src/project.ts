@@ -909,16 +909,6 @@ const projectEnvironmentSchema = z
   .strict();
 
 /** @internal Shared content validators for the isolated Level 2 codecs. */
-export const projectContentSchemas = {
-  entityId,
-  chatPromptRevision: promptTemplateRevisionSchema,
-  chatPromptDraft: promptTemplateDraftSchema,
-  decisionPromptRevision: decisionPromptTemplateRevisionSchema,
-  decisionPromptDraft: decisionPromptTemplateDraftSchema,
-  inferenceOptions: inferenceOptionsSchema,
-  executionTarget: executionTargetSchema,
-};
-
 const decisionRequestSchema = z
   .object({
     id: entityId("decision-request"),
@@ -937,6 +927,21 @@ const decisionRequestRevisionSchema = z.discriminatedUnion("kind", [
     templateId: entityId("template"), templateRevisionId: entityId("template-revision"),
     overrides: z.record(z.string().regex(variableName), z.string()) }).strict(),
 ]);
+
+export const projectContentSchemas = {
+  entityId,
+  chatPromptRevision: promptTemplateRevisionSchema,
+  chatPromptDraft: promptTemplateDraftSchema,
+  decisionPromptRevision: decisionPromptTemplateRevisionSchema,
+  decisionPromptDraft: decisionPromptTemplateDraftSchema,
+  inferenceOptions: inferenceOptionsSchema,
+  executionTarget: executionTargetSchema,
+  conversationRevision: projectConversationRevisionSchema,
+  conversationItem: projectConversationItemSchema,
+  decisionRequestRevision: decisionRequestRevisionSchema,
+  decisionInput: decisionInputSchema,
+  variableName,
+};
 
 const evaluationInputBindingSchema: z.ZodType<EvaluationInputBinding> = z
   .object({

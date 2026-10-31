@@ -2,7 +2,8 @@ import { z } from "zod";
 import { projectContentSchemas } from "./project.ts";
 import { planSharedProjectMigration } from "./shared-project-migration.ts";
 import { serializeSharedProjectFile } from "./shared-project.ts";
-import { parseWorkbenchRecord, serializeWorkbenchRecord } from "./personal-workbench.ts";
+import { parseWorkbenchRecord, serializeWorkbenchRecord, WorkbenchValidationError } from "./personal-workbench.ts";
+import { stableJsonValue } from "./stable-json.ts";
 import type { ProjectId } from "./run-kernel/types.ts";
 
 const digest = z.string().regex(/^[a-f0-9]{64}$/);
@@ -15,6 +16,48 @@ const candidates = z.discriminatedUnion("kind", [
     asset: z.object({ kind: z.enum(["chat-prompt", "decision-prompt"]), id: projectContentSchemas.entityId("template") }).strict(),
   }).strict(),
 ]);
+/**
+ * Settled pending candidates of one operation (D7), beside its immutable
+ * journal. Settling never deletes a staged candidate; "Use this one" keeps the
+ * active record it replaced under the operation's `replaced/` directory (D6).
+ */
+const resolutionsSchema = z.object({
+  schemaVersion: z.literal(1), kind: z.literal("migration-resolutions"),
+  projectId: projectContentSchemas.entityId("project"), operationId: operationIdSchema,
+  resolutions: z.array(z.object({
+    candidate: z.union([z.literal("candidates/selections.json"), z.string().regex(/^candidates\/draft_migrated-[a-f0-9]{64}\.json$/)]),
+    outcome: z.enum(["used", "discarded"]),
+    settledAt: z.iso.datetime({ offset: true }),
+    replacedCopy: z.string().optional(),
+  }).strict()),
+  backupRemovedAt: z.iso.datetime({ offset: true }).optional(),
+}).strict().superRefine((record, ctx) => {
+  const settled = new Set<string>();
+  const replaced = new RegExp(`^migrations/${record.operationId}/replaced/(?:selections|draft_[A-Za-z0-9_-]+)\\.json$`);
+  for (const [index, resolution] of record.resolutions.entries()) {
+    if (settled.has(resolution.candidate)) ctx.addIssue({ code: "custom", path: ["resolutions", index, "candidate"], message: "A candidate is settled once." });
+    settled.add(resolution.candidate);
+    if (resolution.replacedCopy === undefined) continue;
+    if (resolution.outcome !== "used") ctx.addIssue({ code: "custom", path: ["resolutions", index, "replacedCopy"], message: "Only a used candidate replaces an active record." });
+    else if (!replaced.test(resolution.replacedCopy)) ctx.addIssue({ code: "custom", path: ["resolutions", index, "replacedCopy"], message: "A replaced copy stays inside its own operation." });
+  }
+});
+export type MigrationResolutionsV1 = z.infer<typeof resolutionsSchema>;
+const resolutionsFieldOrder = new Map(["schemaVersion", "kind", "projectId", "operationId", "resolutions", "backupRemovedAt", "candidate", "outcome", "settledAt", "replacedCopy"].map((field, index) => [field, index]));
+
+export function parseMigrationResolutions(value: unknown, expectedProjectId?: ProjectId): MigrationResolutionsV1 {
+  const parsed = resolutionsSchema.safeParse(value);
+  if (!parsed.success) throw new WorkbenchValidationError(parsed.error.issues);
+  if (expectedProjectId !== undefined && parsed.data.projectId !== expectedProjectId) {
+    throw new WorkbenchValidationError([{ code: "custom", path: ["projectId"], message: "Migration resolutions belong to a different project." }]);
+  }
+  return structuredClone(parsed.data);
+}
+
+export function serializeMigrationResolutions(record: MigrationResolutionsV1): string {
+  return `${JSON.stringify(stableJsonValue(parseMigrationResolutions(record), { preferredKeyOrder: resolutionsFieldOrder }), null, 2)}\n`;
+}
+
 const journalSchema = z.object({
   schemaVersion: z.literal(1), kind: z.literal("shared-project-migration"),
   operationId: operationIdSchema, projectId: projectContentSchemas.entityId("project"),
