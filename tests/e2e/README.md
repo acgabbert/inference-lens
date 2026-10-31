@@ -18,7 +18,10 @@ provider fixture on `24015`, and the System One capture replay on `24028`
 for a Playwright run, and do not run a Playwright install step first.** The
 config owns all of it, with `reuseExistingServer: false` — a server you started
 yourself is not the server the suite talks to, and leaving one running is how a
-later run picks up a stale build.
+later run picks up a stale build. Vinext also allows one dev server per checkout
+(`.vinext/dev/lock.json`): with `npm run dev` or `tauri dev` still running, the
+suite's server refuses to start with "Another vinext dev server is already
+running." Stop the other one first.
 
 The runner launches Playwright's pinned Chromium, installing it if it is
 missing. Outside CI, when that install fails (a sandbox that blocks
