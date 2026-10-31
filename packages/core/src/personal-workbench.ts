@@ -298,6 +298,9 @@ export type WorkbenchScratchV1 = z.infer<typeof scratchSchema>;
 export type WorkbenchSelectionsV1 = z.infer<typeof selectionsSchema>;
 export type WorkbenchRecordV1 = WorkbenchDraftV1 | WorkbenchSelectionsV1 | WorkbenchScratchV1;
 export type WorkbenchDecisionRequestContent = z.infer<typeof decisionRequestContent>;
+/** What the composer runs: a saved revision, a request draft or a scratch. */
+export type LocalChatInput = NonNullable<NonNullable<WorkbenchSelectionsV1["chat"]>["selectedInput"]>;
+export type LocalDecisionInput = NonNullable<WorkbenchSelectionsV1["decision"]>["selectedInput"];
 
 /** Draft arms are distinguished by `asset.kind`, which TypeScript does not narrow on. */
 export function isPromptDraft(record: WorkbenchRecordV1): record is WorkbenchPromptDraftV1 {
