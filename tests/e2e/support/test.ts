@@ -9,6 +9,9 @@
  *
  * Opt out per file or describe block with `test.use({ layoutAudit: false })`,
  * or pass `{ ignore: [selector] }` for a deliberate clip.
+ *
+ * `test.use({ personalWorkbench: true })` points a spec at the second app
+ * server, which runs with the shared assets 2b gate on (playwright.config.ts).
  */
 import { test as base } from "@playwright/test";
 
@@ -21,8 +24,19 @@ const auditViewports = [
   { width: 390, height: 844 },
 ];
 
-export const test = base.extend<{ layoutAudit: false | LayoutAuditOptions; auditLayout: void }>({
+/** The gated app server (`personalWorkbenchAppPort` in playwright.config.ts). */
+export const PERSONAL_WORKBENCH_ORIGIN = "http://127.0.0.1:4301";
+
+export const test = base.extend<{
+  layoutAudit: false | LayoutAuditOptions;
+  personalWorkbench: boolean;
+  auditLayout: void;
+}>({
   layoutAudit: [{}, { option: true }],
+  personalWorkbench: [false, { option: true }],
+  baseURL: async ({ baseURL, personalWorkbench }, provide) => {
+    await provide(personalWorkbench ? PERSONAL_WORKBENCH_ORIGIN : baseURL);
+  },
   auditLayout: [
     async ({ context, layoutAudit, baseURL }, use, testInfo) => {
       await use();

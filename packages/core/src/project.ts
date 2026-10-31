@@ -2721,6 +2721,50 @@ export function projectDraft(
  * Updates the active authored draft without touching project-owned tools,
  * mocks, templates, other conversations, or connection requirements.
  */
+/**
+ * A deleted tool cannot be left named by a suite: the schema refuses a
+ * dangling exposure, so deleting a tool withdraws it from every suite that
+ * exposed it rather than making the project unsaveable from the tools pane.
+ */
+function suitesWithoutDeletedTools(project: ProjectFile, tools: readonly ToolDefinition[]): ProjectFile["evaluationSuites"] {
+  const toolIds = new Set(tools.map(({ id }) => id));
+  return project.evaluationSuites.map((suite) =>
+    !isChatEvaluationSuite(suite) || suite.execution.toolIds.every((id) => toolIds.has(id))
+      ? suite
+      : {
+          ...suite,
+          execution: {
+            ...suite.execution,
+            toolIds: suite.execution.toolIds.filter((id) => toolIds.has(id)),
+          },
+        },
+  );
+}
+
+/**
+ * Folds only the tool registry and its mocks, the request editor's direct
+ * shared writes that 2b does not separate (D15). A `personal` session saves
+ * through this instead of `updateProjectDraft`, so revision items and
+ * `defaults` never reach auto-save. A deleted tool also leaves the suites and
+ * the launch default's enabled tools, which would otherwise dangle.
+ */
+export function updateProjectTools(
+  project: ProjectFile,
+  draft: Pick<UpdateProjectDraft, "tools" | "toolMocks">,
+): ProjectFile {
+  const toolIds = new Set(draft.tools.map(({ id }) => id));
+  return parseProjectFile({
+    ...project,
+    tools: draft.tools,
+    toolMocks: draft.toolMocks,
+    evaluationSuites: suitesWithoutDeletedTools(project, draft.tools),
+    defaults: {
+      ...project.defaults,
+      enabledToolIds: project.defaults.enabledToolIds.filter((id) => toolIds.has(id)),
+    },
+  });
+}
+
 export function updateProjectDraft(
   project: ProjectFile,
   draft: UpdateProjectDraft,
@@ -2789,21 +2833,7 @@ export function updateProjectDraft(
       ),
     ],
   );
-  // A deleted tool cannot be left named by a suite: the schema refuses a
-  // dangling exposure, so deleting a tool withdraws it from every suite that
-  // exposed it rather than making the project unsaveable from the tools pane.
-  const draftToolIds = new Set(draft.tools.map(({ id }) => id));
-  const evaluationSuites = project.evaluationSuites.map((suite) =>
-    !isChatEvaluationSuite(suite) || suite.execution.toolIds.every((id) => draftToolIds.has(id))
-      ? suite
-      : {
-          ...suite,
-          execution: {
-            ...suite.execution,
-            toolIds: suite.execution.toolIds.filter((id) => draftToolIds.has(id)),
-          },
-        },
-  );
+  const evaluationSuites = suitesWithoutDeletedTools(project, draft.tools);
   return parseProjectFile({
     ...project,
     tools: draft.tools,

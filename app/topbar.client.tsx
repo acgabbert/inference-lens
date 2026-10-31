@@ -123,6 +123,8 @@ export function Topbar({
             ? "Save failed — retry from Project"
             : projectStorageState.kind === "secondary"
               ? "Not saved — another tab is editing this project"
+              : projectStorageState.kind === "blocked"
+                ? "Not saved — shared saves need this older-format folder upgraded"
               : `Saved to ${projectStorageState.displayPath}`;
 
   useEffect(() => {

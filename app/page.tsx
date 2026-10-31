@@ -126,6 +126,7 @@ import { ToastRegion } from "./notifications/toast-region.client";
 import { AppBanner } from "./notifications/app-banner.client";
 import { projectTabBanner } from "./project-tab-banner";
 import { chooseAppBanner } from "./notifications/banner-priority.client";
+import { usePersonalWorkbench } from "./workbench/use-personal-workbench.client";
 import type { AppBanner as AppBannerCandidate } from "./notifications/banner-priority.client";
 
 const inferenceTransport = createInferenceTransport();
@@ -562,8 +563,19 @@ function HomeContent() {
     applyEnvironment: (environmentId, document) =>
       projectTemplates.applyEnvironment(environmentId, document),
   });
+  // The 2b personal owner (D3). Off in a legacy session; a legacy folder in a
+  // personal session keeps its drafts session-only (S1).
+  const personalWorkbench = usePersonalWorkbench({
+    session: project.projectSession,
+    storage: project.projectWorkspace && project.projectSession?.format?.kind === "shared"
+      ? project.projectWorkspace.storage.workbench
+      : null,
+    shared: projectFile,
+    writeShared: project.writeShared,
+  });
   const projectTemplates = useProjectTemplates({
     projectFile,
+    personal: personalWorkbench,
     projectDirty,
     messages,
     model: requestSettings.model,

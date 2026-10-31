@@ -37,10 +37,8 @@
 import {
   PROJECT_FILE_NAME,
   projectGitignoreContents,
-  parseProjectJson,
   projectDirectoryName,
   projectExportFileName,
-  serializeProjectFile,
 } from "../packages/core/src/project.ts";
 import type { ProjectFile, ProjectGitPolicy } from "../packages/core/src/project.ts";
 import type { WorkbenchFile, WorkbenchMutationResult, WorkbenchStorage } from "../packages/core/src/workbench-store.ts";
@@ -105,6 +103,18 @@ import type {
   StoredRunTraceFile,
 } from "./project-directory.client.ts";
 import { rememberProjectLocation } from "./project-location-registry.client.ts";
+import { personalWorkbenchEnabled } from "./workbench/personal-workbench-gate.ts";
+import {
+  LEGACY_FOLDER_SAVE_BLOCKED_MESSAGE,
+  readProjectManifest,
+  serializeProjectManifest,
+} from "./workbench/project-manifest.ts";
+import type {
+  ProjectManifestFormat,
+  ProjectManifestRead,
+  ProjectSessionMode,
+} from "./workbench/project-manifest.ts";
+import type { WorkbenchPromptDraftV1 } from "../packages/core/src/personal-workbench.ts";
 import { isTauriRuntime } from "./runtime.client.ts";
 import {
   clearStoredWorkspace,
@@ -185,6 +195,61 @@ export interface ProjectWorkspaceHandle {
 export interface OpenedProjectWorkspace {
   project: ProjectFile;
   handle: ProjectWorkspaceHandle;
+}
+
+/**
+ * What one manifest read (W1) found, kept beside its handle. The session mode
+ * is the gate's value when the read happened, and the owner adopts it with the
+ * handle, so an open session never changes mode (D2).
+ */
+export interface ProjectWorkspaceManifest {
+  mode: ProjectSessionMode;
+  format: ProjectManifestFormat;
+  /** Template drafts lifted out of a legacy document read in a `personal` session. */
+  personalSeeds: WorkbenchPromptDraftV1[];
+}
+
+const workspaceManifests = new WeakMap<ProjectWorkspaceHandle, ProjectWorkspaceManifest>();
+
+/** The session mode the gate selects now. Read only before a document is adopted. */
+export function currentProjectSessionMode(): ProjectSessionMode {
+  return personalWorkbenchEnabled() ? "personal" : "legacy";
+}
+
+export function projectWorkspaceManifest(handle: ProjectWorkspaceHandle): ProjectWorkspaceManifest {
+  const manifest = workspaceManifests.get(handle);
+  if (!manifest) throw new Error("Unknown project workspace handle.");
+  return manifest;
+}
+
+/** A gated session refuses to write a legacy manifest (S1); opening never migrates. */
+export class SharedSaveBlockedError extends Error {
+  constructor(message = LEGACY_FOLDER_SAVE_BLOCKED_MESSAGE) {
+    super(message);
+    this.name = "SharedSaveBlockedError";
+  }
+}
+
+function readManifest(contents: string): ProjectManifestRead & { mode: ProjectSessionMode } {
+  const mode = currentProjectSessionMode();
+  return { ...readProjectManifest(contents, mode), mode };
+}
+
+function withManifest(
+  handle: ProjectWorkspaceHandle,
+  read: { mode: ProjectSessionMode; format: ProjectManifestFormat; personalSeeds: WorkbenchPromptDraftV1[] },
+): ProjectWorkspaceHandle {
+  workspaceManifests.set(handle, { mode: read.mode, format: read.format, personalSeeds: read.personalSeeds });
+  return handle;
+}
+
+/** A manifest this build just wrote: v19 in a `personal` session. */
+function writtenManifest(mode: ProjectSessionMode): ProjectWorkspaceManifest {
+  return {
+    mode,
+    format: mode === "personal" ? { kind: "shared" } : { kind: "legacy", sourceVersion: 18 },
+    personalSeeds: [],
+  };
 }
 
 export type WorkspaceResumeOutcome =
@@ -420,11 +485,12 @@ export async function reopenProjectWorkspace(
   const directory = browserDirectories.get(handle);
   if (!directory) throw new Error("Only a browser project folder can be reopened.");
   const contents = await coordinateProjectWrites(projectId, () => readBrowserManifest(directory));
-  const project = parseProjectJson(contents);
+  const read = readManifest(contents);
+  const { project } = read;
   if (project.projectId !== projectId) {
     throw new Error(`${directory.name} now holds a different project. Open it again from the Project menu.`);
   }
-  return { project, handle: browserWorkspace(directory, contents, projectId) };
+  return { project, handle: withManifest(browserWorkspace(directory, contents, projectId), read) };
 }
 
 /** Revalidate a preflighted target after any replacement dialog or queued save.
@@ -473,9 +539,10 @@ export async function rememberAcceptedProjectWorkspace(opened: OpenedProjectWork
 /** Inspect a registry candidate without adoption, writes or last-project effects. */
 export async function inspectBrowserProjectDirectory(directory: FileSystemDirectoryHandleLike, projectId: ProjectFile["projectId"]): Promise<OpenedProjectWorkspace> {
   const contents = await readBrowserManifest(directory);
-  const project = parseProjectJson(contents);
+  const read = readManifest(contents);
+  const { project } = read;
   if (project.projectId !== projectId) throw new Error(`Wrong project: ${directory.name} contains ${project.projectId}, but this link requests ${projectId}. Locate the matching project folder.`);
-  return { project, handle: browserWorkspace(directory, contents, project.projectId) };
+  return { project, handle: withManifest(browserWorkspace(directory, contents, project.projectId), read) };
 }
 
 export async function locateLinkedProject(projectId: ProjectFile["projectId"]): Promise<OpenedProjectWorkspace | null> {
@@ -510,10 +577,11 @@ async function openBrowserProjectFolder(): Promise<OpenedProjectWorkspace | null
       }
       throw error;
     }
-    const project = parseProjectJson(contents);
+    const read = readManifest(contents);
+    const { project } = read;
     return {
       project,
-      handle: browserWorkspace(directory, contents, project.projectId),
+      handle: withManifest(browserWorkspace(directory, contents, project.projectId), read),
     };
   } catch (error) {
     const failure = classifyPickerError(error);
@@ -562,7 +630,8 @@ async function createBrowserProjectFolder(
         await ignoreWritable.write(gitignoreContents);
         await ignoreWritable.close();
       }
-      const contents = serializeProjectFile(project);
+      const mode = currentProjectSessionMode();
+      const contents = serializeProjectManifest(project, mode);
       const fileHandle = await directory.getFileHandle(PROJECT_FILE_NAME, {
         create: true,
       });
@@ -571,7 +640,7 @@ async function createBrowserProjectFolder(
       await writable.close();
       return {
         project,
-        handle: browserWorkspace(directory, contents, project.projectId),
+        handle: withManifest(browserWorkspace(directory, contents, project.projectId), writtenManifest(mode)),
       };
     } catch (error) {
       try {
@@ -638,7 +707,7 @@ async function resumeStoredWorkspace(
   let read: WorkspaceReadResult;
   try {
     const contents = await readBrowserManifest(record.handle);
-    parseProjectJson(contents);
+    readManifest(contents);
     read = { kind: "ok", contents };
   } catch (error) {
     read = {
@@ -658,11 +727,12 @@ async function resumeStoredWorkspace(
   if (load.kind === "forget") {
     return forgetStoredWorkspace(record, load.message);
   }
-  const project = parseProjectJson(load.contents);
+  const manifest = readManifest(load.contents);
+  const { project } = manifest;
   return {
     kind: "resumed",
     project,
-    handle: browserWorkspace(record.handle, load.contents, project.projectId),
+    handle: withManifest(browserWorkspace(record.handle, load.contents, project.projectId), manifest),
   };
 }
 
@@ -783,10 +853,11 @@ async function openNativeProjectFolder(): Promise<OpenedProjectWorkspace | null>
     "open_project_workspace",
   );
   if (!workspace) return null;
-  const project = parseProjectJson(workspace.contents);
+  const read = readManifest(workspace.contents);
+  const { project } = read;
   return {
     project,
-    handle: nativeWorkspaceHandle(workspace, project.projectId),
+    handle: withManifest(nativeWorkspaceHandle(workspace, project.projectId), read),
   };
 }
 
@@ -794,10 +865,11 @@ async function createNativeProjectFolder(
   project: ProjectFile,
   options: ProjectCreationOptions,
 ): Promise<OpenedProjectWorkspace | null> {
+  const mode = currentProjectSessionMode();
   const workspace = await invokeNative<NativeWorkspace | null>(
     "create_project_workspace",
     {
-      contents: serializeProjectFile(project),
+      contents: serializeProjectManifest(project, mode),
       bundleName: projectDirectoryName(options.name),
       gitignoreContents: projectGitignoreContents(options.gitPolicy),
     },
@@ -805,7 +877,7 @@ async function createNativeProjectFolder(
   if (!workspace) return null;
   return {
     project,
-    handle: nativeWorkspaceHandle(workspace, project.projectId),
+    handle: withManifest(nativeWorkspaceHandle(workspace, project.projectId), writtenManifest(mode)),
   };
 }
 
@@ -829,7 +901,9 @@ export async function saveProjectWorkspace(
   project: ProjectFile,
   precondition?: () => Promise<void>,
 ): Promise<void> {
-  await handle.storage.save(serializeProjectFile(project), precondition);
+  const { mode, format } = projectWorkspaceManifest(handle);
+  if (mode === "personal" && format.kind === "legacy") throw new SharedSaveBlockedError();
+  await handle.storage.save(serializeProjectManifest(project, mode), precondition);
 }
 
 /** Serializes a saved run by its kind (D22, D29). */
@@ -1070,8 +1144,9 @@ export async function exportRunTraceFile(
   return { kind: "downloaded", fileName };
 }
 
-export function downloadProjectFile(project: ProjectFile): void {
-  const blob = new Blob([serializeProjectFile(project)], {
+/** A `personal` session exports v19 shared definitions only (S2). */
+export function downloadProjectFile(project: ProjectFile, mode: ProjectSessionMode): void {
+  const blob = new Blob([serializeProjectManifest(project, mode)], {
     type: "application/json",
   });
   const url = URL.createObjectURL(blob);
