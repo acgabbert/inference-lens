@@ -1157,6 +1157,10 @@ not exist yet.
   Inline decision values must name variables the content uses. Secret-like
   names are refused in every assignment arm. `isPromptDraft` narrows the
   draft union, which TypeScript cannot narrow on `asset.kind`.
+  Chat snapshots, edits, scratch requests and publication content require
+  unique template-use IDs and unique message IDs across literals and template
+  outputs, matching the shared project contract. Scratch publication also
+  requires a new revision ID distinct from its parent.
 - [migration-journal.ts](../packages/core/src/migration-journal.ts) owns
   `parseMigrationResolutions` and `serializeMigrationResolutions`, using the
   journal's own `migration_<sha256>` operation and candidate path rules.

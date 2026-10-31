@@ -126,6 +126,62 @@ const chatScratch = {
   branchedFrom: { runId: "run_parent", messageId: "message_explain" },
 };
 
+const pinnedItem = chatChild.items.find(item => item.kind === "template-use")!;
+assert.equal(pinnedItem.kind, "template-use");
+if (pinnedItem.kind !== "template-use") throw new Error("Expected a pinned chat template fixture.");
+const pinnedUse = pinnedItem.use;
+const duplicateItemCases = [
+  { name: "literal message IDs", id: "message_local", items: [literalItems[0], literalItems[0]] },
+  { name: "template-use IDs", id: pinnedUse.id, items: [pinnedItem, { ...pinnedItem, use: { ...pinnedUse, outputMessageIds: ["message_other"] } }] },
+  { name: "output IDs within a use", id: "message_repeated", items: [{ ...pinnedItem, use: { ...pinnedUse, outputMessageIds: ["message_repeated", "message_repeated"] } }] },
+  { name: "output IDs across uses", id: "message_repeated", items: [
+    { ...pinnedItem, use: { ...pinnedUse, outputMessageIds: ["message_repeated"] } },
+    { ...pinnedItem, use: { ...pinnedUse, id: "template-use_other", outputMessageIds: ["message_repeated"] } },
+  ] },
+  { name: "literal and output IDs", id: "message_local", items: [literalItems[0], { ...pinnedItem, use: { ...pinnedUse, outputMessageIds: ["message_local"] } }] },
+];
+
+for (const { name, id, items } of duplicateItemCases) {
+  const records = [
+    { name: "base snapshot", value: { ...chatRequestDraft, base: { ...chatRequestDraft.base, snapshot: { ...chatChild, items } } }, path: ["base", "snapshot", "items"] },
+    { name: "edited draft", value: { ...chatRequestDraft, edited: { items } }, path: ["edited", "items"] },
+    { name: "draft publication", value: { ...chatRequestDraft, publishing: { revisionId: "revision_published", parentRevisionId: chatChild.id, content: { items } } }, path: ["publishing", "content", "items"] },
+    { name: "scratch request", value: { ...chatScratch, request: { ...chatScratch.request, items } }, path: ["request", "items"] },
+    { name: "scratch publication", value: { ...chatScratch, publishing: { conversationId: "conversation_example", revisionId: "revision_published", parentRevisionId: chatChild.id, content: { items } } }, path: ["publishing", "content", "items"] },
+  ];
+  for (const record of records) {
+    test(`${record.name} rejects duplicate ${name}`, () => {
+      assert.throws(() => parseWorkbenchRecord(record.value), (error: unknown) => {
+        assert.ok(error instanceof WorkbenchValidationError);
+        assert.ok(error.issues.some(issue => issue.message === `Duplicate identifier "${id}".`
+          && record.path.every((part, index) => issue.path[index] === part)), error.message);
+        return true;
+      });
+    });
+  }
+}
+
+for (const kind of ["chat", "decision"] as const) {
+  test(`${kind} scratch publication rejects a revision that is its own parent`, () => {
+    const revisionId = kind === "chat" ? "revision_parent" : "decision-revision_parent";
+    const record = {
+      ...chatScratch,
+      request: kind === "chat" ? chatScratch.request : { kind: "decision", content: decisionRequestDraft.edited },
+      publishing: {
+        ...(kind === "chat" ? { conversationId: "conversation_example" } : { decisionRequestId: "decision-request_example" }),
+        revisionId, parentRevisionId: revisionId,
+        content: kind === "chat" ? { items: literalItems } : decisionRequestDraft.edited,
+      },
+    };
+    assert.throws(() => parseWorkbenchRecord(record), (error: unknown) => {
+      assert.ok(error instanceof WorkbenchValidationError);
+      assert.ok(error.issues.some(issue => issue.path.join(".") === "publishing.revisionId"
+        && issue.message === "A publication allocates a new revision."), error.message);
+      return true;
+    });
+  });
+}
+
 test("scratch records hold local requests with discriminated parents and a stable local conversation", () => {
   roundTrips(chatScratch);
   roundTrips({ ...chatScratch, scratchId: "scratch_child", request: { kind: "chat", items: literalItems, parent: { kind: "scratch", scratchId: "scratch_branch" } } });

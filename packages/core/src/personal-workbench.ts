@@ -48,8 +48,23 @@ type Path = Array<string | number>;
 
 /** Saved and local assignments obey the project file's rules, minus live references. */
 function checkChatItems(items: ProjectConversationItem[], path: Path, context: Issues): void {
+  const messageIds = new Set<string>();
+  const useIds = new Set<string>();
+  function checkId(seen: Set<string>, id: string, idPath: Path): void {
+    if (seen.has(id)) {
+      context.addIssue({ code: "custom", path: idPath, message: `Duplicate identifier "${id}".` });
+    }
+    seen.add(id);
+  }
   items.forEach((item, index) => {
-    if (item.kind !== "template-use") return;
+    if (item.kind === "message") {
+      checkId(messageIds, item.message.id, [...path, index, "message", "id"]);
+      return;
+    }
+    checkId(useIds, item.use.id, [...path, index, "use", "id"]);
+    item.use.outputMessageIds.forEach((id, outputIndex) => {
+      checkId(messageIds, id, [...path, index, "use", "outputMessageIds", outputIndex]);
+    });
     for (const name of Object.keys(item.use.values)) {
       if (isSensitiveTemplateVariableName(name)) {
         context.addIssue({ code: "custom", path: [...path, index, "use", "values", name], message: "Secret values cannot be recoverable template assignments." });
@@ -214,6 +229,9 @@ const scratchSchema = z.object({
     checkDecisionContent(request.content, ["request", "content"], context);
   }
   if (!publishing) return;
+  if (publishing.revisionId === publishing.parentRevisionId) {
+    context.addIssue({ code: "custom", path: ["publishing", "revisionId"], message: "A publication allocates a new revision." });
+  }
   if (("conversationId" in publishing) !== (request.kind === "chat")) {
     context.addIssue({ code: "custom", path: ["publishing"], message: "Publication must match the scratch request's kind." });
   } else if ("conversationId" in publishing) {
