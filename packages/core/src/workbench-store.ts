@@ -23,14 +23,18 @@ export interface WorkbenchStorage {
 }
 
 export function assertWorkbenchRecordPath(path: string): string {
-  if (path !== "selections.json" && !/^drafts\/draft_[A-Za-z0-9_-]+\.json$/.test(path)) {
+  if (path !== "selections.json" && !/^drafts\/draft_[A-Za-z0-9_-]+\.json$/.test(path) && !/^scratch\/scratch_[A-Za-z0-9_-]+\.json$/.test(path)) {
     throw new Error("Invalid workbench record path.");
   }
   return path;
 }
 
 export function workbenchRecordPath(record: WorkbenchRecordV1): string {
-  return assertWorkbenchRecordPath(record.kind === "selections" ? "selections.json" : `drafts/${record.draftId}.json`);
+  switch (record.kind) {
+    case "selections": return assertWorkbenchRecordPath("selections.json");
+    case "draft": return assertWorkbenchRecordPath(`drafts/${record.draftId}.json`);
+    case "scratch": return assertWorkbenchRecordPath(`scratch/${record.scratchId}.json`);
+  }
 }
 
 /** Inspect identity even when the rest of a future/damaged record cannot parse. */

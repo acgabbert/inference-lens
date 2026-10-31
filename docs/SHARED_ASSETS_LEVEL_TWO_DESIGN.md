@@ -832,10 +832,24 @@ revision plus text used.
 
 ## Owner interfaces (proposed October 31, 2026)
 
-**Status: proposal for review.** These are the exact owner interfaces that D3
-names as the first deliverable of the 2b slice. Nothing below is implemented.
-They were read against `main` at `6a5600b`. Where they extend workbench v1
-(D9), that is an in-place amendment: no application has written v1.
+**Status: the four forks below were approved October 31, 2026; the rest is the
+proposal they were chosen from.** These are the exact owner interfaces that D3
+names as the first deliverable of the 2b slice. They were read against `main`
+at `6a5600b`. Where they extend workbench v1 (D9), that is an in-place
+amendment: no application has written v1, and the arm shapes stay open to
+amendment until the gate is removed.
+
+Approved forks:
+
+- **I1. In-memory type.** Owners keep `ProjectFile`. Only the persistence
+  boundary converts to and from v19 (see [below](#in-memory-shared-document)).
+- **I2. Migration owner.** A new `useProjectMigration` runs preview, staging,
+  completion and reopen. Reconciliation stays in `usePersonalWorkbench`.
+- **I3. Run identity for local input.** A request draft runs under its saved
+  `conversationId` with a fresh revision ID. A scratch runs under a stable
+  local conversation ID kept in its record, with a fresh revision ID per run.
+- **I4. Composer record owner.** A new `useChatRequestRecord` decides which
+  record the composer edits. `usePendingBranch` keeps only run provenance.
 
 ### Facts at `6a5600b` that shape them
 
@@ -934,7 +948,7 @@ type DecisionParentRef =
 
 interface PublicationIntent<C> {
   revisionId: string;          // allocated once
-  parentRevisionId?: string;   // nearest saved ancestor (D10)
+  parentRevisionId?: string;   // a draft's base; a scratch's nearest saved ancestor (D10)
   content: C;                  // frozen copy
 }
 
@@ -948,7 +962,14 @@ Decision requests take one asset kind whose `edited` is a discriminated union,
 not two asset kinds. A local detach can turn a template-use base into inline
 content, and the asset is the same request either way. The migration planner
 copies `defaults.environmentId` into `chat.execution.environmentId` when it
-is present (D9). The decision target stays session state as today: 2b adds no
+is present (D9).
+
+`project.json` requires a revision's parent to be in the same conversation or
+decision request. So a scratch with a saved ancestor publishes as a child
+inside that ancestor's request, as a branch run does today, and its intent has
+a `parentRevisionId` and no `name`. A scratch with no saved ancestor creates a
+named request, and its intent has a `name` and no parent. This is how D10's
+"Saving a scratch request creates a conversation" reads against that rule. The decision target stays session state as today: 2b adds no
 decision execution overrides.
 
 D7's resolutions record is `migrations/<operationId>/resolutions.json`,
@@ -1122,3 +1143,27 @@ Every step lands behind the gate. Removing the gate is the last step (D1):
    the Recovery drawer and reconciliation.
 7. The ExperimentPlan local-input version (D12), after its own contract
    review.
+
+### Step 1 delivered (October 31, 2026)
+
+Core codecs and storage paths only; no application caller, and the gate does
+not exist yet.
+
+- [personal-workbench.ts](../packages/core/src/personal-workbench.ts) adds the
+  `chat-request` and `decision-request` draft arms, the optional `publishing`
+  intent on all four draft arms, the `scratch` record, the widened
+  `selectedInput` references, and `chat.execution.environmentId`. A draft's
+  intent requires `parentRevisionId` equal to its base and a new revision ID.
+  Inline decision values must name variables the content uses. Secret-like
+  names are refused in every assignment arm. `isPromptDraft` narrows the
+  draft union, which TypeScript cannot narrow on `asset.kind`.
+- [migration-journal.ts](../packages/core/src/migration-journal.ts) owns
+  `parseMigrationResolutions` and `serializeMigrationResolutions`, using the
+  journal's own `migration_<sha256>` operation and candidate path rules.
+  Nothing writes this record yet.
+- The planner seeds `chat.execution.environmentId` from
+  `defaults.environmentId`.
+- `scratch/scratch_<id>.json` is a valid record path in core, in the browser
+  adapter and in the native adapter, with the same symlink refusal as
+  `drafts/`. Migration completion still activates only `selections.json` and
+  `drafts/`.

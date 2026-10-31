@@ -8,7 +8,7 @@ import { browserWorkbenchStorage } from "../app/workbench-directory.client.ts";
 import type { FileSystemDirectoryHandleLike, FileSystemFileHandleLike } from "../app/project-directory.client.ts";
 import { parseWorkbenchRecord, serializeWorkbenchRecord } from "../packages/core/src/personal-workbench.ts";
 import type { WorkbenchRecordV1 } from "../packages/core/src/personal-workbench.ts";
-import { openWorkbenchStore } from "../packages/core/src/workbench-store.ts";
+import { openWorkbenchStore, workbenchRecordPath } from "../packages/core/src/workbench-store.ts";
 
 class FileHandle implements FileSystemFileHandleLike {
   readonly kind = "file";
@@ -98,7 +98,7 @@ function records(): WorkbenchRecordV1[] {
   const example = JSON.parse(readFileSync(new URL("../docs/examples/shared-assets-level-two/workbench-records.proposed.json", import.meta.url), "utf8"));
   return Object.values(example.records).map(record => parseWorkbenchRecord(record, projectId));
 }
-const pathFor = (record: WorkbenchRecordV1) => record.kind === "selections" ? "selections.json" : `drafts/${record.draftId}.json`;
+const pathFor = workbenchRecordPath;
 
 test("browser recovery writes verified self-ignore before either prompt kind or selections", async () => {
   const directory = new Directory();
@@ -281,7 +281,7 @@ test("record edits after save starts cannot mutate the frozen write", async () =
   const frozen = serializeWorkbenchRecord(record);
   const store = await openWorkbenchStore(browserWorkbenchStorage(directory), projectId);
   const pending = store.save(record);
-  if (record.kind === "draft") record.edited.revisionName = "changed while saving";
+  if (record.kind === "draft") (record.edited as { revisionName?: string }).revisionName = "changed while saving";
   await pending;
   assert.equal(directory.files.get(`.workbench/${pathFor(record)}`), frozen);
 });
@@ -311,7 +311,7 @@ test("queued saves use the confirmed preceding bytes and can delete the latest r
   const store = await openWorkbenchStore(browserWorkbenchStorage(directory), projectId);
   const first = records().find(record => record.kind === "draft")!;
   const next = structuredClone(first);
-  if (next.kind === "draft") next.edited.revisionName = "second edit";
+  if (next.kind === "draft") (next.edited as { revisionName?: string }).revisionName = "second edit";
   const outcomes = await Promise.all([store.save(first), store.save(next)]);
   assert.deepEqual(outcomes.map(outcome => outcome.kind), ["saved", "saved"]);
   assert.equal(directory.files.get(`.workbench/${pathFor(next)}`), serializeWorkbenchRecord(next));
@@ -374,4 +374,22 @@ test("actual browser store output is ignored by Git without a bundle policy", as
     assert.equal(git("ls-files").trim(), "project.json");
     for (const path of directory.files.keys()) assert.equal(git("check-ignore", path).trim(), path);
   } finally { rmSync(repository, { recursive: true, force: true }); }
+});
+
+test("browser recovery writes, reloads and deletes scratch records in their own directory", async () => {
+  const scratch = parseWorkbenchRecord({
+    schemaVersion: 1, kind: "scratch", projectId, scratchId: "scratch_branch",
+    createdAt: "2026-10-31T12:00:00.000Z", localConversationId: "conversation_local-branch",
+    request: { kind: "chat", items: [], parent: { kind: "saved-conversation-revision", revisionId: "revision_chat-2" } },
+  }, projectId);
+  const directory = new Directory();
+  const store = await openWorkbenchStore(browserWorkbenchStorage(directory), projectId);
+  assert.deepEqual(await store.save(scratch), { kind: "saved", path: "scratch/scratch_branch.json" });
+  assert.equal(directory.files.get(".workbench/scratch/scratch_branch.json"), serializeWorkbenchRecord(scratch));
+  assert.equal(directory.files.has(".workbench/drafts/scratch_branch.json"), false);
+  const reopened = await openWorkbenchStore(browserWorkbenchStorage(directory), projectId);
+  assert.deepEqual(reopened.records.map(item => item.record), [scratch]);
+  assert.deepEqual(reopened.unavailable, []);
+  assert.deepEqual(await reopened.delete("scratch/scratch_branch.json"), { kind: "deleted", path: "scratch/scratch_branch.json" });
+  assert.equal(directory.files.has(".workbench/scratch/scratch_branch.json"), false);
 });

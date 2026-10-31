@@ -37,17 +37,23 @@ pub enum Mutation {
     },
 }
 
+/// The record directories under `.workbench`, each holding one record kind.
+const RECORD_DIRECTORIES: [(&str, &str); 2] = [("drafts", "draft_"), ("scratch", "scratch_")];
+
 fn destination(directory: &Path, path: &str) -> Result<PathBuf, String> {
     let safe = path == "selections.json"
-        || path
-            .strip_prefix("drafts/draft_")
-            .and_then(|suffix| suffix.strip_suffix(".json"))
-            .is_some_and(|suffix| {
-                !suffix.is_empty()
-                    && suffix
-                        .bytes()
-                        .all(|byte| byte.is_ascii_alphanumeric() || b"_-".contains(&byte))
-            });
+        || RECORD_DIRECTORIES.iter().any(|(folder, prefix)| {
+            path.strip_prefix(*folder)
+                .and_then(|rest| rest.strip_prefix('/'))
+                .and_then(|name| name.strip_prefix(*prefix))
+                .and_then(|suffix| suffix.strip_suffix(".json"))
+                .is_some_and(|suffix| {
+                    !suffix.is_empty()
+                        && suffix
+                            .bytes()
+                            .all(|byte| byte.is_ascii_alphanumeric() || b"_-".contains(&byte))
+                })
+        });
     if !safe {
         return Err("Invalid workbench record path.".into());
     }
@@ -80,9 +86,14 @@ fn active_records(directory: &Path) -> Result<Vec<ByteFile>, String> {
     let workbench = directory.join(".workbench");
     reject_link(&workbench)?;
     let mut files = Vec::new();
-    for (parent, prefix) in [(&workbench, ""), (&workbench.join("drafts"), "drafts/")] {
-        reject_link(parent)?;
-        let entries = match fs::read_dir(parent) {
+    let parents = std::iter::once((workbench.clone(), String::new())).chain(
+        RECORD_DIRECTORIES
+            .iter()
+            .map(|(folder, _)| (workbench.join(folder), format!("{folder}/"))),
+    );
+    for (parent, prefix) in parents {
+        reject_link(&parent)?;
+        let entries = match fs::read_dir(&parent) {
             Ok(entries) => entries,
             Err(error) if error.kind() == io::ErrorKind::NotFound => continue,
             Err(error) => return Err(format!("Could not list recovery records: {error}")),
@@ -220,7 +231,9 @@ fn mutate_with(
             message,
         });
     }
-    reject_link(&workbench.join("drafts"))?;
+    for (folder, _) in RECORD_DIRECTORIES {
+        reject_link(&workbench.join(folder))?;
+    }
     let actual = read(&target)?;
     if actual.as_deref() != expected {
         return Ok(Mutation::Conflict {
@@ -458,6 +471,77 @@ mod tests {
             .0
             .join(".workbench/drafts/draft_one.json")
             .exists());
+    }
+
+    #[test]
+    fn native_scratch_records_live_in_their_own_directory() {
+        let directory = Directory::new();
+        assert_eq!(
+            mutate(
+                &directory.0,
+                "scratch/scratch_branch.json",
+                None,
+                Some("local scratch"),
+                "project_one"
+            )
+            .unwrap(),
+            Mutation::Written
+        );
+        assert_eq!(
+            read(&directory.0.join(".workbench/scratch/scratch_branch.json"))
+                .unwrap()
+                .as_deref(),
+            Some("local scratch")
+        );
+        assert!(list(&directory.0).unwrap().iter().any(|file| matches!(
+            file,
+            File::Read { path, contents } if path == "scratch/scratch_branch.json" && contents == "local scratch"
+        )));
+        assert_eq!(
+            mutate(
+                &directory.0,
+                "scratch/scratch_branch.json",
+                Some("local scratch"),
+                None,
+                "project_one"
+            )
+            .unwrap(),
+            Mutation::Written
+        );
+        assert!(!directory
+            .0
+            .join(".workbench/scratch/scratch_branch.json")
+            .exists());
+        for path in [
+            "scratch/scratch_.json",
+            "scratch/draft_one.json",
+            "scratch/scratch_a/b.json",
+            "drafts/scratch_one.json",
+        ] {
+            assert!(
+                mutate(&directory.0, path, None, Some("personal"), "project_one").is_err(),
+                "accepted {path}"
+            );
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn native_scratch_directory_cannot_be_a_symlink() {
+        use std::os::unix::fs::symlink;
+        let directory = Directory::new();
+        let outside = Directory::new();
+        fs::create_dir_all(directory.0.join(".workbench")).unwrap();
+        symlink(&outside.0, directory.0.join(".workbench/scratch")).unwrap();
+        assert!(mutate(
+            &directory.0,
+            "scratch/scratch_branch.json",
+            None,
+            Some("personal"),
+            "project_one"
+        )
+        .is_err());
+        assert!(fs::read_dir(&outside.0).unwrap().next().is_none());
     }
 
     #[test]

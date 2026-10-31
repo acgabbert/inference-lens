@@ -62,8 +62,9 @@ async function writeFile(directory: FileSystemDirectoryHandleLike, name: string,
 
 async function recordLocation(workbench: FileSystemDirectoryHandleLike, path: string, create: boolean): Promise<[FileSystemDirectoryHandleLike | null, string]> {
   if (path === "selections.json") return [workbench, path];
-  const name = path.slice("drafts/".length);
-  try { return [await workbench.getDirectoryHandle("drafts", { create }), name]; }
+  // Validated record paths have exactly one directory: drafts/ or scratch/.
+  const [folder, name] = path.split("/") as [string, string];
+  try { return [await workbench.getDirectoryHandle(folder, { create }), name]; }
   catch (error) { if (!create && isMissing(error)) return [null, name]; throw error; }
 }
 
@@ -93,10 +94,12 @@ async function listActiveRecords<T extends { contents: string } | { bytes: Uint8
     }
   }
   await collect(workbench, "");
-  let drafts: FileSystemDirectoryHandleLike | undefined;
-  try { drafts = await workbench.getDirectoryHandle("drafts"); }
-  catch (error) { if (!isMissing(error)) throw error; }
-  if (drafts) await collect(drafts, "drafts/");
+  for (const folder of ["drafts", "scratch"]) {
+    let records: FileSystemDirectoryHandleLike | undefined;
+    try { records = await workbench.getDirectoryHandle(folder); }
+    catch (error) { if (!isMissing(error)) throw error; }
+    if (records) await collect(records, `${folder}/`);
+  }
   return files;
 }
 
