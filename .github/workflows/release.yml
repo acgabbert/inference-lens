@@ -110,7 +110,7 @@ jobs:
       # bundle independently passes the verification step below.
       - name: Build signed and notarized bundle
         if: steps.policy.outputs.enabled == 'true'
-        uses: tauri-apps/tauri-action@v0
+        uses: tauri-apps/tauri-action@v1
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
