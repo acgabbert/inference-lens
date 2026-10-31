@@ -585,7 +585,7 @@ test("project downloads use the sanitized name and defer URL revocation", async 
   });
 
   try {
-    downloadProjectFile(project());
+    downloadProjectFile(project(), "legacy");
     assert.equal(link.download, "Prompt Lab.project.json");
     assert.equal(link.clicked, true);
     assert.deepEqual(revoked, []);

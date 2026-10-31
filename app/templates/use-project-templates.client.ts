@@ -72,6 +72,8 @@ import {
 } from "./project-template-policy";
 import { usePromptModelWarnings, type PromptModelWarnings } from "./use-prompt-model-warnings.client";
 import { removeDraftMessage } from "../request/use-request-draft.client";
+import { isPromptDraft } from "../../packages/core/src/personal-workbench";
+import type { PersonalWorkbenchHandle, PromptAssetRef } from "../workbench/use-personal-workbench.client";
 
 /** What an external prompt import landed, reported once when it lands. */
 export interface ProjectTemplatesImportNotice {
@@ -83,6 +85,11 @@ export interface ProjectTemplatesImportNotice {
 /** Stable render snapshots and narrowly named cross-owner commands. */
 export interface UseProjectTemplatesInput {
   projectFile: ProjectFile | null;
+  /**
+   * In a `personal` session, prompt drafts live here instead of in
+   * `template.draft`, and Save publishes through it (2b step 2).
+   */
+  personal: Pick<PersonalWorkbenchHandle, "enabled" | "draftFor" | "updateDraft" | "publish">;
   projectDirty: boolean;
   messages: ConversationMessage[];
   model: string;
@@ -129,13 +136,14 @@ export interface ProjectTemplatesHandle {
     defaults: Record<string, string>,
     revisionName?: string,
   ): void;
+  /** Resolves once the save has landed or been refused (S3). */
   saveDecisionTemplate(
     templateId: PromptTemplateId,
     name: string,
     decision: DecisionInput,
     defaults: Record<string, string>,
     revisionName?: string,
-  ): PromptTemplateRevisionId | undefined;
+  ): Promise<PromptTemplateRevisionId | undefined>;
   /**
    * Saves like `saveDecisionTemplate` and also returns the saved project, so a
    * use can pin the new revision before the route renders it.
@@ -146,7 +154,7 @@ export interface ProjectTemplatesHandle {
     decision: DecisionInput,
     defaults: Record<string, string>,
     revisionName?: string,
-  ): { project: ProjectFile; revisionId: PromptTemplateRevisionId } | undefined;
+  ): Promise<{ project: ProjectFile; revisionId: PromptTemplateRevisionId } | undefined>;
   sessionTemplateIds: ReadonlySet<PromptTemplateId>;
   templateWorkbench: ReturnType<typeof projectTemplateWorkbenchView>;
   activeProjectRevision?: ProjectFile["conversationRevisions"][number];
@@ -164,8 +172,9 @@ export interface ProjectTemplatesHandle {
   createProjectTemplate(name: string, messages: PromptTemplateMessages): PromptTemplateId;
   updateProjectTemplateDraft(templateId: PromptTemplateId, sourceRevisionId: PromptTemplateRevisionId, messages: PromptTemplateMessages, defaults: Record<string, string>, revisionName?: string): void;
   updateProjectTemplateRecommendedTarget(templateId: PromptTemplateId, recommendedTarget?: PromptTemplateRecommendedTarget): void;
-  saveProjectTemplate(templateId: PromptTemplateId, name: string, messages: PromptTemplateMessages, defaults: Record<string, string>, recommendedTarget?: PromptTemplateRecommendedTarget, revisionName?: string): PromptTemplateRevisionId | undefined;
-  saveAndInsertProjectTemplate(templateId: PromptTemplateId, name: string, messages: PromptTemplateMessages, defaults: Record<string, string>, recommendedTarget: PromptTemplateRecommendedTarget | undefined, revisionName: string | undefined, itemIndex: number): PromptTemplateRevisionId | undefined;
+  /** Resolves once the save has landed or been refused (S3). */
+  saveProjectTemplate(templateId: PromptTemplateId, name: string, messages: PromptTemplateMessages, defaults: Record<string, string>, recommendedTarget?: PromptTemplateRecommendedTarget, revisionName?: string): Promise<PromptTemplateRevisionId | undefined>;
+  saveAndInsertProjectTemplate(templateId: PromptTemplateId, name: string, messages: PromptTemplateMessages, defaults: Record<string, string>, recommendedTarget: PromptTemplateRecommendedTarget | undefined, revisionName: string | undefined, itemIndex: number): Promise<PromptTemplateRevisionId | undefined>;
   /** Commits only the label, without touching revision content. Returns false (and leaves the project untouched) for a blank name. */
   renameProjectTemplate(templateId: PromptTemplateId, name: string): boolean;
   /** Relabels a saved revision without touching its content; a blank name clears the label. */
@@ -246,11 +255,76 @@ export function useProjectTemplates(input: UseProjectTemplatesInput): ProjectTem
   });
   const sessionTemplateIds = new Set(sessionTemplates.map(({ id }) => id));
   const libraryTemplates = [
-    ...(input.projectFile?.promptTemplates ?? []),
+    ...(input.projectFile?.promptTemplates ?? []).map(withPersonalDraft),
     ...sessionTemplates.filter(
       ({ id }) => !input.projectFile?.promptTemplates.some((template) => template.id === id),
     ),
   ];
+
+  function promptAsset(template: Pick<PromptTemplate, "id" | "kind">): PromptAssetRef {
+    return { kind: template.kind === "chat" ? "chat-prompt" : "decision-prompt", id: template.id };
+  }
+  /** The editors read `template.draft`; a personal session supplies it from its record. */
+  function withPersonalDraft(template: PromptTemplate): PromptTemplate {
+    if (!input.personal.enabled) return template;
+    const record = input.personal.draftFor(promptAsset(template));
+    if (!record || !isPromptDraft(record)) return template;
+    return { ...template, draft: { sourceRevisionId: record.base.revisionId, ...structuredClone(record.edited) } } as PromptTemplate;
+  }
+  /** Records a personal prompt draft against a saved revision of the open project. */
+  function updatePersonalDraft(
+    templateId: PromptTemplateId,
+    sourceRevisionId: PromptTemplateRevisionId,
+    edited: { revisionName?: string; variableDefaults: Record<string, string> } & ({ messages: PromptTemplateMessages } | { decision: DecisionInput }),
+  ): void {
+    const template = input.projectFile?.promptTemplates.find(({ id }) => id === templateId);
+    const snapshot = (template?.revisions as Array<{ id: PromptTemplateRevisionId }> | undefined)?.find(({ id }) => id === sourceRevisionId);
+    if (!template || !snapshot) {
+      input.markProjectError("This prompt's revision no longer exists. Reopen the prompt before editing it.");
+      return;
+    }
+    input.personal.updateDraft(
+      promptAsset(template),
+      { revisionId: sourceRevisionId, snapshot: structuredClone(snapshot) } as Parameters<typeof input.personal.updateDraft>[1],
+      structuredClone(edited) as Parameters<typeof input.personal.updateDraft>[2],
+    );
+  }
+  /**
+   * Save in a `personal` session: record the editor's content as the draft,
+   * then publish it. The rename and recommendation ride with the publication
+   * as direct shared edits (D15). Resolves with the saved project, or
+   * undefined after reporting a refusal; the draft is kept either way.
+   */
+  async function publishPersonalTemplate(
+    templateId: PromptTemplateId,
+    content: { revisionName?: string; variableDefaults: Record<string, string> } & ({ messages: PromptTemplateMessages } | { decision: DecisionInput }),
+    extend: (project: ProjectFile) => ProjectFile,
+  ): Promise<{ project: ProjectFile; revisionId: PromptTemplateRevisionId } | undefined> {
+    const project = input.projectFile;
+    const template = project?.promptTemplates.find(({ id }) => id === templateId);
+    if (!project || !template) return reportSessionProjectRequirement();
+    const asset = promptAsset(template);
+    const sourceRevisionId = (input.personal.draftFor(asset) as { base?: { revisionId: PromptTemplateRevisionId } } | undefined)?.base?.revisionId
+      ?? template.currentRevisionId;
+    updatePersonalDraft(templateId, sourceRevisionId, {
+      ...("messages" in content ? { messages: content.messages } : { decision: content.decision }),
+      variableDefaults: content.variableDefaults,
+      ...(content.revisionName ? { revisionName: content.revisionName } : {}),
+    } as Parameters<typeof updatePersonalDraft>[2]);
+    if (!input.personal.draftFor(asset)) {
+      // Nothing differs from the saved revision; only the metadata may change.
+      const next = extend(project);
+      if (next !== project) input.adoptProjectMutation(next);
+      return { project: next, revisionId: sourceRevisionId };
+    }
+    const outcome = await input.personal.publish(asset, { extend });
+    if (outcome.kind !== "published") {
+      input.markProjectError(outcome.message);
+      return undefined;
+    }
+    input.markProjectError(undefined);
+    return { project: outcome.project, revisionId: outcome.revisionId as PromptTemplateRevisionId };
+  }
 
   function adoptAuthoredProject(project: ProjectFile, overrides = templateRunOverrides): void {
     input.adoptProjectMutation(project);
@@ -353,6 +427,12 @@ export function useProjectTemplates(input: UseProjectTemplatesInput): ProjectTem
       ));
       return;
     }
+    if (input.personal.enabled) {
+      updatePersonalDraft(templateId, sourceRevisionId, {
+        decision, variableDefaults: { ...defaults }, ...(revisionName ? { revisionName } : {}),
+      });
+      return;
+    }
     adoptAuthoredProject(updateDecisionPromptTemplateDraft(input.ensureProjectDocument(), {
       templateId,
       sourceRevisionId,
@@ -361,13 +441,22 @@ export function useProjectTemplates(input: UseProjectTemplatesInput): ProjectTem
       revisionName,
     }));
   }
-  function saveDecisionTemplateForUse(
+  async function saveDecisionTemplateForUse(
     templateId: PromptTemplateId,
     name: string,
     decision: DecisionInput,
     defaults: Record<string, string>,
     revisionName?: string,
-  ): { project: ProjectFile; revisionId: PromptTemplateRevisionId } | undefined {
+  ): Promise<{ project: ProjectFile; revisionId: PromptTemplateRevisionId } | undefined> {
+    if (input.personal.enabled && !sessionTemplateIds.has(templateId)) {
+      const saved = await publishPersonalTemplate(
+        templateId,
+        { decision, variableDefaults: defaults, ...(revisionName ? { revisionName } : {}) },
+        (project) => renamePromptTemplate(project, templateId, name.trim()),
+      );
+      if (saved) decisionEditorMemory.delete(templateId);
+      return saved;
+    }
     let project: ProjectFile;
     try {
       project = input.ensureProjectDocument();
@@ -440,6 +529,12 @@ export function useProjectTemplates(input: UseProjectTemplatesInput): ProjectTem
               ),
             },
       ));
+      return;
+    }
+    if (input.personal.enabled) {
+      updatePersonalDraft(templateId, sourceRevisionId, {
+        messages, variableDefaults: { ...defaults }, ...(revisionName ? { revisionName } : {}),
+      });
       return;
     }
     adoptAuthoredProject(updatePromptTemplateDraft(input.ensureProjectDocument(), {
@@ -520,7 +615,15 @@ export function useProjectTemplates(input: UseProjectTemplatesInput): ProjectTem
   function finishSessionTemplate(templateId: PromptTemplateId): void {
     setSessionTemplates((current) => current.filter(({ id }) => id !== templateId));
   }
-  function saveProjectTemplate(templateId: PromptTemplateId, name: string, messages: PromptTemplateMessages, defaults: Record<string, string>, recommendedTarget?: PromptTemplateRecommendedTarget, revisionName?: string): PromptTemplateRevisionId | undefined {
+  async function saveProjectTemplate(templateId: PromptTemplateId, name: string, messages: PromptTemplateMessages, defaults: Record<string, string>, recommendedTarget?: PromptTemplateRecommendedTarget, revisionName?: string): Promise<PromptTemplateRevisionId | undefined> {
+    if (input.personal.enabled && !sessionTemplateIds.has(templateId)) {
+      const saved = await publishPersonalTemplate(
+        templateId,
+        { messages, variableDefaults: defaults, ...(revisionName ? { revisionName } : {}) },
+        (project) => setPromptTemplateRecommendedTarget(renamePromptTemplate(project, templateId, name), templateId, recommendedTarget),
+      );
+      return saved?.revisionId;
+    }
     if (sessionTemplateIds.has(templateId)) {
       const materialized = materializeSessionTemplate(
         templateId,
@@ -541,7 +644,29 @@ export function useProjectTemplates(input: UseProjectTemplatesInput): ProjectTem
     adoptAuthoredProject(next);
     return next.promptTemplates.find(({ id }) => id === templateId)!.currentRevisionId;
   }
-  function saveAndInsertProjectTemplate(templateId: PromptTemplateId, name: string, messages: PromptTemplateMessages, defaults: Record<string, string>, recommendedTarget: PromptTemplateRecommendedTarget | undefined, revisionName: string | undefined, itemIndex: number): PromptTemplateRevisionId | undefined {
+  async function saveAndInsertProjectTemplate(templateId: PromptTemplateId, name: string, messages: PromptTemplateMessages, defaults: Record<string, string>, recommendedTarget: PromptTemplateRecommendedTarget | undefined, revisionName: string | undefined, itemIndex: number): Promise<PromptTemplateRevisionId | undefined> {
+    if (input.personal.enabled && !sessionTemplateIds.has(templateId)) {
+      const saved = await publishPersonalTemplate(
+        templateId,
+        { messages, variableDefaults: defaults, ...(revisionName ? { revisionName } : {}) },
+        (project) => setPromptTemplateRecommendedTarget(renamePromptTemplate(project, templateId, name), templateId, recommendedTarget),
+      );
+      if (!saved) return undefined;
+      // The use is a request edit, which step 3 routes through the personal
+      // owner; until then it is today's direct edit of the confirmed document.
+      const { project, revisionId: conversationRevisionId } = projectForTemplateMutation({
+        project: saved.project,
+        executedRevisionIds: executedRevisionIdsRef.current,
+        resolutionContext: contextFor(saved.project),
+      });
+      adoptAuthoredProject(insertPromptTemplateUse(project, {
+        conversationRevisionId,
+        templateId,
+        templateRevisionId: saved.revisionId,
+        itemIndex,
+      }));
+      return saved.revisionId;
+    }
     if (sessionTemplateIds.has(templateId)) {
       const materialized = materializeSessionTemplate(
         templateId,
@@ -773,7 +898,7 @@ export function useProjectTemplates(input: UseProjectTemplatesInput): ProjectTem
     captureDecisionTemplate: (name, decision, defaults) => createDecisionTemplate(name, decision, defaults, true),
     createDecisionTemplate,
     updateDecisionTemplateDraft,
-    saveDecisionTemplate: (...args) => saveDecisionTemplateForUse(...args)?.revisionId,
+    saveDecisionTemplate: async (...args) => (await saveDecisionTemplateForUse(...args))?.revisionId,
     saveDecisionTemplateForUse,
     libraryTemplates,
     sessionTemplateIds,
