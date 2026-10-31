@@ -33,7 +33,7 @@ test("falls back to getRandomValues when randomUUID throws, as it does in an ins
       randomUUID: () => {
         throw new DOMException("randomUUID requires a secure context", "SecurityError");
       },
-      getRandomValues: (array: Uint8Array) => nativeGetRandomValues(array),
+      getRandomValues: (array: Uint8Array<ArrayBuffer>) => nativeGetRandomValues(array),
     },
     () => randomUUID(),
   );
@@ -43,7 +43,7 @@ test("falls back to getRandomValues when randomUUID throws, as it does in an ins
 test("falls back to getRandomValues when randomUUID is missing entirely", () => {
   const id = withCrypto(
     {
-      getRandomValues: (array: Uint8Array) => nativeGetRandomValues(array),
+      getRandomValues: (array: Uint8Array<ArrayBuffer>) => nativeGetRandomValues(array),
     },
     () => randomUUID(),
   );
@@ -53,7 +53,7 @@ test("falls back to getRandomValues when randomUUID is missing entirely", () => 
 test("generates distinct ids across calls in the fallback path", () => {
   const ids = withCrypto(
     {
-      getRandomValues: (array: Uint8Array) => nativeGetRandomValues(array),
+      getRandomValues: (array: Uint8Array<ArrayBuffer>) => nativeGetRandomValues(array),
     },
     () => new Set([randomUUID(), randomUUID(), randomUUID()]),
   );

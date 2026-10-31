@@ -2,7 +2,8 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "allowImportingTsExtensions": true,
-    "incremental": false
+    "incremental": false,
+    "types": ["node"]
   },
   "include": [
     "packages/core/src/**/*.ts",
