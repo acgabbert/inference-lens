@@ -15,9 +15,10 @@ the manifest or activating personal candidates. The next
 [completion design](SHARED_ASSETS_MIGRATION_COMPLETION_DESIGN.md), approved
 October 28, defines an opt-in shared commit, candidate activation and
 stale-handle invalidation; the core module and browser and native adapters are
-implemented, with no application caller. Slice 2a's remaining
-persistence, recovery and compatibility proposals still need review before
-integration. Level 3 remains proposed. The product direction is agreed:
+implemented, with no application caller. The 2b
+[integration decisions](SHARED_ASSETS_LEVEL_TWO_DESIGN.md#integration-decisions-approved-october-30-2026)
+were approved October 30, 2026; exact owner interfaces and personal backup
+remain open. Level 3 remains proposed. The product direction is agreed:
 Inference Lens is a personal workbench for potentially shared assets. Approved
 choices are distinguished from the remaining schema and recovery mechanics that
 still need design review.
@@ -329,17 +330,17 @@ Review the inventory and examples before implementing persistence. The approved
 direction does not yet specify these contracts; settle each during the review:
 
 - [ ] Exact types and owner interfaces for shared definitions and workbench state
-- [ ] Schema versions and codecs for the shared document and workbench store
-- [ ] Workbench record layout under `.workbench/`
-- [ ] Project-identity mismatch handling
-- [ ] Best-effort concurrent-write detection on workbench records and the conflict
+- [x] Schema versions and codecs for the shared document and workbench store
+- [x] Workbench record layout under `.workbench/`
+- [x] Project-identity mismatch handling
+- [x] Best-effort concurrent-write detection on workbench records and the conflict
   recovery path
-- [ ] Draft publication ordering: write the shared revision first, clear the draft
+- [x] Draft publication ordering: write the shared revision first, clear the draft
   only after that write is confirmed, and recognize a published-but-not-cleared
   draft on restart. This applies to every revision save, not only migration.
-- [ ] Migration write ordering and restart recovery
+- [x] Migration write ordering and restart recovery
 - [ ] Personal backup representation and restore behavior
-- [ ] Old-reader/writer, existing JSON, and CLI compatibility
+- [x] Old-reader/writer, existing JSON, and CLI compatibility
 
 When implementation starts, move the Level 1 Git staging fixture in
 [the workspace tests](../tests/project-workspace.test.ts) from
@@ -1386,7 +1387,9 @@ review covers slice 2a; Level 3 decisions remain deferred.
 1. Approve the field-by-field classification and migration examples for prompts,
    chat requests, decision requests, and evaluation suites, preserving legacy
    saved content while separating explicit drafts and personal selections.
-2. Settle the Level 2 contracts in the slice 2a checklist above.
+2. Settle the Level 2 contracts in the slice 2a checklist above. The
+   [integration decisions](SHARED_ASSETS_LEVEL_TWO_DESIGN.md#integration-decisions-approved-october-30-2026)
+   (October 30) settle all but exact owner interfaces and personal backup.
 3. Choose Level 3 asset file granularity and discovery rules, reference/provenance closure,
    and how team sharing policy and personal asset exclusions interact.
 4. Approve Level 3 format transitions and recovery for interrupted multi-file

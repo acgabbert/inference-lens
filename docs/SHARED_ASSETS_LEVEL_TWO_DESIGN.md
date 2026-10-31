@@ -24,8 +24,9 @@ The next [migration-completion proposal](SHARED_ASSETS_MIGRATION_COMPLETION_DESI
 defines opt-in manifest replacement and active-candidate recovery for review.
 It does not approve application integration or the other proposals below.
 Revised the same day after review: write safety, publication intent, launch
-defaults, the v19 rationale and delivery order. The remaining integration
-contracts still need review before application migration/publication starts.
+defaults, the v19 rationale and delivery order. The 2b
+[integration decisions](#integration-decisions-approved-october-30-2026) were
+approved October 30; exact owner interfaces come first in that slice.
 
 ## Review recommendations
 
@@ -713,3 +714,118 @@ pretending to preserve them. The byte buffer in the plan is not a durable backup
   checks remain mandatory when persistence and feature owners are integrated.
   Human review should focus on API scope and candidate/backup wording; there is
   no new UI to inspect yet.
+
+## Integration decisions (approved October 30, 2026)
+
+The user approved these decisions for the 2b integration slice, which lets
+the app write v19 and enables migration completion. They settle the
+[slice 2a checklist](SHARED_ASSETS_PERSONAL_WORKBENCH_PLAN.md#next-design-deliverable-slice-2a)
+apart from exact owner interfaces and personal backup (2e). Proposals earlier
+in this document that the decisions below do not change are approved as
+written: the `.workbench/` layout, best-effort write detection, publication
+intent in the draft record, conflict recovery, project-identity mismatch
+handling, session-only no-folder mode, and a CLI that reads shared
+definitions only.
+
+Three facts about the code at `3747184` shaped them. The composer rewrites
+the active saved conversation revision and `defaults` on every edit
+(`updateProjectDraft`), so chat requests, not template drafts, cause most
+shared-file churn. Prompt environments added `defaults.environmentId` after
+selections v1 was written, and the environment selector already separates
+select from set-default. Every template use in a trace pins a
+`templateRevisionId`; E4's `fileSource` records a run-only override as base
+revision plus text used.
+
+### Scope and sequencing
+
+- **D1. Whole slice behind a gate.** Design every 2b arm now. Implement them
+  behind a gate, and enable v19 in the app only when all have landed.
+  Enabling template drafts alone would leave running and editing a request
+  rewriting `project.json`.
+- **D2. Gate mechanism.** A build or environment flag, off by default, read
+  when a project opens, selects today's v15 path or the new owners. Gated e2e
+  specs run with it on. Removing the flag is the enabling change, and it also
+  lifts the guard against application calls to completion.
+- **D3. Owners.** As [proposed above](#types-and-execution-boundary): a new
+  `usePersonalWorkbench` owns record load and save, recovery status,
+  selections and reconciliation. `useProjectWorkspace` keeps v19 shared
+  definitions, publication and the folder lifecycle, and stops folding edits
+  into auto-save. Template, composer and decision owners route drafts through
+  the personal owner. `app/page.tsx` only composes them. Exact interfaces are
+  the first deliverable of the integration slice.
+
+### Migration entry and reconciliation
+
+- **D4. Opening a v15 folder.** Once the app writes v19, a v15 folder opens
+  with shared saves blocked until it is upgraded. Viewing, running, evidence
+  writes and session-only edits still work. "Upgrade project" opens the
+  migration preview, which warns that teammates on older builds will be
+  refused once the upgraded file is committed. The app keeps no v15 writer,
+  and opening never migrates.
+- **D5. After completion.** The completion dialog reopens the project as a
+  v19 session. An `uncertain` or `diverged` outcome lands on a read-only
+  inspection view rather than the editor.
+- **D6. Competing drafts.** One active draft per asset. Each pending candidate
+  offers Compare, "Use this one" and Discard. "Use this one" preserves the
+  replaced active draft as a staged copy. Discard leaves the staged backup.
+- **D7. Resolution record.** A resolutions record per migration operation,
+  beside its immutable journal, records each settled candidate. An explicit
+  "Remove migration backup" action is offered once nothing is pending. No
+  resolution deletes a staged candidate.
+- **D8. Recovery surface.** One Recovery drawer, opened from a project-level
+  status chip, lists pending migration candidates, record conflicts, orphaned
+  drafts, unreadable records and conflicted publication intents. The
+  Templates and Request panes mark affected assets.
+
+### Records and codecs
+
+- **D9. Workbench v1 amended in place.** No application has written workbench
+  v1, because the recovery store and completion have no caller. v1 gains the
+  2b arms and an environment selection, and freezes when the gate is removed.
+  The migration planner copies `defaults.environmentId` into the selections
+  seed, as it does target, options and tools.
+- **D10. Chat requests.** Editing a saved revision creates a local request
+  draft: base revision plus edited items. New requests and branches create a
+  local scratch record. Its parent is a discriminated reference to a saved
+  revision or a local record, never a fake shared ID. Saving a draft appends a
+  child revision under the same conversation and moves only the personal
+  selection; suites and other pins stay put. Saving a scratch request creates
+  a conversation. A scratch whose parent chain is local publishes as one
+  revision whose parent is the nearest saved ancestor. The preview names the
+  local steps it omits.
+- **D11. Decision requests.** The same pattern for inline and template-use
+  arms. Template-use overrides stay sparse, suite authoring keeps
+  `activate: false`, and no shared decision target is invented.
+- **D12. Evidence for local input.** Approved: no false shared pins, and
+  repeated experiments may run local input. An audit at `3747184` narrowed
+  the format change:
+  - Run resolution reads saved template revisions only; core reads a template
+    `draft` only to validate it. Unsaved template edits are not runnable
+    today, and 2b keeps that, so no template-draft provenance is added. If
+    running them is wanted later, it would follow `fileSource`'s shape under
+    separate approval.
+  - RunTrace and the decision trace carry no required request pin; a branch's
+    `parentConversationRevisionId` is optional. Single runs of a request draft
+    or scratch request need no trace version.
+  - ExperimentPlan's common input requires `conversationId` and
+    `conversationRevisionId` (`decisionRequestRevisionId` for decisions).
+    Repeated experiments on local input take the next free ExperimentPlan
+    version at merge, under the
+    [allocation convention](FINAL_OUTPUT_CONTRACTS.md#d1-format-version-allocation).
+    Its exact representation is a contract for review before that change.
+
+### Shared writes
+
+- **D13. Launch defaults.** One chat "Use as project launch default" action
+  writes the selected request revision, target, options and tools, with a
+  preview. A separate decision action writes only the decision request pin.
+  The environment keeps its existing set-default. A status shows where the
+  personal selection differs from the launch default.
+- **D14. Saving drafts.** Drafts persist to `.workbench/` after a short
+  debounce. A shared write happens only on an explicit per-asset Save, and an
+  "Unsaved drafts" list shows what is pending. 2b has no save-all, so
+  publication intent stays per record.
+- **D15. Assets 2b does not separate.** Suites, tools, mocks, environments,
+  connection requirements, renames and archiving keep direct shared writes
+  until 2c. The migration preview and the Recovery drawer do not claim they
+  are separated.
