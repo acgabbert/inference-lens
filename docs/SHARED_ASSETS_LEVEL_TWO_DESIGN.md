@@ -1235,3 +1235,31 @@ the approved contracts:
 - **Launch defaults.** `setLaunchDefaults` and `setDecisionLaunchDefault`
   refuse a revision ID the project does not hold, which covers every local
   and fresh run ID. `defaults.environmentId` is left to its own set-default.
+
+### Step 2 decisions (approved October 31, 2026)
+
+The user approved three interim behaviors for step 2, which the owner
+interfaces left open. All of them apply only with the gate on.
+
+- **S1. A pre-v19 folder blocks shared saves.** D4's blocking lands in step 2,
+  without the upgrade flow that step 6 adds. A gated session opens a v15–v18
+  folder for viewing, running, evidence writes and session-only edits, and a
+  plain notice says shared saves need an upgrade. The app gains no interim
+  legacy writer. Gated e2e specs seed v19 folders directly.
+- **S2. New projects are v19; imports keep their drafts in the session.**
+  Creating a folder and saving a session project to a folder write v19 and
+  create `.workbench/`. A legacy JSON import (v10–v18) opens session-only: the
+  existing migration planner lifts its template drafts into in-memory personal
+  drafts, and saving it to a folder writes v19 and then persists them. Export
+  writes v19 shared definitions only.
+- **S3. Template saves return a Promise in both modes.** `saveProjectTemplate`,
+  `saveDecisionTemplate` and the save-and-insert variants resolve once the
+  save has landed or been refused; the legacy path resolves at once. Editors
+  show a saving state, and a conflict or failure keeps the draft and reports
+  the error.
+
+Two facts changed after the interfaces were read at `6a5600b`. vinext 1.3
+allows one dev server per checkout (`.vinext/dev/lock.json`), so the second,
+gated e2e server sets `VINEXT_NO_DEV_LOCK=1` and its own Vite `cacheDir`; the
+ungated server keeps the lock. The gate is read through vinext's
+`NEXT_PUBLIC_` inlining, which still applies under Vite.
