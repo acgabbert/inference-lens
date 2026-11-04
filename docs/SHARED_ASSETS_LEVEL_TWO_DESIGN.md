@@ -1757,3 +1757,55 @@ draft edited in the session and saves it afterwards, and checks that Cancel
 writes nothing. Both of its tests failed first because no Upgrade action
 existed; with the V2 carry disabled, the first fails again on the draft's
 content.
+
+### Step 6b decisions (approved November 4, 2026)
+
+The user approved four answers to questions that D6–D8, V4 and the resolutions
+schema left open. All of them apply only with the gate on.
+
+- **W1. Replacements outside a migration go to `replaced/`.** "Use this one"
+  on a competing draft that is not a migration candidate (two drafts for one
+  asset in `drafts/`, or a session copy V2 kept in memory) moves the active
+  draft it replaces to `.workbench/replaced/<draftId>.json`. That file holds
+  the same draft record, is never loaded as active, and appears in Recovery
+  as a replaced draft with Compare, "Use this one" and Discard. Core, the
+  browser host and the native host validate the path as they do `drafts/`.
+  Workbench v1 is amended in place, as D9 amended it.
+- **W2. A selections candidate offers Compare and Discard.** Selections are
+  pointers and cheap to redo by hand, so "Use this one" is not offered when a
+  migration's selections met existing ones. Discard records `discarded`. The
+  resolutions schema's `replacedCopy` is narrowed to drafts (amended in place:
+  nothing has written it).
+- **W3. Removing a backup writes its intent first.** "Remove migration backup"
+  writes `backupRemovedAt` into `resolutions.json`, creating it if needed.
+  A host operation on both hosts then deletes the operation's source, journal,
+  shared snapshot, candidates and replaced copies, then `resolutions.json`, and
+  then the directory. It is limited to one `migrations/migration_<sha256>/`
+  directory and refuses links. A removal that was interrupted reads as
+  "Finish removing backup". The confirmation lists what is deleted, replaced
+  copies included.
+- **W4. 6b lands as two pull requests.** 6b-1 adds the core, both hosts and
+  the personal controller's reconcile operations, with unit and Rust tests and
+  no UI. 6b-2 adds the Recovery chip and drawer, the pane marks and the gated
+  e2e spec. Both stay behind the gate.
+
+Defaults taken with them, reversible and inside the approved contracts:
+
+- **Candidates are assessed without the manifest.** Completion's inspection
+  refuses once `project.json` moves past an operation's output, which the first
+  shared save does. Recovery verifies each operation's journal and candidates
+  against its preserved source, as completion does, then classifies every
+  candidate against the active records and the resolutions record: settled,
+  present (its bytes are active), absent, competing, existing selections or
+  unavailable. An operation that cannot be verified is an unreadable item.
+- **Recovery files are not staged outputs.** Inspection and both inventory
+  listings accept `resolutions.json` and `replaced/draft_*.json` inside an
+  operation, so settling a candidate never reads as a damaged staging.
+- **"Use this one" writes in a crash-safe order.** The replaced copy first,
+  then the candidate becomes active, then the resolution. An interruption
+  leaves at worst two drafts for one asset, which Recovery lists again, or a
+  replaced copy no resolution names, which removing the backup deletes.
+- **Save as new never rebases.** An orphaned draft is saved as a new prompt or
+  request, named by the user, with the draft's content. A publication conflict's
+  "Keep as draft" clears the intent and keeps the edits over their original
+  base.
