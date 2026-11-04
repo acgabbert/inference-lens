@@ -203,7 +203,12 @@ test("editing a saved decision request is a draft until Save appends a child", a
   await expect(chip).toHaveCount(0);
   await variables.getByLabel("{{plan}}").fill("enterprise");
   await chip.getByRole("button", { name: "Save request" }).click();
-  await expect.poll(async () => recordFiles(await folderFiles(page), "drafts").length).toBe(0);
+  // The new draft's file is still debounced at the click, so an empty drafts
+  // folder does not yet mean Save finished: wait for the appended revision.
+  await expect.poll(async () => {
+    const current = await folderFiles(page);
+    return [JSON.parse(current["project.json"]!).decisionRequestRevisions.length, recordFiles(current, "drafts").length];
+  }).toEqual([2, 0]);
   files = await folderFiles(page);
   const saved = JSON.parse(files["project.json"]!);
   expect(saved.decisionRequestRevisions).toHaveLength(2);
@@ -262,4 +267,27 @@ test("using a decision prompt starts a local request that Save offers the prompt
   const saved = JSON.parse((await folderFiles(page))["project.json"]!);
   expect(saved.decisionRequests.map(({ name }: { name: string }) => name)).toEqual(["Ticket decision"]);
   expect(saved.decisionRequestRevisions[0]).toMatchObject({ kind: "inline", values: { ticket: "Override ticket" } });
+});
+
+test("Replace with example loads the example over an invalid edit", async ({ page }) => {
+  await openFolder(page, serializeProjectManifest(fixtureProject(false), "personal"));
+  const pane = decisionPane(page);
+  await pane.getByRole("button", { name: "Load example" }).click();
+  await expect.poll(async () => recordFiles(await folderFiles(page), "scratch").length).toBe(1);
+
+  // Q1: the invalid edit stays in the editor; the scratch keeps the example.
+  await pane.getByRole("tab", { name: "JSON" }).first().click();
+  const editor = page.getByLabel("Decision input (state and questions)");
+  await editor.fill("{ not json");
+  await expect(pane.getByRole("status").filter({ hasText: "Your workbench keeps its last valid version." })).toBeVisible();
+
+  // Q2: confirming starts a new scratch with the same content, and the editor shows it.
+  await pane.getByRole("button", { name: "Load example" }).click();
+  await pane.getByRole("button", { name: "Replace with example" }).click();
+  await expect.poll(async () => recordFiles(await folderFiles(page), "scratch").length).toBe(2);
+  // Loading a record opens it in the Form view, so the JSON textarea goes away.
+  await expect(pane.getByRole("tab", { name: "Form", exact: true }).first()).toHaveAttribute("aria-selected", "true");
+  await pane.getByRole("tab", { name: "JSON" }).first().click();
+  await expect(editor).not.toHaveValue("{ not json");
+  expect(Object.keys(JSON.parse(await editor.inputValue()).questions)).toEqual(["intent", "severity", "is_spam"]);
 });
