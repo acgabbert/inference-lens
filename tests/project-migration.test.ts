@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import { browserMigrationCompletionStorage, browserMigrationStorage } from "../app/workbench-directory.client.ts";
-import { findUnfinishedUpgrade, finishUpgrade, previewProjectMigration, upgradeProject } from "../app/workbench/project-migration.ts";
+import { findUnfinishedUpgrade, finishUpgrade, inspectProjectUpgrade, previewProjectMigration, upgradeProject } from "../app/workbench/project-migration.ts";
 import type { ProjectMigrationPreview, ProjectMigrationStorage } from "../app/workbench/project-migration.ts";
 import { prepareSharedProjectMigration, stageSharedProjectMigration } from "../packages/core/src/migration-journal.ts";
 import { ByteDirectory } from "./migration-directory-helpers.ts";
@@ -114,4 +114,18 @@ test("an upgrade interrupted after the shared write is found and finished", asyn
   assert.equal(finished.kind, "upgraded", JSON.stringify(finished));
   assert.equal(finished.kind === "upgraded" && finished.activated.length, 3);
   assert.equal(await findUnfinishedUpgrade(storage, PROJECT_ID as never), undefined);
+});
+
+test("inspection confirms only this operation's exact persisted shared output", async () => {
+  const { directory, storage } = folder();
+  const preview = await previewOf(storage);
+  await upgradeProject(storage, preview);
+  const manifest = new TextDecoder().decode(directory.files.get("project.json"));
+  assert.deepEqual(await inspectProjectUpgrade(storage, preview.projectId, preview.operationId), { kind: "confirmed", manifest });
+  const divergent = JSON.parse(manifest);
+  divergent.name = "Changed externally";
+  directory.seed("project.json", JSON.stringify(divergent));
+  assert.equal((await inspectProjectUpgrade(storage, preview.projectId, preview.operationId)).kind, "blocked");
+  directory.seed("project.json", source);
+  assert.equal((await inspectProjectUpgrade(storage, preview.projectId, preview.operationId)).kind, "blocked");
 });

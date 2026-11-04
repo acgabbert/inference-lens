@@ -158,6 +158,22 @@ export interface UnfinishedUpgrade {
   remaining: number;
 }
 
+/** Read-only V3 check. A parseable v19 manifest alone does not confirm this operation. */
+export async function inspectProjectUpgrade(storage: ProjectMigrationStorage, projectId: ProjectId, operationId: string): Promise<
+  { kind: "confirmed"; manifest: string } | { kind: "blocked"; message: string }
+> {
+  try {
+    const snapshot = await storage.migrationCompletion.read();
+    const inspection = await inspectSharedProjectMigrationCompletion(snapshot, projectId, operationId);
+    if (inspection.kind === "shared-written" && snapshot.manifest) {
+      return { kind: "confirmed", manifest: new TextDecoder("utf-8", { fatal: true }).decode(snapshot.manifest) };
+    }
+    return { kind: "blocked", message: "The upgraded project.json still cannot be confirmed against this upgrade's staged output. Shared saves stay off." };
+  } catch (error) {
+    return { kind: "blocked", message: message(error, "Could not inspect the upgrade. Shared saves stay off.") };
+  }
+}
+
 const OPERATION = /^migrations\/(migration_[0-9a-f]{64})\/journal\.json$/;
 
 /**

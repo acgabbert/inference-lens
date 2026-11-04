@@ -11,6 +11,8 @@ import {
   listExperimentArtifactsWorkspace,
   openProjectFolder,
   ProjectHandleInvalidatedError,
+  ProjectManifestConflictError,
+  reopenProjectWorkspace,
   readExperimentArtifactWorkspace,
   saveExperimentPlanWorkspace,
   saveProjectWorkspace,
@@ -605,4 +607,20 @@ test("project downloads use the sanitized name and defer URL revocation", async 
       value: originalRevokeObjectURL,
     });
   }
+});
+
+test("reopen refuses a manifest that changed after migration inspection", async () => {
+  const writes: string[] = [];
+  const parent = new MemoryDirectory("repository", writes);
+  const created = await withDirectoryPicker(parent, () => createProjectFolder(project(), { name: "Prompt Lab", gitPolicy: "unmanaged" }));
+  assert.ok(created);
+  const bundle = await parent.getDirectoryHandle("Prompt Lab.inference-lens");
+  const file = await bundle.getFileHandle("project.json");
+  const inspected = file.contents;
+  const changed = JSON.parse(inspected);
+  changed.name = "Changed since inspection";
+  file.contents = JSON.stringify(changed);
+  await assert.rejects(() => reopenProjectWorkspace(created.handle, created.project.projectId, inspected), ProjectManifestConflictError);
+  const reopened = await reopenProjectWorkspace(created.handle, created.project.projectId, file.contents);
+  assert.equal(reopened.project.name, "Changed since inspection");
 });

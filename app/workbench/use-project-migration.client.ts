@@ -8,6 +8,7 @@ import type { UpgradeCarry } from "./personal-workbench-controller.ts";
 import {
   findUnfinishedUpgrade,
   finishUpgrade,
+  inspectProjectUpgrade,
   previewProjectMigration,
   upgradeProject,
 } from "./project-migration.ts";
@@ -63,7 +64,7 @@ export function useProjectMigration(input: {
   /** Shared edits this session could not save, which a reopen discards. */
   sharedChangesUnsaved: boolean;
   /** The workspace's in-place reopen. */
-  reopen(upgrade?: UpgradeCarry): Promise<boolean>;
+  reopen(upgrade?: UpgradeCarry, expectedManifest?: string): Promise<boolean>;
 }): ProjectMigrationHandle {
   const { session, workspace, editable } = input;
   const personal = session?.mode === "personal" && workspace ? session : undefined;
@@ -78,7 +79,7 @@ export function useProjectMigration(input: {
   };
   const [unfinishedState, setUnfinished] = useState<{ key: string; value: NonNullable<ProjectMigrationHandle["unfinished"]> }>();
   const unfinished = unfinishedState?.key === adoptionKey ? unfinishedState?.value : undefined;
-  const [inspectionState, setInspection] = useState<{ projectId: string; message: string; checking: boolean; lifted: readonly WorkbenchPromptDraftV1[] }>();
+  const [inspectionState, setInspection] = useState<{ projectId: ProjectSession["projectId"]; operationId: string; message: string; checking: boolean; lifted: readonly WorkbenchPromptDraftV1[] }>();
   const inspection = inspectionState?.projectId === personal?.projectId ? inspectionState : undefined;
   const [resultState, setResult] = useState<{ projectId: string; message: string }>();
   const result = resultState?.projectId === personal?.projectId ? resultState?.message : undefined;
@@ -135,7 +136,7 @@ export function useProjectMigration(input: {
         return;
       case "inspection":
         setDialog(undefined);
-        setInspection({ projectId: preview.projectId, message: outcome.message, checking: false, lifted: outcome.lifted });
+        setInspection({ projectId: preview.projectId, operationId: preview.operationId, message: outcome.message, checking: false, lifted: outcome.lifted });
         return;
       case "upgraded": {
         setDialog(undefined);
@@ -143,7 +144,7 @@ export function useProjectMigration(input: {
         const message = resultMessage(outcome);
         setResult(message ? { projectId: preview.projectId, message } : undefined);
         const reopened = await reopenRef.current({ activated: outcome.activated, lifted: outcome.lifted });
-        if (!reopened) setInspection({ projectId: preview.projectId, message: "The project was upgraded, but the folder could not be reopened. Check again to open it.", checking: false, lifted: outcome.lifted });
+        if (!reopened) setInspection({ projectId: preview.projectId, operationId: preview.operationId, message: "The project was upgraded, but the folder could not be reopened. Check again to open it.", checking: false, lifted: outcome.lifted });
       }
     }
   }
@@ -167,10 +168,18 @@ export function useProjectMigration(input: {
 
   async function runCheckAgain(): Promise<void> {
     const current = inspection;
-    if (!current) return;
+    const workspace = workspaceRef.current;
+    if (!current || !workspace) return;
     setInspection({ ...current, checking: true });
+    const checked = await inspectProjectUpgrade(workspace.storage, current.projectId, current.operationId);
+    if (workspaceRef.current !== workspace) return;
+    if (checked.kind === "blocked") {
+      setInspection({ ...current, checking: false, message: checked.message });
+      return;
+    }
     // Drafts the session never edited are covered by the staged copies (V2).
-    const reopened = await reopenRef.current({ activated: [], lifted: current.lifted });
+    const reopened = await reopenRef.current({ activated: [], lifted: current.lifted }, checked.manifest);
+    if (!reopened && workspaceRef.current !== workspace) return;
     setInspection(reopened ? undefined : { ...current, checking: false });
   }
 

@@ -175,7 +175,7 @@ export interface ProjectWorkspaceHandleState {
   cancelLinkedProjectReplacement(intent: () => boolean): void;
   adoptLinkedWorkspace(opened: OpenedProjectWorkspace, isCurrent: () => boolean, blockedReason: () => string | undefined, revalidateEvidence: () => Promise<void>): Promise<"adopted" | "cancelled" | "blocked">;
   /** Rereads the open folder and adopts it in place; see the implementation. */
-  reopenProjectFolder(upgrade?: UpgradeCarry): Promise<boolean>;
+  reopenProjectFolder(upgrade?: UpgradeCarry, expectedManifest?: string): Promise<boolean>;
   markDirty(): void;
   setError(message: string | undefined, options?: { clearKind?: boolean }): void;
   clearErrorKind(): void;
@@ -614,12 +614,12 @@ export function useProjectWorkspace(input: {
    * after an upgrade that could not be confirmed (V3). Resolves false when the
    * folder could not be read or another project was adopted meanwhile.
    */
-  async function reopenProjectFolder(upgrade?: UpgradeCarry): Promise<boolean> {
+  async function reopenProjectFolder(upgrade?: UpgradeCarry, expectedManifest?: string): Promise<boolean> {
     const workspace = projectWorkspaceRef.current;
     const projectId = adoptedProjectIdRef.current as ProjectFile["projectId"] | undefined;
     if (!workspace || !projectId) return false;
     try {
-      const opened = await reopenProjectWorkspace(workspace, projectId);
+      const opened = await reopenProjectWorkspace(workspace, projectId, expectedManifest);
       if (projectWorkspaceRef.current !== workspace) return false;
       applyProjectDocument(opened.project, opened.handle, undefined, { keepTabRole: true, ...(upgrade ? { upgrade } : {}) });
       return true;

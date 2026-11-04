@@ -16,7 +16,7 @@ export function projectUpgradeBanner(
       id: "project-upgrade",
       tone: "failure",
       title: migration.inspection.message,
-      detail: "Shared saves stay off. Viewing, running and run history still work. Check again reopens the folder from disk.",
+      detail: "Shared saves stay off. Viewing, running and run history still work. Check again verifies the upgrade before reopening the folder.",
       actions: [
         { key: "check", label: migration.inspection.checking ? "Checking…" : "Check again", primary: true, onSelect: migration.checkAgain },
         { key: "export", label: "Export JSON copy…", onSelect: actions.exportCopy },

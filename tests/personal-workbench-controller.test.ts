@@ -308,3 +308,46 @@ test("after an upgrade, an edited carried draft that meets an older active draft
   assert.deepEqual(item!.record && item!.record.kind === "draft" && item!.record.edited, edited("Edited before the upgrade."));
   assert.equal(instance.hasUnpersistedWork, true, "the session copy exists only in memory");
 });
+
+test("upgrading preserves existing selections when carried selections collide", async () => {
+  const storage = new MemoryStorage();
+  const existing = structuredClone(plan.selections);
+  existing.chat!.execution!.target!.model = "existing-personal-model";
+  storage.files.set("selections.json", serializeWorkbenchRecord(existing));
+  const carried = structuredClone(plan.selections);
+  carried.chat!.execution!.target!.model = "session-personal-model";
+  const { instance } = controller(storage, {
+    seeds: [carried],
+    upgrade: { activated: [], lifted: plan.drafts },
+  });
+  await instance.open(shared);
+  const result = parseWorkbenchRecordJson(storage.files.get("selections.json")!, projectId);
+  assert.equal(result.kind === "selections" && result.chat?.execution?.target?.model, "existing-personal-model");
+  assert.deepEqual(instance.recovery.map((item) => item.record), [carried]);
+  assert.equal(instance.hasUnpersistedWork, true);
+});
+
+test("upgrading carries selections over the record completion just activated", async () => {
+  const storage = new MemoryStorage();
+  storage.files.set("selections.json", serializeWorkbenchRecord(plan.selections));
+  const carried = structuredClone(plan.selections);
+  carried.chat!.execution!.target!.model = "session-personal-model";
+  const { instance } = controller(storage, {
+    seeds: [carried], upgrade: { activated: ["selections.json"], lifted: plan.drafts },
+  });
+  await instance.open(shared);
+  assert.deepEqual(parseWorkbenchRecordJson(storage.files.get("selections.json")!, projectId), carried);
+  assert.deepEqual(instance.recovery, []);
+});
+
+test("upgrading identical selections creates no recovery copy or write", async () => {
+  const storage = new MemoryStorage();
+  storage.files.set("selections.json", serializeWorkbenchRecord(plan.selections));
+  const { instance } = controller(storage, {
+    seeds: [plan.selections], upgrade: { activated: [], lifted: plan.drafts },
+  });
+  await instance.open(shared);
+  assert.deepEqual(storage.writes, []);
+  assert.deepEqual(instance.recovery, []);
+  assert.equal(instance.hasUnpersistedWork, false);
+});

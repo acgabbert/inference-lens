@@ -482,21 +482,24 @@ function browserWorkspace(
  * Reads the manifest again into a fresh handle, for a tab that becomes the
  * project's editor. The read runs in the project's write scope so it cannot
  * observe a save half-way, and the old handle is never revived: its expected
- * contents belong to the document it was opened with.
+ * contents belong to the document it was opened with. Migration inspection can
+ * supply expectedManifest to refuse adoption if the file changed since its check.
  */
 export async function reopenProjectWorkspace(
   handle: ProjectWorkspaceHandle,
   projectId: ProjectFile["projectId"],
+  expectedManifest?: string,
 ): Promise<OpenedProjectWorkspace> {
   const nativeId = nativeWorkspaceIds.get(handle);
   if (nativeId) {
-    const reopened = await reopenNativeProjectWorkspace(nativeId, projectId);
+    const reopened = await reopenNativeProjectWorkspace(nativeId, projectId, expectedManifest);
     nativeFolderIdentities.set(reopened.handle, nativeFolderIdentities.get(handle)!);
     return reopened;
   }
   const directory = browserDirectories.get(handle);
   if (!directory) throw new Error("Only a project folder can be reopened.");
   const contents = await coordinateProjectWrites(projectId, () => readBrowserManifest(directory));
+  if (expectedManifest !== undefined && contents !== expectedManifest) throw new ProjectManifestConflictError();
   const read = readManifest(contents);
   const { project } = read;
   if (project.projectId !== projectId) {
@@ -887,8 +890,10 @@ async function openNativeProjectFolder(): Promise<OpenedProjectWorkspace | null>
 async function reopenNativeProjectWorkspace(
   workspaceId: string,
   projectId: ProjectFile["projectId"],
+  expectedManifest?: string,
 ): Promise<OpenedProjectWorkspace> {
   const workspace = await invokeNative<NativeWorkspace>("reopen_project_workspace", { workspaceId });
+  if (expectedManifest !== undefined && workspace.contents !== expectedManifest) throw new ProjectManifestConflictError();
   const read = readManifest(workspace.contents);
   const { project } = read;
   if (project.projectId !== projectId) {

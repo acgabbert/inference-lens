@@ -1725,7 +1725,12 @@ Implementation choices inside the approved contracts:
   upgrade".
 - **Check again carries too.** It reopens with the drafts the file held and no
   activated records, so an unedited session draft gives way to its staged
-  candidate, which Finish then activates.
+  candidate, which Finish then activates. Rechecking confirms this operation's
+  exact staged shared output before reopening; the reopened manifest must
+  still match that inspected output. Divergent or unreadable files keep shared
+  saves blocked. Existing personal selections win a collision with carried
+  session selections; the session copy remains in memory for recovery. Only
+  selections activated by this upgrade can be replaced by the session copy.
 - **Finish is offered only while the manifest is exactly the upgrade's
   output.** Any later shared save diverges it; the candidates then wait for
   6b's reconciliation.

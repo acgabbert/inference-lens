@@ -670,6 +670,16 @@ export class PersonalWorkbenchController {
     const upgrade = this.options.upgrade;
     const activated = new Set(upgrade?.activated ?? []);
     for (const record of carried) {
+      if (upgrade && record.kind === "selections" && !activated.has(SELECTIONS_PATH)) {
+        const active = this.records.get(SELECTIONS_PATH);
+        if (active) {
+          if (!same(active, record)) this.recoveryItems.push({
+            kind: "record-conflict", path: SELECTIONS_PATH, record,
+            message: "Selections from this session were kept in memory because this folder already has personal selections.",
+          });
+          continue;
+        }
+      }
       if (record.kind === "draft" && upgrade && isPromptDraft(record)) {
         // The staged candidate preserves a draft the session never edited.
         const lifted = upgrade.lifted.find((draft) => assetKey(draft.asset) === assetKey(record.asset));

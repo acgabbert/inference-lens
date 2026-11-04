@@ -14,6 +14,8 @@ import {
   serializeProjectFile,
   updatePromptTemplateDraft,
 } from "../../packages/core/src/project";
+import { planSharedProjectMigration } from "../../packages/core/src/shared-project-migration";
+import { serializeWorkbenchRecord } from "../../packages/core/src/personal-workbench";
 import type { ProjectFile } from "../../packages/core/src/project";
 import {
   BUFFERED_FIXTURE_ENDPOINT,
@@ -70,9 +72,9 @@ async function folderFiles(page: Page): Promise<Record<string, string>> {
   });
 }
 
-async function openFolder(page: Page, manifest: string): Promise<void> {
+async function openFolder(page: Page, manifest: string, personalFiles: Record<string, string> = {}): Promise<void> {
   await seedProfile(page, { instanceId: "profile-instance-buffered" });
-  await stubProjectDirectory(page, { name: "upgrade-fixture", files: { "project.json": manifest } });
+  await stubProjectDirectory(page, { name: "upgrade-fixture", files: { "project.json": manifest, ...personalFiles } });
   await page.goto("/");
   await waitForHydration(page);
   await page.getByLabel("Project menu").click();
@@ -145,4 +147,73 @@ test("Cancel leaves the folder untouched and shared saves still blocked", async 
   await expect(dialog).toBeHidden();
   await expect(page.locator(".brand")).toContainText("Not saved — shared saves need this older-format folder upgraded");
   expect(await folderFiles(page)).toEqual({ "project.json": manifest });
+});
+
+test("Check again keeps saves blocked when the upgraded manifest diverged", async ({ page }) => {
+  await openFolder(page, serializeProjectFile(legacyProject()));
+  await page.evaluate(async () => {
+    const state = window as unknown as {
+      showDirectoryPicker(): Promise<import("../../app/project-directory.client").FileSystemDirectoryHandleLike>;
+      expectedUpgradeManifest?: string;
+    };
+    const root = await state.showDirectoryPicker();
+    let injected = false;
+    const getFileHandle = root.getFileHandle.bind(root);
+    root.getFileHandle = async (name, options) => {
+      const handle = await getFileHandle(name, options);
+      if (name !== "project.json") return handle;
+      const createWritable = handle.createWritable.bind(handle);
+      handle.createWritable = async () => {
+        const writable = await createWritable();
+        const write = writable.write.bind(writable);
+        writable.write = async (contents) => {
+          const doc = JSON.parse(typeof contents === "string" ? contents : new TextDecoder().decode(contents));
+          if (doc.schemaVersion === 19 && !injected) {
+            injected = true;
+            state.expectedUpgradeManifest = typeof contents === "string" ? contents : new TextDecoder().decode(contents);
+            doc.name = "External divergent edit";
+            return write(JSON.stringify(doc));
+          }
+          return write(contents);
+        };
+        return writable;
+      };
+      return handle;
+    };
+  });
+  await page.getByRole("button", { name: "Upgrade project…" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Upgrade", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Check again", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Check again", exact: true }).click();
+  await expect(page.getByRole("alert").filter({ hasText: "still cannot be confirmed" })).toContainText("still cannot be confirmed against this upgrade's staged output");
+  await expect(page.locator(".brand")).toContainText("Not saved — shared saves need this older-format folder upgraded");
+  await expect(page.getByRole("button", { name: "Check again", exact: true })).toBeVisible();
+  // Repair the divergent file with the exact staged output, then recheck.
+  await page.evaluate(async () => {
+    const state = window as unknown as {
+      showDirectoryPicker(): Promise<import("../../app/project-directory.client").FileSystemDirectoryHandleLike>;
+      expectedUpgradeManifest: string;
+    };
+    const root = await state.showDirectoryPicker();
+    const writer = await (await root.getFileHandle("project.json")).createWritable();
+    await writer.write(state.expectedUpgradeManifest);
+    await writer.close();
+  });
+  await page.getByRole("button", { name: "Check again", exact: true }).click();
+  await expect(page.locator(".brand")).toContainText("Saved to upgrade-fixture");
+  await expect(page.getByRole("button", { name: "Check again", exact: true })).toBeHidden();
+});
+
+test("Upgrade preserves existing personal selections when session settings collide", async ({ page }) => {
+  const manifest = serializeProjectFile(legacyProject());
+  const { selections } = planSharedProjectMigration(new TextEncoder().encode(manifest));
+  selections.chat!.execution!.target!.model = "existing-personal-model";
+  const contents = serializeWorkbenchRecord(selections);
+  await openFolder(page, manifest, { ".workbench/selections.json": contents, ".workbench/.gitignore": "*\n" });
+  await page.getByRole("combobox", { name: "Model", exact: true }).fill("session-personal-model");
+  await page.getByRole("button", { name: "Upgrade project…" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Upgrade", exact: true }).click();
+  await expect(page.locator(".brand")).toContainText("Saved to upgrade-fixture");
+  await expect(page.getByRole("combobox", { name: "Model", exact: true })).toHaveValue("existing-personal-model");
+  expect((await folderFiles(page))[".workbench/selections.json"]).toBe(contents);
 });
