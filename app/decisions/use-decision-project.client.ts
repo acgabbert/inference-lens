@@ -42,6 +42,12 @@ export function useDecisionProject(options: {
   draft: DecisionDraftHandle;
   project: ProjectFile | null;
   adoptProjectMutation(project: ProjectFile): void;
+  /**
+   * A personal session: the draft reaches a personal record instead
+   * (`useDecisionRecordSync`), so nothing is folded, frozen or adopted here,
+   * and invalid edits never block a shared save (Q1).
+   */
+  personal?: boolean;
 }): DecisionProjectHandle {
   const { draft } = options;
   // Revisions that ran in this session or came from disk.
@@ -51,6 +57,7 @@ export function useDecisionProject(options: {
   const pendingSuffixRef = useRef<string | undefined>(undefined);
 
   function fold(project: ProjectFile): ProjectFile {
+    if (options.personal) return project;
     const validated = draft.validated();
     if (!draft.touched || !("input" in validated)) return project;
     const active = activeDecisionRequestRevision(project);
@@ -84,6 +91,7 @@ export function useDecisionProject(options: {
   return {
     fold,
     adopt(project) {
+      if (options.personal) return;
       pendingSuffixRef.current = undefined;
       const activeId = project.defaults.decisionRequestRevisionId;
       const resolved = activeId && resolveProjectDecisionRequestRevision(project, activeId);
@@ -95,14 +103,14 @@ export function useDecisionProject(options: {
       draft.adopt(resolved.decision, resolved.values);
     },
     freezeForRun() {
-      if (!options.project) return;
+      if (!options.project || options.personal) return;
       const next = fold(options.project);
       if (next !== options.project) options.adoptProjectMutation(next);
       const active = activeDecisionRequestRevision(next);
       if (active) frozenRef.current.add(active.id);
     },
     unsaved: Boolean(options.project) && draft.touched && !("input" in draft.validated()),
-    ...(draft.touched && !("input" in draft.validated())
+    ...(!options.personal && draft.touched && !("input" in draft.validated())
       ? { saveBlockedReason: "Fix the decision request before saving. Its incomplete edits have not been saved to the project." }
       : {}),
   };

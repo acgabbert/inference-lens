@@ -26,7 +26,7 @@ export interface PromptNavigation {
   target?: PromptNavigationTarget;
   reset(): void;
   editDecisionSource(
-    requestRevisionId: DecisionRequestRevisionId,
+    requestRevisionId: DecisionRequestRevisionId | undefined,
     templateId: PromptTemplateId,
     revisionId: PromptTemplateRevisionId,
   ): void;
@@ -56,7 +56,7 @@ export function usePromptNavigation(): PromptNavigation {
         key: (current?.key ?? 0) + 1,
         templateId,
         revisionId,
-        returnTarget: { kind: "decision-request", revisionId: requestRevisionId },
+        returnTarget: { kind: "decision-request", ...(requestRevisionId ? { revisionId: requestRevisionId } : {}) },
       }));
     },
     editSource(useId, templateId, revisionId) {

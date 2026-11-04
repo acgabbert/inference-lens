@@ -2,20 +2,28 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { ProjectFile } from "../../packages/core/src/project.ts";
-import type { ProjectConversationItem, ProjectConversationRevision } from "../../packages/core/src/project.ts";
+import type {
+  ProjectConversationItem,
+  ProjectConversationRevision,
+  ProjectDecisionRequestRevision,
+} from "../../packages/core/src/project.ts";
 import type {
   LocalChatInput,
+  LocalDecisionInput,
   WorkbenchChatRequestDraftV1,
+  WorkbenchDecisionRequestContent,
+  WorkbenchDecisionRequestDraftV1,
   WorkbenchDraftV1,
   WorkbenchRecordV1,
   WorkbenchScratchV1,
 } from "../../packages/core/src/personal-workbench.ts";
-import type { ConversationId } from "../../packages/core/src/run-kernel/types.ts";
+import type { ConversationId, DecisionRequestId } from "../../packages/core/src/run-kernel/types.ts";
 import type { WorkbenchStorage, WorkbenchStoreOutcome } from "../../packages/core/src/workbench-store.ts";
 import type { ProjectSession, SharedWriteOutcome } from "../use-project-workspace.client.ts";
 import { PersonalWorkbenchController } from "./personal-workbench-controller.ts";
 import type {
   ChatScratchParent,
+  DecisionScratchParent,
   PersonalWorkbenchStatus,
   PromptAssetRef,
   PromptDraftBase,
@@ -29,6 +37,7 @@ import type {
 
 export type {
   ChatScratchParent,
+  DecisionScratchParent,
   PersonalWorkbenchStatus,
   ScratchBranchPoint,
   PromptAssetRef,
@@ -40,9 +49,9 @@ export type {
 
 /**
  * The personal owner (D3): record load and save, recovery status and
- * publication. Step 2 routes prompt drafts and step 3 chat request drafts,
- * chat scratch and the chat selection; decision requests, execution overrides
- * and reconciliation arrive in steps 4–6
+ * publication. Step 2 routes prompt drafts, step 3 chat request drafts, chat
+ * scratch and the chat selection, and step 4 their decision equivalents;
+ * execution overrides and reconciliation arrive in steps 5–6
  * (docs/SHARED_ASSETS_LEVEL_TWO_DESIGN.md, "Delivery inside the gate").
  */
 export interface PersonalWorkbenchHandle {
@@ -87,6 +96,22 @@ export interface PersonalWorkbenchHandle {
   publishChatRequestDraft(conversationId: ConversationId): Promise<PublishOutcome>;
   /** `name` names the new request when the scratch has no saved ancestor. */
   publishScratch(scratchId: string, name?: string): Promise<PublishOutcome>;
+  /** The selected decision input; undefined inherits the launch default. */
+  decisionSelection: LocalDecisionInput | undefined;
+  selectDecision(input: LocalDecisionInput | undefined): void;
+  /** See `PersonalWorkbenchController.updateDecisionRequestDraft`. */
+  updateDecisionRequestDraft(
+    base: ProjectDecisionRequestRevision,
+    content: WorkbenchDecisionRequestContent,
+    options?: { draftId?: string },
+  ): WorkbenchDecisionRequestDraftV1 | undefined;
+  createDecisionScratch(
+    content: WorkbenchDecisionRequestContent,
+    options: { parent?: DecisionScratchParent },
+  ): WorkbenchScratchV1 | undefined;
+  updateDecisionScratch(scratchId: string, content: WorkbenchDecisionRequestContent): void;
+  discardDecisionRequestDraft(decisionRequestId: DecisionRequestId): Promise<WorkbenchStoreOutcome | undefined>;
+  publishDecisionRequestDraft(decisionRequestId: DecisionRequestId): Promise<PublishOutcome>;
 }
 
 const OFF: PersonalWorkbenchStatus = { kind: "off" };
@@ -227,6 +252,28 @@ export function usePersonalWorkbench(input: {
       const shared = sharedRef.current;
       if (!current || !shared) return { kind: "blocked", message: "Open a project before saving a request." };
       return current.publishScratch(scratchId, shared, (update) => writeSharedRef.current(update), name);
+    },
+    decisionSelection: controller?.decisionSelection,
+    selectDecision(selection) {
+      controllerRef.current?.selectDecision(selection);
+    },
+    updateDecisionRequestDraft(base, content, options) {
+      return controllerRef.current?.updateDecisionRequestDraft(base, content, options);
+    },
+    createDecisionScratch(content, options) {
+      return controllerRef.current?.createDecisionScratch(content, options);
+    },
+    updateDecisionScratch(scratchId, content) {
+      controllerRef.current?.updateDecisionScratch(scratchId, content);
+    },
+    async discardDecisionRequestDraft(decisionRequestId) {
+      return controllerRef.current?.discardDecisionRequestDraft(decisionRequestId);
+    },
+    async publishDecisionRequestDraft(decisionRequestId) {
+      const current = controllerRef.current;
+      const shared = sharedRef.current;
+      if (!current || !shared) return { kind: "blocked", message: "Open a project before saving a request." };
+      return current.publishDecisionRequestDraft(decisionRequestId, shared, (update) => writeSharedRef.current(update));
     },
   };
 }
