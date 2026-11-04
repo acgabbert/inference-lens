@@ -285,6 +285,9 @@ test("Replace with example loads the example over an invalid edit", async ({ pag
   await pane.getByRole("button", { name: "Load example" }).click();
   await pane.getByRole("button", { name: "Replace with example" }).click();
   await expect.poll(async () => recordFiles(await folderFiles(page), "scratch").length).toBe(2);
+  // Loading a record opens it in the Form view, so the JSON textarea goes away.
+  await expect(pane.getByRole("tab", { name: "Form", exact: true }).first()).toHaveAttribute("aria-selected", "true");
+  await pane.getByRole("tab", { name: "JSON" }).first().click();
   await expect(editor).not.toHaveValue("{ not json");
   expect(Object.keys(JSON.parse(await editor.inputValue()).questions)).toEqual(["intent", "severity", "is_spam"]);
 });
