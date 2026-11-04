@@ -1411,6 +1411,15 @@ the gate. With the gate off every path is today's.
 
 Implementation choices inside the approved contracts:
 
+- **Published selection survives cleanup.** Save and interrupted-publication
+  recovery persist the selected chat revision before deleting its draft or
+  scratch. A selection-write failure retains the publishing intent for retry
+  on reopen; later edits and a newer selection stay intact.
+- **Live-run parents follow scratch removal.** Saving a scratch moves its
+  remembered live-run parents to the published revision; discarding it moves
+  them to its parent. Branch resolution ignores remembered parents that no
+  longer exist, following R2's fallback instead of creating an unsavable branch.
+
 - **A competing draft is kept as a scratch.** Editing a saved revision while
   the same request already has a draft the composer is not editing keeps that
   draft as a scratch parented on its base, rather than overwriting it (D6

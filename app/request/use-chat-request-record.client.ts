@@ -99,6 +99,16 @@ export function useChatRequestRecord(input: {
     needsName = parent?.kind !== "saved-conversation-revision";
   }
 
+  // A live run outlives its local scratch. Keep its remembered parent usable
+  // after Save or Discard removes that scratch (R2).
+  function replaceScratchParent(scratchId: string, parent: ChatScratchParent | undefined): void {
+    for (const [runId, remembered] of runParentsRef.current) {
+      if (remembered.kind !== "scratch" || remembered.scratchId !== scratchId) continue;
+      if (parent) runParentsRef.current.set(runId, parent);
+      else runParentsRef.current.delete(runId);
+    }
+  }
+
   function ready(): boolean {
     if (personal.status.kind === "ready" || personal.status.kind === "session") return true;
     onError(personal.status.kind === "blocked"
@@ -151,6 +161,11 @@ export function useChatRequestRecord(input: {
           onError(outcome.message);
           return false;
         }
+        if (record.kind === "scratch" && !outcome.keptEdits) {
+          replaceScratchParent(record.scratch.scratchId, {
+            kind: "saved-conversation-revision", revisionId: outcome.revisionId as ConversationRevisionId,
+          });
+        }
         onError(undefined);
         return true;
       } finally {
@@ -164,6 +179,11 @@ export function useChatRequestRecord(input: {
         : await personal.discardScratch(record.scratch.scratchId);
       if (outcome && outcome.kind !== "saved" && outcome.kind !== "deleted") {
         onError("message" in outcome ? outcome.message : "The local request could not be discarded.");
+      }
+      if (record.kind === "scratch" && !personal.scratch(record.scratch.scratchId)) {
+        const parent = record.scratch.request.parent;
+        replaceScratchParent(record.scratch.scratchId,
+          parent?.kind === "scratch" || parent?.kind === "saved-conversation-revision" ? parent : undefined);
       }
     },
     runInput() {

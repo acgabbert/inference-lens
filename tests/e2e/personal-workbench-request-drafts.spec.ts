@@ -7,8 +7,12 @@
 import type { Page } from "./support/test";
 
 import { expect, test } from "./support/test";
+import { createEntityId } from "../../packages/core/src/run-kernel/types";
 import { createProjectFile } from "../../packages/core/src/project";
 import type { ProjectFile } from "../../packages/core/src/project";
+import { publishScratch } from "../../packages/core/src/workbench-publication";
+import { serializeWorkbenchRecord } from "../../packages/core/src/personal-workbench";
+import type { WorkbenchScratchV1 } from "../../packages/core/src/personal-workbench";
 import { serializeProjectManifest } from "../../app/workbench/project-manifest";
 import {
   BUFFERED_FIXTURE_ENDPOINT,
@@ -53,14 +57,14 @@ async function folderFiles(page: Page): Promise<Record<string, string>> {
   });
 }
 
-async function openFolder(page: Page, project: ProjectFile, manifest: string): Promise<void> {
+async function openFolder(page: Page, project: ProjectFile, manifest: string, extraFiles: Record<string, string> = {}): Promise<void> {
   const instanceId = "profile-instance-buffered";
   await seedProfile(page, { endpoint: BUFFERED_FIXTURE_ENDPOINT, instanceId });
   // This device already maps the project's connection, so runs are ready.
   await page.addInitScript(({ mapKey, projectId, instanceId }) => {
     localStorage.setItem(mapKey, JSON.stringify({ [projectId]: { profileId: "buffered", profileInstanceId: instanceId } }));
   }, { mapKey: PROJECT_PROFILE_MAP_STORAGE_KEY, projectId: project.projectId, instanceId });
-  await stubProjectDirectory(page, { name: "personal-requests", files: { "project.json": manifest }, directories: ["traces"] });
+  await stubProjectDirectory(page, { name: "personal-requests", files: { "project.json": manifest, ...extraFiles }, directories: ["traces"] });
   await page.goto("/");
   await waitForHydration(page);
   await page.getByLabel("Project menu").click();
@@ -160,4 +164,54 @@ test("runs write nothing to project.json, and a branch is a local request saved 
   expect(child.items[0].message.content[0].text).toBe("What is 4 + 4?");
   expect(saved.defaults.conversationRevisionId).toBe(launchRevisionId);
   await expect(chip).toHaveCount(0);
+});
+
+for (const action of ["saved", "discarded"] as const) {
+  test(`a scratch run can be branched again after the scratch is ${action}`, async ({ page }) => {
+    const project = fixtureProject();
+    await openFolder(page, project, serializeProjectManifest(project, "personal"));
+    await primaryAction(page, "compose").click();
+    await expect(page.getByLabel("Run transcript")).toContainText("Buffered fixture response");
+    await page.getByLabel("Run transcript").getByRole("button", { name: "Edit from here" }).first().click();
+    await page.getByLabel("Message 1 content").fill("Scratch run to branch again");
+    await primaryAction(page, "compose").click();
+    await expect(page.getByLabel("Run transcript")).toContainText("Buffered fixture response");
+    const chip = localRequestChip(page, "Local request");
+    await chip.getByRole("button", { name: action === "saved" ? "Save request" : "Discard" }).click();
+    await expect(chip).toHaveCount(0);
+    const saved = JSON.parse((await folderFiles(page))["project.json"]!);
+    const parent = action === "saved" ? saved.conversationRevisions.at(-1).id : project.defaults.conversationRevisionId;
+    await page.getByLabel("Run transcript").getByRole("button", { name: "Edit from here" }).first().click();
+    await expect.poll(async () => recordFiles(await folderFiles(page), "scratch").length).toBe(1);
+    const branch = JSON.parse(recordFiles(await folderFiles(page), "scratch")[0]![1]);
+    expect(branch.request.parent).toEqual({ kind: "saved-conversation-revision", revisionId: parent });
+    await chip.getByRole("button", { name: "Save request" }).click();
+    await expect(chip).toHaveCount(0);
+    await expect.poll(async () => JSON.parse((await folderFiles(page))["project.json"]!).conversationRevisions.at(-1).parentRevisionId).toBe(parent);
+  });
+}
+
+test("opening an interrupted scratch Save displays the recovered revision", async ({ page }) => {
+  const project = fixtureProject();
+  const scratch: WorkbenchScratchV1 = {
+    schemaVersion: 1, kind: "scratch", projectId: project.projectId,
+    scratchId: "scratch_recovery", localConversationId: createEntityId("conversation", "recovery"),
+    createdAt: "2026-11-04T12:00:00.000Z",
+    request: {
+      kind: "chat",
+      parent: { kind: "saved-conversation-revision", revisionId: project.defaults.conversationRevisionId },
+      items: [{ kind: "message", message: {
+        id: createEntityId("message", "recovered"),
+        role: "user", content: [{ type: "text", text: "Recovered scratch text" }],
+      } }],
+    },
+  };
+  const planned = publishScratch(project, scratch, { scratches: [], idSuffix: "recovered", createdAt: scratch.createdAt });
+  await openFolder(page, planned.project, serializeProjectManifest(planned.project, "personal"), {
+    ".workbench/scratch/scratch_recovery.json": serializeWorkbenchRecord({ ...scratch, publishing: planned.intent }),
+    ".workbench/selections.json": serializeWorkbenchRecord({ schemaVersion: 1, kind: "selections", projectId: project.projectId, chat: { selectedInput: { kind: "scratch", scratchId: scratch.scratchId } } }),
+  });
+  await expect(page.getByLabel("Message 1 content")).toHaveValue("Recovered scratch text");
+  await expect.poll(async () => selectedInput(await folderFiles(page))).toEqual({ kind: "saved-conversation-revision", revisionId: planned.intent.revisionId });
+  await expect.poll(async () => recordFiles(await folderFiles(page), "scratch").length).toBe(0);
 });

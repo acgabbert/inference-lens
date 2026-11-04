@@ -5,10 +5,10 @@ import { isDeepStrictEqual } from "node:util";
 import { parseProjectFile } from "../packages/core/src/project.ts";
 import type { ProjectConversationItem, ProjectFile } from "../packages/core/src/project.ts";
 import { planSharedProjectMigration } from "../packages/core/src/shared-project-migration.ts";
-import { parseWorkbenchRecordJson, serializeWorkbenchRecord } from "../packages/core/src/personal-workbench.ts";
+import { parseWorkbenchRecord, parseWorkbenchRecordJson, serializeWorkbenchRecord } from "../packages/core/src/personal-workbench.ts";
 import type { WorkbenchChatRequestDraftV1, WorkbenchScratchV1, WorkbenchSelectionsV1 } from "../packages/core/src/personal-workbench.ts";
 import type { WorkbenchStorage, WorkbenchMutationResult } from "../packages/core/src/workbench-store.ts";
-import { publishScratch } from "../packages/core/src/workbench-publication.ts";
+import { publishChatRequestDraft, publishScratch } from "../packages/core/src/workbench-publication.ts";
 import { PersonalWorkbenchController } from "../app/workbench/personal-workbench-controller.ts";
 import type { SharedWriteOutcome } from "../app/use-project-workspace.client.ts";
 import type { ConversationId, MessageId } from "../packages/core/src/run-kernel/types.ts";
@@ -216,4 +216,75 @@ test("opening settles an interrupted scratch publication that landed", async () 
   assert.equal(instance.scratch("scratch_landed"), undefined);
   assert.equal(storage.files.has("scratch/scratch_landed.json"), false);
   assert.deepEqual(instance.recovery, []);
+});
+
+for (const kind of ["draft", "scratch"] as const) {
+  test(`recovering a selected ${kind} preserves its published selection before cleanup`, async () => {
+    const storage = new MemoryStorage();
+    const instance = controller(storage);
+    await instance.open(shared);
+    const record = kind === "draft"
+      ? instance.updateChatRequestDraft(launch, literal("Recovered text."))!
+      : instance.createChatScratch(literal("Recovered text."), { parent: { kind: "saved-conversation-revision", revisionId: launch.id } });
+    await instance.flush();
+    const options = { scratches: [], idSuffix: "recovered", createdAt: "2026-11-04T15:00:00.000Z" };
+    const planned = record.kind === "draft" ? publishChatRequestDraft(shared, record, options) : publishScratch(shared, record, options);
+    assert.ok("intent" in planned);
+    if (!("intent" in planned)) return;
+    const path = record.kind === "draft" ? `drafts/${record.draftId}.json` : `scratch/${record.scratchId}.json`;
+    storage.files.set(path, serializeWorkbenchRecord(parseWorkbenchRecord({ ...record, publishing: planned.intent }, projectId)));
+    storage.writes = [];
+    const reopened = controller(storage);
+    await reopened.open(planned.project);
+    const expected = { kind: "saved-conversation-revision", revisionId: planned.intent.revisionId };
+    assert.deepEqual(reopened.chatSelection, expected);
+    assert.deepEqual(storedSelections(storage)?.chat?.selectedInput, expected);
+    assert.equal(storage.files.has(path), false);
+    const selectionWrite = storage.writes.indexOf("write selections.json");
+    assert.ok(selectionWrite >= 0 && selectionWrite < storage.writes.indexOf(`delete ${path}`));
+  });
+}
+
+test("a failed selection write retains the published scratch for recovery", async () => {
+  const storage = new MemoryStorage();
+  const instance = controller(storage);
+  await instance.open(shared);
+  const scratch = instance.createChatScratch(literal("Saved text."), { parent: { kind: "saved-conversation-revision", revisionId: launch.id } });
+  await instance.flush();
+  const mutate = storage.mutate.bind(storage);
+  storage.mutate = async (path, expected, contents) => path === "selections.json"
+    ? { kind: "conflict", phase: "before-write", actualContents: storage.files.get(path)! }
+    : mutate(path, expected, contents);
+  const writer = sharedWriter(shared);
+  const outcome = await instance.publishScratch(scratch.scratchId, shared, update => writer.write(update));
+  assert.ok(outcome.kind === "published" && outcome.keptEdits);
+  const path = `scratch/${scratch.scratchId}.json`;
+  assert.ok(instance.scratch(scratch.scratchId)?.publishing);
+  assert.ok(JSON.parse(storage.files.get(path)!).publishing);
+  assert.deepEqual(storedSelections(storage)?.chat?.selectedInput, { kind: "scratch", scratchId: scratch.scratchId });
+  storage.mutate = mutate;
+  const reopened = controller(storage);
+  await reopened.open(writer.state.document);
+  assert.deepEqual(storedSelections(storage)?.chat?.selectedInput, { kind: "saved-conversation-revision", revisionId: outcome.revisionId });
+  assert.equal(storage.files.has(path), false);
+});
+
+test("recovery keeps later scratch edits and does not replace another selection", async () => {
+  for (const laterEdits of [false, true]) {
+    const storage = new MemoryStorage();
+    const instance = controller(storage);
+    await instance.open(shared);
+    const scratch = instance.createChatScratch(literal("Published text."), { parent: { kind: "saved-conversation-revision", revisionId: launch.id } });
+    const planned = publishScratch(shared, scratch, { scratches: [], idSuffix: "recovered", createdAt: scratch.createdAt });
+    if (!laterEdits) instance.selectChat({ kind: "saved-conversation-revision", revisionId: launch.id });
+    await instance.flush();
+    const path = `scratch/${scratch.scratchId}.json`;
+    const record = laterEdits ? { ...scratch, request: { ...scratch.request, items: literal("Later edits.") } } : scratch;
+    storage.files.set(path, serializeWorkbenchRecord(parseWorkbenchRecord({ ...record, publishing: planned.intent }, projectId)));
+    const reopened = controller(storage);
+    await reopened.open(planned.project);
+    assert.deepEqual(reopened.chatSelection, instance.chatSelection);
+    assert.equal(storage.files.has(path), laterEdits);
+    if (laterEdits) assert.equal(reopened.scratch(scratch.scratchId)?.publishing, undefined);
+  }
 });

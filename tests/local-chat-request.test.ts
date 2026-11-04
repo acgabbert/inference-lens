@@ -106,3 +106,9 @@ test("R2: a branch's parent is the nearest saved ancestor the app knows", () => 
     undefined,
   );
 });
+
+test("a remembered parent that no longer exists cannot strand a new branch", () => {
+  const run = { conversationId: scratch.localConversationId, conversationRevisionId: "revision_local" as ConversationRevisionId };
+  assert.equal(branchScratchParent(shared, [], run, { kind: "scratch", scratchId: scratch.scratchId }), undefined);
+  assert.equal(branchScratchParent(shared, [], run, { kind: "saved-conversation-revision", revisionId: "revision_deleted" as ConversationRevisionId }), undefined);
+});

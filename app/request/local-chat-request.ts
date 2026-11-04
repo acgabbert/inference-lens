@@ -177,7 +177,10 @@ export function branchScratchParent(
   if (run.conversationRevisionId && project.conversationRevisions.some(({ id }) => id === run.conversationRevisionId)) {
     return { kind: "saved-conversation-revision", revisionId: run.conversationRevisionId };
   }
-  if (remembered) return remembered;
+  if (remembered?.kind === "saved-conversation-revision"
+    && project.conversationRevisions.some(({ id }) => id === remembered.revisionId)) return remembered;
+  if (remembered?.kind === "scratch"
+    && scratches.some(({ scratchId, request }) => scratchId === remembered.scratchId && request.kind === "chat")) return remembered;
   const scratch = scratches.find(({ localConversationId, request }) => request.kind === "chat" && localConversationId === run.conversationId);
   return scratch ? { kind: "scratch", scratchId: scratch.scratchId } : undefined;
 }

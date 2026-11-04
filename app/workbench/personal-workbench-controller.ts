@@ -669,6 +669,9 @@ export class PersonalWorkbenchController {
         this.recoveryItems.push({ kind: "publication-conflict", path, message: "The request was saved, but a local request that branched from it could not be updated. It is settled the next time the project opens." });
         return { kind: "published", revisionId, keptEdits: true, project: outcome.project };
       }
+      if (!completion.record && !await this.persistPublishedSelection(current, revisionId)) {
+        return { kind: "published", revisionId, keptEdits: true, project: outcome.project };
+      }
       if (completion.record) {
         this.records.set(path, completion.record);
         this.dirty.add(path);
@@ -705,6 +708,28 @@ export class PersonalWorkbenchController {
   private selectAfterPublication(selected: LocalChatInput, outcome: Extract<PublishOutcome, { kind: "published" }>): void {
     if (outcome.keptEdits || !same(this.chatSelection, selected)) return;
     this.selectChat({ kind: "saved-conversation-revision", revisionId: outcome.revisionId as never });
+  }
+
+  /** Persist the selection before deleting its published record, so reopening
+   * cannot fall back to the launch default between cleanup and selection save.
+   * On failure the caller retains the intent for recovery on the next open.
+   */
+  private async persistPublishedSelection(record: WorkbenchDraftV1 | WorkbenchScratchV1, revisionId: string): Promise<boolean> {
+    let selected: LocalChatInput;
+    if (record.kind === "scratch" && record.request.kind === "chat") {
+      selected = { kind: "scratch", scratchId: record.scratchId };
+    } else if (record.kind === "draft" && record.asset.kind === "chat-request") {
+      selected = { kind: "draft", draftId: record.draftId };
+    } else {
+      return true;
+    }
+    if (same(this.chatSelection, selected)) {
+      this.selectChat({ kind: "saved-conversation-revision", revisionId: revisionId as ProjectConversationRevision["id"] });
+    }
+    // Also flush a newer selection: disk may still select this record.
+    this.cancelTimer(SELECTIONS_PATH);
+    const outcome = await this.persist(SELECTIONS_PATH);
+    return !outcome || outcome.kind === "saved";
   }
 
   private adoptSeed(seed: WorkbenchRecordV1): void {
@@ -758,6 +783,7 @@ export class PersonalWorkbenchController {
           this.records.set(path, completion.record);
           this.dirty.add(path);
         } else {
+          if (!await this.persistPublishedSelection(record, record.publishing.revisionId as string)) continue;
           this.records.delete(path);
           this.deletions.add(path);
         }
@@ -770,6 +796,7 @@ export class PersonalWorkbenchController {
         if (next) {
           this.records.set(path, next);
         } else {
+          if (!await this.persistPublishedSelection(record, record.publishing.revisionId as string)) continue;
           this.records.delete(path);
           this.deletions.add(path);
           continue;
