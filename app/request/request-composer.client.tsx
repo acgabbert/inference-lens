@@ -24,6 +24,8 @@ import type { CommandToolsHandle } from "../tools/use-command-tools.client";
 import type { McpConsentsHandle } from "../tools/use-mcp-consents.client";
 import type { ToolAttachmentDestination, ToolAttachmentSource } from "./use-request-draft.client";
 import { StatusChip } from "../notifications/status-chip.client";
+import { LocalRequestNotice } from "./local-request-notice.client";
+import type { LocalRequestState } from "./local-request-notice.client";
 import { PromptInsertionDialog } from "../templates/prompt-insertion-dialog.client";
 import { PromptModelRecommendation } from "../templates/prompt-model-recommendation.client";
 import { SavedPromptPicker } from "../templates/saved-prompt-picker.client";
@@ -96,6 +98,8 @@ export interface RequestComposerProps {
     label: BranchPointLabel;
   };
   requestPreview?: RequestPreview;
+  /** A personal session's unsaved request draft or scratch (2b step 3). */
+  localRequest?: LocalRequestState;
   /** Composed by the route from the environment owner; absent without a project. */
   environmentSelector?: ReactNode;
   /** The selected environment, so each template use can say what it supplies. */
@@ -129,6 +133,7 @@ export function RequestComposer({
   activeProfile,
   pendingBranch,
   requestPreview,
+  localRequest,
   environmentSelector,
   environment,
   onOpenConnectionSettings,
@@ -319,6 +324,7 @@ export function RequestComposer({
         </>}
         notices={<>
           <RunReadinessNotice {...(readiness ? { readiness } : {})} onAction={routeReadinessAction} />
+          {localRequest && <LocalRequestNotice state={localRequest} />}
           {pendingBranch && (
             <StatusChip
               tone="advisory"

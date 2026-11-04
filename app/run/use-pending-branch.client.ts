@@ -29,6 +29,11 @@ export interface UsePendingBranchOptions {
   traceStorage: TraceStorageStatus | null | undefined;
   /** Replaces the request draft with the branch's messages. */
   resetMessages(messages: ConversationMessage[]): void;
+  /**
+   * A `personal` session's branch is a scratch, created at once (2b step 3).
+   * Returns whether it began, or undefined to take the pending-branch path.
+   */
+  branchLocally?(start: BranchStart): boolean | undefined;
   onError(message: string): void;
 }
 
@@ -61,13 +66,16 @@ export interface PendingBranchHandle {
 }
 
 export function usePendingBranch(options: UsePendingBranchOptions): PendingBranchHandle {
-  const { runState, transcript, traceStorage, resetMessages, onError } = options;
+  const { runState, transcript, traceStorage, resetMessages, onError, branchLocally } = options;
   const adHocConversationIdRef = useRef<ConversationId | null>(null);
   const [pending, setPending] = useState<PendingBranch>();
 
-  function begin(start: BranchStart): void {
+  function begin(start: BranchStart): boolean {
+    const local = branchLocally?.(start);
+    if (local !== undefined) return local;
     resetMessages(start.messages);
     setPending(start.branch);
+    return true;
   }
 
   return {
@@ -76,8 +84,7 @@ export function usePendingBranch(options: UsePendingBranchOptions): PendingBranc
     editFromHere(messageId) {
       const start = branchFromTranscript({ runState, transcript, traceStorage, messageId });
       if (!start) return false;
-      begin(start);
-      return true;
+      return begin(start);
     },
     branchFromTrace(trace) {
       const start = branchFromSavedTrace(trace);
@@ -85,8 +92,7 @@ export function usePendingBranch(options: UsePendingBranchOptions): PendingBranc
         onError("This saved trace has no message to branch from.");
         return false;
       }
-      begin(start);
-      return true;
+      return begin(start);
     },
     clear() { setPending(undefined); },
     preparationInputs() {

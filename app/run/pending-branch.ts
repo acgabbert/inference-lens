@@ -3,6 +3,7 @@ import { transcriptFromRunState } from "../../packages/core/src/run-kernel/trans
 import type { TranscriptEntry } from "../../packages/core/src/run-kernel/transcript.ts";
 import { runRequestExcerpt } from "../../packages/core/src/run-history.ts";
 import type {
+  ConversationId,
   ConversationMessage,
   MessageId,
   RunState,
@@ -32,6 +33,8 @@ export interface BranchPointLabel {
  * still exists, and names the branch point without exposing raw IDs.
  */
 export interface PendingBranch extends WorkbenchBranchContext {
+  /** The parent run's conversation; a personal session finds a scratch parent by it (R2). */
+  parentConversationId?: ConversationId;
   parentTraceNeedsSaving: boolean;
   label: BranchPointLabel;
 }
@@ -84,6 +87,7 @@ export function branchFromTranscript(input: {
     messages,
     branch: {
       parentRunId: runState.runId,
+      ...(runState.input ? { parentConversationId: runState.input.conversationId } : {}),
       parentConversationRevisionId: runState.input?.conversationRevisionId,
       branchMessageId: messageId,
       parentTraceNeedsSaving:
@@ -108,6 +112,7 @@ export function branchFromSavedTrace(trace: RunTrace): BranchStart | undefined {
     messages,
     branch: {
       parentRunId: trace.runId,
+      parentConversationId: trace.input.conversationId,
       parentConversationRevisionId: trace.input.conversationRevisionId,
       branchMessageId: branchMessage.id,
       parentTraceNeedsSaving: false,

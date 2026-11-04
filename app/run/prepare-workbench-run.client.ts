@@ -5,6 +5,7 @@ import {
   sameConversationMessages,
 } from "../../packages/core/src/project.ts";
 import type {
+  ProjectConversationItem,
   ProjectFile,
   ProjectTemplateDiagnostic,
   TemplateResolutionContext,
@@ -41,6 +42,16 @@ export interface PrepareWorkbenchRunInput {
   /** What the composer rendered `request.messages` with. */
   resolutionContext: TemplateResolutionContext;
   adHocConversationId?: ConversationId;
+  /**
+   * A `personal` session's selected request (2b step 3, I3): it runs under
+   * this identity, from these items, and the run writes nothing to the
+   * project. Replaces `branchContext`, since a branch is already a scratch.
+   */
+  localInput?: {
+    identity: RunConversationIdentity;
+    items: ProjectConversationItem[];
+    branchedFrom?: RunTrace["branchedFrom"];
+  };
 }
 
 export type PrepareWorkbenchRunResult =
@@ -134,7 +145,17 @@ export function prepareWorkbenchRun(
   let branchedFrom: RunTrace["branchedFrom"] | undefined;
   let rememberedConversationId: ConversationId | undefined;
 
-  if (snapshots.branchContext) {
+  let localRevision: ProjectFile["conversationRevisions"][number] | undefined;
+  if (snapshots.localInput && snapshots.project) {
+    identity = snapshots.localInput.identity;
+    localRevision = {
+      id: identity.conversationRevisionId,
+      conversationId: identity.conversationId,
+      items: snapshots.localInput.items,
+      createdAt: new Date().toISOString(),
+    };
+    branchedFrom = snapshots.localInput.branchedFrom;
+  } else if (snapshots.branchContext) {
     if (snapshots.project) {
       const parentRevisionId = snapshots.branchContext.parentConversationRevisionId;
       if (!parentRevisionId) {
@@ -200,9 +221,9 @@ export function prepareWorkbenchRun(
   let environment: ResolvedRunInput["environment"];
   if (
     projectForRun &&
-    identity.conversationRevisionId === projectForRun.defaults.conversationRevisionId
+    (localRevision || identity.conversationRevisionId === projectForRun.defaults.conversationRevisionId)
   ) {
-    const revision = projectForRun.conversationRevisions.find(
+    const revision = localRevision ?? projectForRun.conversationRevisions.find(
       ({ id }) => id === identity.conversationRevisionId,
     );
     if (!revision) {
@@ -253,8 +274,8 @@ export function prepareWorkbenchRun(
     },
     ...(projectMutation ? { projectMutation } : {}),
     ...(branchedFrom ? { branchedFrom } : {}),
-    ...(projectForRun ? { executedRevisionId: identity.conversationRevisionId } : {}),
-    consumesPendingBranch: Boolean(snapshots.branchContext),
+    ...(projectForRun && !localRevision ? { executedRevisionId: identity.conversationRevisionId } : {}),
+    consumesPendingBranch: Boolean(snapshots.branchContext) && !localRevision,
     ...(rememberedConversationId ? { adHocConversationId: rememberedConversationId } : {}),
   };
 }

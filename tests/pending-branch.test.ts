@@ -103,6 +103,7 @@ test("editing from a live message drafts the transcript through it", () => {
   );
   assert.deepEqual(start.branch, {
     parentRunId: state.runId,
+    parentConversationId: state.input?.conversationId,
     parentConversationRevisionId: state.input?.conversationRevisionId,
     branchMessageId: messageId,
     parentTraceNeedsSaving: false,
@@ -164,6 +165,7 @@ test("a saved trace branches after its last message and never needs saving", () 
   assert.equal(start.messages.at(-1)?.content[0]?.text, "Final answer");
   assert.deepEqual(start.branch, {
     parentRunId: trace.runId,
+    parentConversationId: trace.input.conversationId,
     parentConversationRevisionId: trace.input.conversationRevisionId,
     branchMessageId: transcript.at(-1)!.message.id,
     parentTraceNeedsSaving: false,

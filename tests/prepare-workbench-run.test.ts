@@ -150,3 +150,32 @@ test("resolves template-backed default revisions and reports invalid template va
   });
   assert.equal(failure.ok, false);
 });
+
+test("a personal session's local input runs under its identity, resolves its items and writes nothing", () => {
+  const project = templateProject();
+  const items = project.conversationRevisions[0]!.items;
+  const identity = { conversationId: "conversation_local-one" as const, conversationRevisionId: "revision_fresh" as const };
+  const branchedFrom = { runId: "run_parent" as const, messageId: "message_question" as const };
+  // The composer renders with the same run-only values the run resolves.
+  const resolutionContext = { runOverrides: { "template-use_topic": { topic: "local" } } };
+  const draft = projectDraft(project, resolutionContext);
+  const prepared = prepare({
+    project,
+    request: { ...request, messages: draft.messages },
+    resolutionContext,
+    localInput: { identity, items, branchedFrom },
+    // A legacy pending branch would append a revision; local input ignores it.
+    branchContext: { parentRunId: "run_parent", parentConversationRevisionId: project.defaults.conversationRevisionId, branchMessageId: "message_question" },
+  });
+  assert.ok(prepared.ok, prepared.ok ? "" : prepared.message);
+  if (!prepared.ok) return;
+  assert.equal(prepared.input.conversationId, identity.conversationId);
+  assert.equal(prepared.input.conversationRevisionId, identity.conversationRevisionId);
+  assert.equal(prepared.projectMutation, undefined);
+  assert.equal(prepared.executedRevisionId, undefined);
+  assert.equal(prepared.consumesPendingBranch, false);
+  assert.deepEqual(prepared.branchedFrom, branchedFrom);
+  assert.equal(prepared.input.templateResolutions.length, 1);
+  const generated = prepared.input.messages.at(-1)!.content[0];
+  assert.equal(generated?.type === "text" && generated.text, "Topic: local");
+});
