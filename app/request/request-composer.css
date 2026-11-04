@@ -154,3 +154,19 @@ textarea {
   box-shadow: inset 0 0 0 1px var(--accent-focus);
 }
 
+
+/* Naming a local request on Save (2b step 3). Wraps on a phone. */
+.local-request-name {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: var(--space-sm);
+  margin: var(--space-sm) var(--space-xs) 0;
+}
+
+.local-request-name label {
+  display: grid;
+  gap: var(--space-xs);
+  flex: 1 1 12rem;
+  min-width: 0;
+}

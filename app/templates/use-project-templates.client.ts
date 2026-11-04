@@ -11,6 +11,7 @@ import {
   projectDraft,
   removePromptTemplateUse,
   renamePromptTemplate,
+  resolveProjectRevisionInContext,
   renamePromptTemplateRevision,
   restorePromptTemplate,
   setPromptTemplateRecommendedTarget,
@@ -74,6 +75,8 @@ import { usePromptModelWarnings, type PromptModelWarnings } from "./use-prompt-m
 import { removeDraftMessage } from "../request/use-request-draft.client";
 import { isPromptDraft } from "../../packages/core/src/personal-workbench";
 import type { PersonalWorkbenchHandle, PromptAssetRef } from "../workbench/use-personal-workbench.client";
+import { itemsAfterMutation, localRevision } from "../request/local-chat-request";
+import type { ChatRequestRecordHandle } from "../request/use-chat-request-record.client";
 
 /** What an external prompt import landed, reported once when it lands. */
 export interface ProjectTemplatesImportNotice {
@@ -90,6 +93,12 @@ export interface UseProjectTemplatesInput {
    * `template.draft`, and Save publishes through it (2b step 2).
    */
   personal: Pick<PersonalWorkbenchHandle, "enabled" | "draftFor" | "updateDraft" | "publish">;
+  /**
+   * In a `personal` session, the request the composer edits: template-use and
+   * message edits become its draft or scratch, never a direct shared write
+   * (2b step 3).
+   */
+  chatRequest?: Pick<ChatRequestRecordHandle, "enabled" | "record" | "edit" | "selectSaved">;
   projectDirty: boolean;
   messages: ConversationMessage[];
   model: string;
@@ -219,7 +228,7 @@ export function useProjectTemplates(input: UseProjectTemplatesInput): ProjectTem
     }
   }, [input.projectDirty, input.projectFile]);
 
-  const activeProjectRevision = input.projectFile?.conversationRevisions.find(
+  const launchRevision = input.projectFile?.conversationRevisions.find(
     ({ id }) => id === input.projectFile!.defaults.conversationRevisionId,
   );
   function contextFor(
@@ -233,12 +242,40 @@ export function useProjectTemplates(input: UseProjectTemplatesInput): ProjectTem
     return { runOverrides, ...(environment ? { environment } : {}) };
   }
   const resolutionContext = contextFor(input.projectFile);
-  const templateWorkbench = projectTemplateWorkbenchView({
-    project: input.projectFile,
-    messages: input.messages,
-    resolutionContext,
-    branchParentRevisionId: input.branchParentRevisionId,
+  /** The personal session's request, when the composer edits a local record. */
+  const localRecord = input.chatRequest?.enabled && input.projectFile ? input.chatRequest.record : undefined;
+  const localItems = localRecord?.items;
+  /** What the composer edits: the local record, else the launch default. */
+  const activeProjectRevision = localRecord
+    ? { ...(localRecord.revision ?? localRevision(localRecord.items)), items: localRecord.items }
+    : launchRevision;
+  const templateWorkbench = localItems
+    ? localTemplateWorkbench(input.projectFile!, localItems, resolutionContext)
+    : projectTemplateWorkbenchView({
+      project: input.projectFile,
+      messages: input.messages,
+      resolutionContext,
+      branchParentRevisionId: input.branchParentRevisionId,
+    });
+  // A local record changes outside the composer too: on load, Save, Discard
+  // and branching. Its messages are always its rendered items.
+  const localRenderKey = localItems
+    ? JSON.stringify([localItems, templateRunOverrides, resolutionContext.environment ?? null])
+    : undefined;
+  const renderLocalRef = useRef<() => void>(() => {});
+  useEffect(() => {
+    renderLocalRef.current = () => {
+      if (!localItems || !input.projectFile) return;
+      try {
+        input.resetMessages(renderLocal(input.projectFile, localItems, resolutionContext));
+      } catch {
+        // `templateWorkbench.resolutionError` reports it.
+      }
+    };
   });
+  useEffect(() => {
+    if (localRenderKey !== undefined) renderLocalRef.current();
+  }, [localRenderKey, input.projectFile]);
   const modelWarnings = usePromptModelWarnings(input.projectFile?.projectId ?? "session", templateWorkbench.composerItems.flatMap((item) =>
     item.kind === "template-use" ? [{
       id: item.use.id,
@@ -326,9 +363,51 @@ export function useProjectTemplates(input: UseProjectTemplatesInput): ProjectTem
     return { project: outcome.project, revisionId: outcome.revisionId as PromptTemplateRevisionId };
   }
 
+  /** The composer's draft for a project: a local record renders its own items. */
+  function authoredDraft(project: ProjectFile, context: TemplateResolutionContext, items = localItems): ReturnType<typeof projectDraft> {
+    const draft = projectDraft(project, context);
+    if (!items) return draft;
+    try {
+      return { ...draft, items, messages: renderLocal(project, items, context) };
+    } catch {
+      return { ...draft, items, messages: input.messages };
+    }
+  }
   function adoptAuthoredProject(project: ProjectFile, overrides = templateRunOverrides): void {
     input.adoptProjectMutation(project);
-    input.replaceProjectDraft(projectDraft(project, contextFor(project, overrides)));
+    input.replaceProjectDraft(authoredDraft(project, contextFor(project, overrides)));
+  }
+  /**
+   * One revision edit, wherever the composer's request lives. A `personal`
+   * session applies it to the local record's items; a legacy session to the
+   * active revision, forking one that has run (`projectForTemplateMutation`).
+   */
+  function applyRevisionEdit(
+    edit: (project: ProjectFile, revisionId: ConversationRevisionId) => ProjectFile,
+    overrides = templateRunOverrides,
+  ): boolean {
+    if (localItems && input.projectFile && input.chatRequest) {
+      let items: ProjectConversationItem[];
+      try {
+        items = itemsAfterMutation(input.projectFile, localItems, edit);
+      } catch (error) {
+        input.markProjectError(error instanceof Error ? error.message : "Could not edit this request.");
+        return false;
+      }
+      if (!input.chatRequest.edit(items)) return false;
+      setTemplateRunOverrides(overrides);
+      try {
+        input.resetMessages(renderLocal(input.projectFile, items, contextFor(input.projectFile, overrides)));
+        input.markProjectError(undefined);
+      } catch (error) {
+        input.markProjectError(error instanceof Error ? error.message : "Could not render this request.");
+      }
+      return true;
+    }
+    const { project, revisionId } = projectForUseMutation();
+    setTemplateRunOverrides(overrides);
+    adoptAuthoredProject(edit(project, revisionId), overrides);
+    return true;
   }
 
   function applyEnvironment(environmentId: EnvironmentId | undefined, project?: ProjectFile): void {
@@ -356,7 +435,7 @@ export function useProjectTemplates(input: UseProjectTemplatesInput): ProjectTem
       return;
     }
     if (project) input.adoptProjectMutation(project);
-    input.replaceProjectDraft(projectDraft(next, contextFor(next, templateRunOverrides, environmentId)));
+    input.replaceProjectDraft(authoredDraft(next, contextFor(next, templateRunOverrides, environmentId)));
   }
 
   function projectForUseMutation(): { project: ProjectFile; revisionId: ConversationRevisionId } {
@@ -652,8 +731,23 @@ export function useProjectTemplates(input: UseProjectTemplatesInput): ProjectTem
         (project) => setPromptTemplateRecommendedTarget(renamePromptTemplate(project, templateId, name), templateId, recommendedTarget),
       );
       if (!saved) return undefined;
-      // The use is a request edit, which step 3 routes through the personal
-      // owner; until then it is today's direct edit of the confirmed document.
+      // The use is a request edit: it lands in the request's local record,
+      // against the confirmed document that holds the new prompt revision.
+      if (localItems && input.chatRequest) {
+        let items: ProjectConversationItem[];
+        try {
+          items = itemsAfterMutation(saved.project, localItems, (project, conversationRevisionId) => insertPromptTemplateUse(project, {
+            conversationRevisionId, templateId, templateRevisionId: saved.revisionId, itemIndex,
+          }));
+        } catch (error) {
+          input.markProjectError(error instanceof Error ? error.message : "Could not add the prompt to this request.");
+          return saved.revisionId;
+        }
+        if (input.chatRequest.edit(items)) {
+          input.resetMessages(renderLocal(saved.project, items, contextFor(saved.project)));
+        }
+        return saved.revisionId;
+      }
       const { project, revisionId: conversationRevisionId } = projectForTemplateMutation({
         project: saved.project,
         executedRevisionIds: executedRevisionIdsRef.current,
@@ -677,6 +771,23 @@ export function useProjectTemplates(input: UseProjectTemplatesInput): ProjectTem
         revisionName,
       );
       if (!materialized) return undefined;
+      if (localItems && input.chatRequest) {
+        // The prompt is a direct shared write; its use is a request edit.
+        let items: ProjectConversationItem[] | undefined;
+        try {
+          items = itemsAfterMutation(materialized.project, localItems, (project, conversationRevisionId) => insertPromptTemplateUse(project, {
+            conversationRevisionId, templateId, itemIndex,
+          }));
+        } catch (error) {
+          input.markProjectError(error instanceof Error ? error.message : "Could not add the prompt to this request.");
+        }
+        input.adoptProjectMutation(materialized.project);
+        finishSessionTemplate(templateId);
+        if (items && input.chatRequest.edit(items)) {
+          input.resetMessages(renderLocal(materialized.project, items, contextFor(materialized.project)));
+        }
+        return materialized.revisionId;
+      }
       const revision = materialized.project.conversationRevisions.find(
         ({ id }) => id === materialized.project.defaults.conversationRevisionId,
       )!;
@@ -766,8 +877,7 @@ export function useProjectTemplates(input: UseProjectTemplatesInput): ProjectTem
     itemIndex: number,
     replaceEmptyDraft = false,
   ): void {
-    const { project, revisionId } = projectForUseMutation();
-    adoptAuthoredProject(insertPromptTemplateUse(project, {
+    applyRevisionEdit((project, revisionId) => insertPromptTemplateUse(project, {
       conversationRevisionId: revisionId,
       templateId,
       templateRevisionId,
@@ -776,26 +886,29 @@ export function useProjectTemplates(input: UseProjectTemplatesInput): ProjectTem
     }));
   }
   function updateTemplateUseValues(templateUseId: PromptTemplateUseId, values: Record<string, string>): void {
-    const { project, revisionId } = projectForUseMutation();
-    adoptAuthoredProject(updatePromptTemplateUseValues(project, { conversationRevisionId: revisionId, templateUseId, values }));
+    applyRevisionEdit((project, revisionId) => updatePromptTemplateUseValues(project, { conversationRevisionId: revisionId, templateUseId, values }));
   }
   function updateTemplateUseOverride(templateUseId: PromptTemplateUseId, values: Record<string, string>): void {
     const overrides = templateRunOverridesAfterUpdate(templateRunOverrides, templateUseId, values);
     setTemplateRunOverrides(overrides);
-    if (input.projectFile) input.replaceProjectDraft(projectDraft(input.projectFile, contextFor(input.projectFile, overrides)));
+    if (input.projectFile) input.replaceProjectDraft(authoredDraft(input.projectFile, contextFor(input.projectFile, overrides)));
   }
   function saveTemplateUseRunValue(templateUseId: PromptTemplateUseId, values: Record<string, string>, useOverrides: Record<string, string>): void {
-    const { project, revisionId } = projectForUseMutation();
-    const next = updatePromptTemplateUseValues(project, { conversationRevisionId: revisionId, templateUseId, values });
     const overrides = templateRunOverridesAfterSave(templateRunOverrides, templateUseId, useOverrides);
-    setTemplateRunOverrides(overrides);
-    adoptAuthoredProject(next, overrides);
+    applyRevisionEdit((project, revisionId) => updatePromptTemplateUseValues(project, { conversationRevisionId: revisionId, templateUseId, values }), overrides);
   }
   function mutateAuthoredItems(update: (items: ProjectConversationItem[]) => ProjectConversationItem[]): void {
     if (input.branchParentRevisionId) {
       if (!input.projectFile) return;
       try { input.resetMessages(pendingBranchMessagesAfterItemUpdate({ project: input.projectFile, messages: input.messages, resolutionContext, parentRevisionId: input.branchParentRevisionId, update })); input.markProjectError(undefined); }
       catch (error) { input.markProjectError(error instanceof Error ? error.message : "Could not update the pending branch."); }
+      return;
+    }
+    if (localItems) {
+      applyRevisionEdit((project, revisionId) => {
+        const revision = project.conversationRevisions.find(({ id }) => id === revisionId)!;
+        return { ...project, conversationRevisions: project.conversationRevisions.map((entry) => entry.id === revisionId ? { ...revision, items: update(structuredClone(revision.items)) } : entry) };
+      });
       return;
     }
     const { project, revisionId } = projectForUseMutation();
@@ -821,18 +934,20 @@ export function useProjectTemplates(input: UseProjectTemplatesInput): ProjectTem
     mutateAuthoredItems((items) => items.filter((item) => item.kind === "template-use" || remainingIds.has(item.message.id)));
   }
   function setTemplateUseRevision(templateUseId: PromptTemplateUseId, templateRevisionId: PromptTemplateRevisionId): void {
-    const { project, revisionId } = projectForUseMutation();
-    const item = project.conversationRevisions.find(({ id }) => id === revisionId)!.items.find((candidate) => candidate.kind === "template-use" && candidate.use.id === templateUseId);
+    // A template use exists only in a project, so there is nothing to materialize.
+    const project = input.projectFile;
+    if (!project) return;
+    const items = localItems ?? project.conversationRevisions.find(({ id }) => id === project.defaults.conversationRevisionId)?.items ?? [];
+    const item = items.find((candidate) => candidate.kind === "template-use" && candidate.use.id === templateUseId);
     if (!item || item.kind !== "template-use") return;
     const template = project.promptTemplates.find(({ id }) => id === item.use.templateId)!;
     if (template.kind !== "chat") return;
     const target = template.revisions.find(({ id }) => id === templateRevisionId);
     if (!target) return;
     const count = target.messages.length;
-    const next = updatePromptTemplateUseRevision(project, { conversationRevisionId: revisionId, templateUseId, templateRevisionId, newOutputMessageIdSuffixes: Array.from({ length: Math.max(0, count - item.use.outputMessageIds.length) }, () => randomUUID()) });
+    const suffixes = Array.from({ length: Math.max(0, count - item.use.outputMessageIds.length) }, () => randomUUID());
     const overrides = templateRunOverridesAfterRevisionUpdate(templateRunOverrides, templateUseId, target.messages);
-    setTemplateRunOverrides(overrides);
-    adoptAuthoredProject(next, overrides);
+    applyRevisionEdit((current, revisionId) => updatePromptTemplateUseRevision(current, { conversationRevisionId: revisionId, templateUseId, templateRevisionId, newOutputMessageIdSuffixes: suffixes }), overrides);
   }
   function detachTemplateUse(templateUseId: PromptTemplateUseId): void {
     input.requestConfirmation({
@@ -841,16 +956,15 @@ export function useProjectTemplates(input: UseProjectTemplatesInput): ProjectTem
       confirmLabel: "Detach",
       onConfirm() {
         try {
-          const { project, revisionId } = projectForUseMutation();
-          const next = detachPromptTemplateUse(project, {
-            conversationRevisionId: revisionId,
-            templateUseId,
-            resolutionContext: contextFor(project),
-          });
           const overrides = { ...templateRunOverrides };
           delete overrides[templateUseId];
-          setTemplateRunOverrides(overrides);
-          adoptAuthoredProject(next, overrides);
+          // Detaching renders under the values in effect now, overrides included.
+          const context = contextFor(input.projectFile);
+          applyRevisionEdit((project, revisionId) => detachPromptTemplateUse(project, {
+            conversationRevisionId: revisionId,
+            templateUseId,
+            resolutionContext: context,
+          }), overrides);
         } catch (error) {
           input.markProjectError(
             error instanceof Error
@@ -861,10 +975,22 @@ export function useProjectTemplates(input: UseProjectTemplatesInput): ProjectTem
       },
     });
   }
-  function removeTemplateUse(templateUseId: PromptTemplateUseId): void { input.requestConfirmation({ title: "Remove this template use?", description: "The pinned use and all messages it generates will be removed from this conversation revision.", confirmLabel: "Remove use", destructive: true, onConfirm() { const { project, revisionId } = projectForUseMutation(); const next = removePromptTemplateUse(project, revisionId, templateUseId); const overrides = { ...templateRunOverrides }; delete overrides[templateUseId]; setTemplateRunOverrides(overrides); adoptAuthoredProject(next, overrides); } }); }
+  function removeTemplateUse(templateUseId: PromptTemplateUseId): void { input.requestConfirmation({ title: "Remove this template use?", description: "The pinned use and all messages it generates will be removed from this conversation revision.", confirmLabel: "Remove use", destructive: true, onConfirm() { const overrides = { ...templateRunOverrides }; delete overrides[templateUseId]; applyRevisionEdit((project, revisionId) => removePromptTemplateUse(project, revisionId, templateUseId), overrides); } }); }
   async function importN8nPrompt(candidate: ExternalPromptCandidate, mode: "resolved-snapshot" | "reusable-template", { recommendModel }: { recommendModel: boolean }): Promise<void> {
     const imported = mode === "reusable-template" ? await importExternalPromptTemplateCandidate(input.ensureProjectDocument(), candidate, { recommendModel }) : await importExternalPromptCandidate(input.ensureProjectDocument(), candidate);
-    input.adoptProjectMutation(imported.project); input.replaceProjectDraft(projectDraft(imported.project, contextFor(imported.project, {}))); setTemplateRunOverrides({}); input.clearPendingBranch(); input.onImportApplied();
+    if (localItems && input.chatRequest && input.projectFile) {
+      // The import stays an explicit shared write, since its receipt lives in
+      // project.json, but it selects the imported revision personally rather
+      // than moving the launch default (2b step 3).
+      const project = { ...imported.project, defaults: { ...imported.project.defaults, conversationRevisionId: input.projectFile.defaults.conversationRevisionId } };
+      const revision = project.conversationRevisions.find(({ id }) => id === imported.conversationRevisionId)!;
+      input.adoptProjectMutation(project);
+      input.chatRequest.selectSaved(imported.conversationRevisionId);
+      input.replaceProjectDraft(authoredDraft(project, contextFor(project, {}), revision.items));
+    } else {
+      input.adoptProjectMutation(imported.project); input.replaceProjectDraft(projectDraft(imported.project, contextFor(imported.project, {})));
+    }
+    setTemplateRunOverrides({}); input.clearPendingBranch(); input.onImportApplied();
     const receipt = imported.project.externalImports.find(({ id }) => id === imported.externalImportId);
     input.onImported({ name: candidate.invocation.name, variableCount: receipt?.projection.kind === "prompt-template" ? receipt.projection.variables.length : 0, template: mode === "reusable-template" });
   }
@@ -938,4 +1064,21 @@ export function useProjectTemplates(input: UseProjectTemplatesInput): ProjectTem
     markExecutedRevision: (id) => executedRevisionIdsRef.current.add(id),
   };
 
+}
+
+function renderLocal(project: ProjectFile, items: ProjectConversationItem[], context: TemplateResolutionContext): ConversationMessage[] {
+  return resolveProjectRevisionInContext(project, localRevision(items), context).messages;
+}
+
+/** The composer view of a personal session's local record. */
+function localTemplateWorkbench(
+  project: ProjectFile,
+  items: ProjectConversationItem[],
+  context: TemplateResolutionContext,
+): ReturnType<typeof projectTemplateWorkbenchView> {
+  try {
+    return { composerItems: items, resolution: resolveProjectRevisionInContext(project, localRevision(items), context) };
+  } catch (error) {
+    return { composerItems: items, resolutionError: error instanceof Error ? error.message : "Could not resolve this request." };
+  }
 }

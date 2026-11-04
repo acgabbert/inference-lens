@@ -2,23 +2,35 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { ProjectFile } from "../../packages/core/src/project.ts";
-import type { WorkbenchDraftV1, WorkbenchRecordV1 } from "../../packages/core/src/personal-workbench.ts";
+import type { ProjectConversationItem, ProjectConversationRevision } from "../../packages/core/src/project.ts";
+import type {
+  LocalChatInput,
+  WorkbenchChatRequestDraftV1,
+  WorkbenchDraftV1,
+  WorkbenchRecordV1,
+  WorkbenchScratchV1,
+} from "../../packages/core/src/personal-workbench.ts";
+import type { ConversationId } from "../../packages/core/src/run-kernel/types.ts";
 import type { WorkbenchStorage, WorkbenchStoreOutcome } from "../../packages/core/src/workbench-store.ts";
 import type { ProjectSession, SharedWriteOutcome } from "../use-project-workspace.client.ts";
 import { PersonalWorkbenchController } from "./personal-workbench-controller.ts";
 import type {
+  ChatScratchParent,
   PersonalWorkbenchStatus,
   PromptAssetRef,
   PromptDraftBase,
   PromptDraftContent,
   PublishOutcome,
   RecoveryItem,
+  ScratchBranchPoint,
   UnsavedDraftSummary,
   WorkbenchAssetRef,
 } from "./personal-workbench-controller.ts";
 
 export type {
+  ChatScratchParent,
   PersonalWorkbenchStatus,
+  ScratchBranchPoint,
   PromptAssetRef,
   PublishOutcome,
   RecoveryItem,
@@ -28,8 +40,9 @@ export type {
 
 /**
  * The personal owner (D3): record load and save, recovery status and
- * publication. Step 2 routes prompt drafts; selections, request drafts,
- * scratch and reconciliation arrive in steps 3–6
+ * publication. Step 2 routes prompt drafts and step 3 chat request drafts,
+ * chat scratch and the chat selection; decision requests, execution overrides
+ * and reconciliation arrive in steps 4–6
  * (docs/SHARED_ASSETS_LEVEL_TWO_DESIGN.md, "Delivery inside the gate").
  */
 export interface PersonalWorkbenchHandle {
@@ -52,6 +65,28 @@ export interface PersonalWorkbenchHandle {
   publish(asset: PromptAssetRef, options?: { extend?(project: ProjectFile): ProjectFile }): Promise<PublishOutcome>;
   /** Before replacement or close: persist queued debounced writes. */
   flush(): Promise<void>;
+  /** The selected chat input; undefined inherits the launch default. */
+  chatSelection: LocalChatInput | undefined;
+  scratches: WorkbenchScratchV1[];
+  scratch(scratchId: string): WorkbenchScratchV1 | undefined;
+  draftById(draftId: string): WorkbenchDraftV1 | undefined;
+  selectChat(input: LocalChatInput | undefined): void;
+  /** See `PersonalWorkbenchController.updateChatRequestDraft`. */
+  updateChatRequestDraft(
+    base: ProjectConversationRevision,
+    items: ProjectConversationItem[],
+    options?: { draftId?: string },
+  ): WorkbenchChatRequestDraftV1 | undefined;
+  createChatScratch(
+    items: ProjectConversationItem[],
+    options: { parent?: ChatScratchParent; branchedFrom?: ScratchBranchPoint },
+  ): WorkbenchScratchV1 | undefined;
+  updateChatScratch(scratchId: string, items: ProjectConversationItem[]): void;
+  discardChatRequestDraft(conversationId: ConversationId): Promise<WorkbenchStoreOutcome | undefined>;
+  discardScratch(scratchId: string): Promise<WorkbenchStoreOutcome | undefined>;
+  publishChatRequestDraft(conversationId: ConversationId): Promise<PublishOutcome>;
+  /** `name` names the new request when the scratch has no saved ancestor. */
+  publishScratch(scratchId: string, name?: string): Promise<PublishOutcome>;
 }
 
 const OFF: PersonalWorkbenchStatus = { kind: "off" };
@@ -126,7 +161,7 @@ export function usePersonalWorkbench(input: {
   }, []);
 
   // Work that is only in memory, or not yet written, is lost on unload.
-  const unsaved = controller?.unsavedDrafts.some(({ persisted }) => !persisted) ?? false;
+  const unsaved = controller?.hasUnpersistedWork ?? false;
   useEffect(() => {
     if (!unsaved) return;
     function warnBeforeUnload(event: BeforeUnloadEvent): void {
@@ -158,6 +193,40 @@ export function usePersonalWorkbench(input: {
     },
     async flush() {
       await controllerRef.current?.flush();
+    },
+    chatSelection: controller?.chatSelection,
+    scratches: controller?.scratches ?? [],
+    scratch: (scratchId) => controller?.scratch(scratchId),
+    draftById: (draftId) => controller?.draftById(draftId),
+    selectChat(selection) {
+      controllerRef.current?.selectChat(selection);
+    },
+    updateChatRequestDraft(base, items, options) {
+      return controllerRef.current?.updateChatRequestDraft(base, items, options);
+    },
+    createChatScratch(items, options) {
+      return controllerRef.current?.createChatScratch(items, options);
+    },
+    updateChatScratch(scratchId, items) {
+      controllerRef.current?.updateChatScratch(scratchId, items);
+    },
+    async discardChatRequestDraft(conversationId) {
+      return controllerRef.current?.discardChatRequestDraft(conversationId);
+    },
+    async discardScratch(scratchId) {
+      return controllerRef.current?.discardScratch(scratchId);
+    },
+    async publishChatRequestDraft(conversationId) {
+      const current = controllerRef.current;
+      const shared = sharedRef.current;
+      if (!current || !shared) return { kind: "blocked", message: "Open a project before saving a request." };
+      return current.publishChatRequestDraft(conversationId, shared, (update) => writeSharedRef.current(update));
+    },
+    async publishScratch(scratchId, name) {
+      const current = controllerRef.current;
+      const shared = sharedRef.current;
+      if (!current || !shared) return { kind: "blocked", message: "Open a project before saving a request." };
+      return current.publishScratch(scratchId, shared, (update) => writeSharedRef.current(update), name);
     },
   };
 }

@@ -127,6 +127,8 @@ import { AppBanner } from "./notifications/app-banner.client";
 import { projectTabBanner } from "./project-tab-banner";
 import { chooseAppBanner } from "./notifications/banner-priority.client";
 import { usePersonalWorkbench } from "./workbench/use-personal-workbench.client";
+import { useChatRequestRecord } from "./request/use-chat-request-record.client";
+import type { LocalChatRunInput } from "./request/use-chat-request-record.client";
 import type { AppBanner as AppBannerCandidate } from "./notifications/banner-priority.client";
 
 const inferenceTransport = createInferenceTransport();
@@ -467,6 +469,17 @@ function HomeContent() {
     traceStorage,
     resetMessages,
     onError(message) { project.setError(message); },
+    // `chatRequest` and `projectTemplates` are declared below; a branch starts
+    // only from a command, never during render.
+    branchLocally(start) {
+      if (!chatRequest.enabled) return undefined;
+      return chatRequest.branch({
+        runId: start.branch.parentRunId,
+        ...(start.branch.parentConversationId ? { conversationId: start.branch.parentConversationId } : {}),
+        ...(start.branch.parentConversationRevisionId ? { conversationRevisionId: start.branch.parentConversationRevisionId } : {}),
+        messageId: start.branch.branchMessageId,
+      }, start.messages, projectTemplates.resolutionContext);
+    },
   });
 
   const batchActive = repeatedExperiment.isRunning || evaluationExecution.isRunning;
@@ -573,9 +586,16 @@ function HomeContent() {
     shared: projectFile,
     writeShared: project.writeShared,
   });
+  // Which request the composer edits in a personal session (I4).
+  const chatRequest = useChatRequestRecord({
+    personal: personalWorkbench,
+    project: projectFile,
+    onError(message) { project.setError(message); },
+  });
   const projectTemplates = useProjectTemplates({
     projectFile,
     personal: personalWorkbench,
+    chatRequest,
     projectDirty,
     messages,
     model: requestSettings.model,
@@ -816,6 +836,12 @@ function HomeContent() {
    */
   function prepareComposerRun() {
     const request = requestSettings.currentRequest();
+    // A personal session runs its selected record; a branch is already one.
+    const local = chatRequest.enabled ? chatRequest.runInput() : undefined;
+    if (chatRequest.enabled && !local) {
+      project.setError("The project's launch request no longer exists.");
+      return undefined;
+    }
     const prepared = prepareWorkbenchRun({
       request,
       project: projectFile ?? undefined,
@@ -824,7 +850,7 @@ function HomeContent() {
       capabilities: requestSettings.capabilities,
       profileName: requestSettings.profile.name,
       resolutionContext: projectTemplates.resolutionContext,
-      ...pendingBranch.preparationInputs(),
+      ...(local ? { localInput: local } : pendingBranch.preparationInputs()),
     });
     if (!prepared.ok) {
       if (prepared.errorKind === "tools-disabled") project.setToolsDisabledError(prepared.message);
@@ -838,11 +864,12 @@ function HomeContent() {
         profileId: createEntityId("profile", requestSettings.profile.id),
       },
     };
-    return { request, prepared, input };
+    return { request, prepared, input, local };
   }
 
   /** A prepared run's branch revision, executed revision, and branch consumption. */
-  function commitPreparedRun(prepared: Extract<PrepareWorkbenchRunResult, { ok: true }>): void {
+  function commitPreparedRun(prepared: Extract<PrepareWorkbenchRunResult, { ok: true }>, local?: LocalChatRunInput): void {
+    if (local) chatRequest.noteRun(prepared.input.runId, local);
     if (prepared.projectMutation) project.adoptBranchRevision(prepared.projectMutation);
     if (prepared.executedRevisionId) projectTemplates.markExecutedRevision(prepared.executedRevisionId);
     pendingBranch.settle(prepared);
@@ -854,8 +881,8 @@ function HomeContent() {
     project.clearErrorKind();
     const composed = prepareComposerRun();
     if (!composed) return;
-    const { request, prepared, input } = composed;
-    commitPreparedRun(prepared);
+    const { request, prepared, input, local } = composed;
+    commitPreparedRun(prepared, local);
     runsNavigation.selectCurrent(input.runId);
     await runSession.start(input, {
       request: { ...request, messages: input.messages },
@@ -884,6 +911,10 @@ function HomeContent() {
     return `A repeated experiment answers its own tool calls, and nothing on this device serves ${names}. Enable a mock, grant a command tool, or allow an MCP tool first.${shell ? ` ${shell}` : ""}`;
   }
 
+  // R4: an ExperimentPlan pins a saved request until step 7 adds local input.
+  const localRepeatBlockedReason = chatRequest.record && chatRequest.record.kind !== "saved"
+    ? "Save this request to run a repeated experiment."
+    : undefined;
   function repeat(): void {
     evaluationExecution.clear();
     project.clearErrorKind();
@@ -892,11 +923,15 @@ function HomeContent() {
       project.setError(unservableToolsMessage(unservable));
       return;
     }
+    if (localRepeatBlockedReason) {
+      project.setError(localRepeatBlockedReason);
+      return;
+    }
     const composed = prepareComposerRun();
     if (!composed) return;
-    const { prepared, input } = composed;
+    const { prepared, input, local } = composed;
     repeatedExperiment.begin(input, requestSettings.profile.name || "Untitled profile", () => {
-      commitPreparedRun(prepared);
+      commitPreparedRun(prepared, local);
       runSession.reset();
       setTraceOpen(false);
       runsNavigation.selectCurrentBatch();
@@ -1325,12 +1360,14 @@ function HomeContent() {
       }}
       {...(readiness ? { readiness } : {})}
       repeat={{
-        disabled: Boolean(readiness?.blocked) || unservableToolNames.length > 0,
+        disabled: Boolean(readiness?.blocked) || unservableToolNames.length > 0 || Boolean(localRepeatBlockedReason),
         ...(readiness?.blocked
           ? { disabledReason: readiness.summary }
           : unservableToolNames.length > 0
             ? { disabledReason: `Nothing on this device serves ${unservableToolNames.join(", ")}.` }
-            : {}),
+            : localRepeatBlockedReason
+              ? { disabledReason: localRepeatBlockedReason }
+              : {}),
         onRepeat: repeat,
       }}
       pendingDestination={pendingReadinessDestination}
@@ -1339,6 +1376,18 @@ function HomeContent() {
       onDestinationHandled={() => setPendingReadinessDestination(undefined)}
       activeProfile={requestSettings.profile}
       {...(pendingBranch.pending ? { pendingBranch: pendingBranch.pending } : {})}
+      {...(chatRequest.record && chatRequest.record.kind !== "saved"
+        ? {
+            localRequest: {
+              kind: chatRequest.record.kind,
+              branched: chatRequest.record.kind === "scratch" && Boolean(chatRequest.record.scratch.branchedFrom),
+              needsName: chatRequest.needsName,
+              saving: chatRequest.saving,
+              onSave: (name?: string) => chatRequest.save(name),
+              onDiscard: () => void chatRequest.discard(),
+            },
+          }
+        : {})}
       {...(requestPreview ? { requestPreview } : {})}
       {...(projectEnvironments.environments.length > 0
         ? {

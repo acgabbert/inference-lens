@@ -1343,3 +1343,98 @@ workbench) and `tests/project-manifest.test.ts` (codec, both modes). The gated
 `tests/e2e/personal-workbench-prompt-drafts.spec.ts` runs a v19 folder edit and
 Save, and checks that a v18 folder is never written; run against the ungated
 server, both of its tests fail.
+
+### Step 3 decisions (approved November 4, 2026)
+
+The user approved four interim behaviors for step 3, which the owner
+interfaces left open. All of them apply only with the gate on.
+
+- **R1. No request picker until step 5.** The selection moves only through
+  existing flows: an edit makes a request draft of the selected revision, a
+  branch makes a scratch, Save selects the new revision, and Discard returns to
+  the scratch's parent, or to the launch default when it has none. Step 5 adds
+  the switcher. Until then a replaced scratch, or the predecessor of a newly
+  named request, is unreachable from the composer.
+- **R2. A branch's parent is the nearest saved ancestor the app knows.** Edit
+  from here on the live run of a request draft parents the scratch on the
+  draft's base revision. A saved trace parents it on its revision when the
+  project holds it, on the scratch whose `localConversationId` matches its
+  conversation, and otherwise on nothing, so Save asks for a name and creates a
+  request.
+- **R3. Every run of an unsaved scratch records `branchedFrom`.** The scratch
+  carries it, so it survives a reload with no extra state. Runs of the saved
+  revision carry none, as today.
+- **R4. Repeated experiments refuse local input until step 7.** With a request
+  draft or scratch selected, a repeated experiment asks the user to save the
+  request first. Single runs work.
+
+Defaults taken with them. With the gate on, every composer edit of a saved
+revision, template-use edits included, becomes a request draft: the existing
+core helpers run against the base revision with the draft's items overlaid,
+and executed revisions are no longer forked. Save and Discard sit in the
+composer header. Save moves only the personal selection, never `defaults`, and
+asks for a name only for a scratch without a saved ancestor. Branching creates
+and selects a scratch at once, so the pending-branch blocker on switching
+projects does not apply. An n8n import into Messages stays an explicit shared
+write, since its receipt lives in `project.json`, and moves the personal
+selection rather than the launch default. Model, temperature and tool-enable
+edits wait for step 5's execution overrides.
+
+### Step 3 delivered (November 4, 2026)
+
+Chat request drafts, chat scratch, branches and the local run identity, behind
+the gate. With the gate off every path is today's.
+
+- **Personal owner.** The controller gains the chat selection
+  (`selections.json`'s `chat.selectedInput`), chat-request drafts, chat
+  scratch records, and Save for both. Every publication, prompt drafts
+  included, now runs one protocol (`publishRecord`): intent and read-back, the
+  shared write, then a scratch's children reparented and read back before the
+  scratch is cleared. A failure in that last step keeps the intent, and the
+  next open settles it. Opening settles an interrupted scratch publication the
+  same way, and marks a request draft whose base is gone as orphaned.
+- **Record owner.** [use-chat-request-record.client.ts](../app/request/use-chat-request-record.client.ts)
+  (I4) decides what the composer edits, over the pure helpers in
+  [local-chat-request.ts](../app/request/local-chat-request.ts): the
+  selection, the overlay that runs core revision helpers on local items, the
+  run identity (I3, R3) and a branch's parent (R2).
+- **Composer and templates.** In a personal session, message and template-use
+  edits, Save and add, and Save and use go to the record through
+  `applyRevisionEdit`, and the composer renders the record's items. Its
+  messages re-render when the record changes outside the composer. A notice
+  among the pane's notices offers Save and Discard, and a name field for a
+  scratch with no saved ancestor.
+- **Runs and branches.** `prepareWorkbenchRun` takes `localInput` and returns
+  no `projectMutation`. Branching creates and selects a scratch through
+  `usePendingBranch`'s `branchLocally`, so no pending branch is held. Repeat is
+  disabled with R4's reason while a draft or scratch is selected.
+
+Implementation choices inside the approved contracts:
+
+- **A competing draft is kept as a scratch.** Editing a saved revision while
+  the same request already has a draft the composer is not editing keeps that
+  draft as a scratch parented on its base, rather than overwriting it (D6
+  keeps one active draft per asset). It is unreachable from the composer until
+  step 5 (R1).
+- **Discarding a scratch** reparents its local children on its own parent
+  before it is deleted.
+- **Branching from a publishing scratch is refused** until its Save
+  finishes, so completion reparents a fixed set of children.
+- **Edits wait for the store.** While the personal workbench is still loading,
+  an edit is refused with a message rather than written into records that
+  `open` is about to replace.
+
+Not changed in step 3: model, temperature and tool-enable edits still wait
+for step 5 and are not persisted in a personal session. "Save trace…" on a
+branch whose parent trace is unsaved is not offered, because a branch no
+longer holds a pending-branch notice.
+
+Checks: `tests/personal-workbench-requests.test.ts` (drafts, the competing-draft
+rule, scratch create, edit and discard, Save of each kind, child
+reparenting order, settling on open), `tests/local-chat-request.test.ts`
+(selection fallback, the overlay, run identity, R2, R3) and a local-input case
+in `tests/prepare-workbench-run.test.ts`. The gated
+`tests/e2e/personal-workbench-request-drafts.spec.ts` edits, saves, runs,
+branches and saves a branch in a v19 folder. With the record owner forced off,
+both of its tests fail: no draft is written, and a run rewrites
+`project.json`.
