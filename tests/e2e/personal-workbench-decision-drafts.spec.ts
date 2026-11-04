@@ -263,3 +263,23 @@ test("using a decision prompt starts a local request that Save offers the prompt
   expect(saved.decisionRequests.map(({ name }: { name: string }) => name)).toEqual(["Ticket decision"]);
   expect(saved.decisionRequestRevisions[0]).toMatchObject({ kind: "inline", values: { ticket: "Override ticket" } });
 });
+
+test("Replace with example loads the example over an invalid edit", async ({ page }) => {
+  await openFolder(page, serializeProjectManifest(fixtureProject(false), "personal"));
+  const pane = decisionPane(page);
+  await pane.getByRole("button", { name: "Load example" }).click();
+  await expect.poll(async () => recordFiles(await folderFiles(page), "scratch").length).toBe(1);
+
+  // Q1: the invalid edit stays in the editor; the scratch keeps the example.
+  await pane.getByRole("tab", { name: "JSON" }).first().click();
+  const editor = page.getByLabel("Decision input (state and questions)");
+  await editor.fill("{ not json");
+  await expect(pane.getByRole("status").filter({ hasText: "Your workbench keeps its last valid version." })).toBeVisible();
+
+  // Q2: confirming starts a new scratch with the same content, and the editor shows it.
+  await pane.getByRole("button", { name: "Load example" }).click();
+  await pane.getByRole("button", { name: "Replace with example" }).click();
+  await expect.poll(async () => recordFiles(await folderFiles(page), "scratch").length).toBe(2);
+  await expect(editor).not.toHaveValue("{ not json");
+  expect(Object.keys(JSON.parse(await editor.inputValue()).questions)).toEqual(["intent", "severity", "is_spam"]);
+});
