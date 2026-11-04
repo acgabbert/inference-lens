@@ -10,6 +10,8 @@ export interface LocalRequestState {
   branched: boolean;
   /** Save creates a request, so it asks for a name. */
   needsName: boolean;
+  /** Fills the name field when it opens (2b step 4, Q2). */
+  suggestedName?: string;
   saving: boolean;
   onSave(name?: string): Promise<boolean>;
   onDiscard(): void;
@@ -17,7 +19,8 @@ export interface LocalRequestState {
 
 /**
  * Says that the composer holds local work and offers Save and Discard (2b
- * step 3). Lives among the pane's notices, inside its scroll area.
+ * steps 3 and 4: chat and decision requests). Lives among the pane's notices,
+ * inside its scroll area.
  */
 export function LocalRequestNotice({ state }: { state: LocalRequestState }) {
   const [naming, setNaming] = useState(false);
@@ -29,6 +32,7 @@ export function LocalRequestNotice({ state }: { state: LocalRequestState }) {
       : "This request stays on this device until you save it.";
   function save(): void {
     if (state.needsName) {
+      if (!naming) setName(state.suggestedName ?? "");
       setNaming(true);
       return;
     }

@@ -10,6 +10,8 @@ import { WorkbenchPanel } from "../workbench-panel.client";
 import type { DecisionDraftProblem, DecisionQuestionRow, DraftValue } from "./decision-draft";
 import type { DecisionDraftHandle } from "./use-decision-draft.client";
 import type { DecisionTargetHandle } from "./use-decision-target.client";
+import { LocalRequestNotice } from "../request/local-request-notice.client";
+import type { LocalRequestState } from "../request/local-request-notice.client";
 
 /** Names the element that says, in visible text, why Run is refused. */
 export const DECISION_READINESS_SUMMARY_ID = "decision-readiness-summary";
@@ -39,6 +41,10 @@ export interface DecisionComposerProps {
   locked: boolean;
   /** The open project keeps the last valid request until the problems are fixed. */
   unsaved: boolean;
+  /** What `unsaved` says; a personal session keeps a last valid version locally (Q1). */
+  unsavedDetail?: string;
+  /** A personal session's local request: Save, Discard and a name (2b step 4). */
+  localRequest?: LocalRequestState;
   onOpenConnections(): void;
   /**
    * Starts an evaluation suite pinned to this request's revision (D51).
@@ -402,7 +408,7 @@ export function DecisionInputEditor({
 
 export const DECISION_NEW_SUITE_REASON_ID = "decision-new-suite-reason";
 
-export function DecisionComposer({ modelInputRef, kindSwitch, draft: handle, target, blockers, locked, unsaved, onOpenConnections, newSuite, pinned, capture }: DecisionComposerProps) {
+export function DecisionComposer({ modelInputRef, kindSwitch, draft: handle, target, blockers, locked, unsaved, unsavedDetail, localRequest, onOpenConnections, newSuite, pinned, capture }: DecisionComposerProps) {
   const { draft } = handle;
   const discovery = target.discovery;
   return (
@@ -437,6 +443,7 @@ export function DecisionComposer({ modelInputRef, kindSwitch, draft: handle, tar
             />
           </div>
         )}
+        {localRequest && <LocalRequestNotice state={localRequest} />}
         {capture && (
           <div className="decision-new-suite">
             <button className="text-button" disabled={capture.disabled} type="button" onClick={capture.onCapture}>
@@ -459,7 +466,7 @@ export function DecisionComposer({ modelInputRef, kindSwitch, draft: handle, tar
         )}
         {unsaved && (
           <p className="decision-unsaved" role="status">
-            Not saved to the project until the request is valid. The project keeps its last valid version.
+            {unsavedDetail ?? "Not saved to the project until the request is valid. The project keeps its last valid version."}
           </p>
         )}
         {handle.viewProblems.length > 0 && (

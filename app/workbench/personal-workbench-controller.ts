@@ -2,13 +2,17 @@ import { ProjectValidationError } from "../../packages/core/src/project.ts";
 import type {
   ProjectConversationItem,
   ProjectConversationRevision,
+  ProjectDecisionRequestRevision,
   ProjectFile,
   PromptTemplateRevision,
 } from "../../packages/core/src/project.ts";
 import { isPromptDraft, parseWorkbenchRecord } from "../../packages/core/src/personal-workbench.ts";
 import type {
   LocalChatInput,
+  LocalDecisionInput,
   WorkbenchChatRequestDraftV1,
+  WorkbenchDecisionRequestContent,
+  WorkbenchDecisionRequestDraftV1,
   WorkbenchDraftV1,
   WorkbenchPromptDraftV1,
   WorkbenchRecordV1,
@@ -21,6 +25,7 @@ import {
   clearPublication,
   completePublication,
   publishChatRequestDraft,
+  publishDecisionRequestDraft,
   publishPromptDraft,
   publishScratch,
   reconcilePublication,
@@ -28,7 +33,7 @@ import {
 import { randomUUID } from "../../packages/core/src/random-id.ts";
 import { stableJsonValue } from "../../packages/core/src/stable-json.ts";
 import { createEntityId } from "../../packages/core/src/run-kernel/types.ts";
-import type { ConversationId, ProjectId } from "../../packages/core/src/run-kernel/types.ts";
+import type { ConversationId, DecisionRequestId, ProjectId } from "../../packages/core/src/run-kernel/types.ts";
 import type { SharedWriteOutcome } from "../use-project-workspace.client.ts";
 
 /**
@@ -39,10 +44,9 @@ import type { SharedWriteOutcome } from "../use-project-workspace.client.ts";
  *
  * In-memory records are the editor's truth. Disk is written behind them after
  * a debounce (D14), through `openWorkbenchStore`, which serializes writes and
- * never adopts disk contents over a conflict. Step 2 routes prompt drafts and
- * step 3 chat request drafts, chat scratch records and the chat selection;
- * decision arms load, reconcile and appear in recovery, but no owner edits them
- * yet.
+ * never adopts disk contents over a conflict. Step 2 routes prompt drafts,
+ * step 3 chat request drafts, chat scratch records and the chat selection, and
+ * step 4 the decision equivalents.
  */
 
 export type WorkbenchAssetRef = WorkbenchDraftV1["asset"];
@@ -50,6 +54,7 @@ export type PromptAssetRef = WorkbenchPromptDraftV1["asset"];
 export type PromptDraftBase = WorkbenchPromptDraftV1["base"];
 export type PromptDraftContent = WorkbenchPromptDraftV1["edited"];
 export type ChatScratchParent = NonNullable<Extract<WorkbenchScratchV1["request"], { kind: "chat" }>["parent"]>;
+export type DecisionScratchParent = NonNullable<Extract<WorkbenchScratchV1["request"], { kind: "decision" }>["parent"]>;
 export type ScratchBranchPoint = NonNullable<WorkbenchScratchV1["branchedFrom"]>;
 type WriteShared = (update: (current: ProjectFile) => ProjectFile) => Promise<SharedWriteOutcome>;
 
@@ -106,6 +111,13 @@ function assetKey(asset: WorkbenchAssetRef): string {
 
 function same(left: unknown, right: unknown): boolean {
   return JSON.stringify(stableJsonValue(left)) === JSON.stringify(stableJsonValue(right));
+}
+
+/** A saved decision revision's editable content, as a record holds it. */
+export function decisionRevisionContent(revision: ProjectDecisionRequestRevision): WorkbenchDecisionRequestContent {
+  return revision.kind === "inline"
+    ? { kind: "inline", decision: structuredClone(revision.decision), values: { ...revision.values } }
+    : { kind: "template-use", templateId: revision.templateId, templateRevisionId: revision.templateRevisionId, overrides: { ...revision.overrides } };
 }
 
 function errorMessage(error: unknown, fallback: string): string {
@@ -215,6 +227,12 @@ export class PersonalWorkbenchController {
     return record?.kind === "draft" ? record : undefined;
   }
 
+  /** The decision input this user selected; undefined inherits the launch default. */
+  get decisionSelection(): LocalDecisionInput | undefined {
+    const selections = this.records.get(SELECTIONS_PATH) as WorkbenchSelectionsV1 | undefined;
+    return selections?.decision?.selectedInput ? structuredClone(selections.decision.selectedInput) : undefined;
+  }
+
   /** Moves the personal chat selection; never `defaults` (D10). */
   selectChat(input: LocalChatInput | undefined): void {
     if (same(this.chatSelection, input)) return;
@@ -222,13 +240,24 @@ export class PersonalWorkbenchController {
     const chat = { ...(current?.chat ?? {}) };
     if (input) chat.selectedInput = structuredClone(input);
     else delete chat.selectedInput;
-    const record = parseWorkbenchRecord({
-      schemaVersion: 1,
-      kind: "selections",
-      projectId: this.projectId,
+    this.writeSelections({
       ...(current?.decision ? { decision: current.decision } : {}),
       ...(Object.keys(chat).length ? { chat } : {}),
-    }, this.projectId);
+    });
+  }
+
+  /** Moves the personal decision selection; never `defaults` (D11). */
+  selectDecision(input: LocalDecisionInput | undefined): void {
+    if (same(this.decisionSelection, input)) return;
+    const current = this.records.get(SELECTIONS_PATH) as WorkbenchSelectionsV1 | undefined;
+    this.writeSelections({
+      ...(current?.chat ? { chat: current.chat } : {}),
+      ...(input ? { decision: { selectedInput: structuredClone(input) } } : {}),
+    });
+  }
+
+  private writeSelections(fields: Pick<WorkbenchSelectionsV1, "chat" | "decision">): void {
+    const record = parseWorkbenchRecord({ schemaVersion: 1, kind: "selections", projectId: this.projectId, ...fields }, this.projectId);
     this.records.set(SELECTIONS_PATH, record);
     this.deletions.delete(SELECTIONS_PATH);
     this.schedule(SELECTIONS_PATH);
@@ -359,9 +388,16 @@ export class PersonalWorkbenchController {
       this.records.set(childPath, next);
       this.schedule(childPath);
     }
-    const selection = this.chatSelection;
-    if (selection?.kind === "scratch" && selection.scratchId === scratchId) {
-      this.selectChat(parent?.kind === "saved-conversation-revision" || parent?.kind === "scratch" ? parent as LocalChatInput : undefined);
+    if (existing.request.kind === "chat") {
+      const selection = this.chatSelection;
+      if (selection?.kind === "scratch" && selection.scratchId === scratchId) {
+        this.selectChat(existing.request.parent);
+      }
+    } else {
+      const selection = this.decisionSelection;
+      if (selection?.kind === "scratch" && selection.scratchId === scratchId) {
+        this.selectDecision(existing.request.parent);
+      }
     }
     this.dropRecord(path);
     return this.persist(path);
@@ -394,7 +430,7 @@ export class PersonalWorkbenchController {
       if (replanned.kind !== "publish") throw new ProjectValidationError([{ code: "custom", path: [], message: "The draft no longer differs from its base." }]);
       return replanned;
     }, shared, writeShared);
-    if (outcome.kind === "published") this.selectAfterPublication({ kind: "draft", draftId: existing.draftId }, outcome);
+    if (outcome.kind === "published") this.selectAfterPublication(existing, outcome);
     return outcome;
   }
 
@@ -416,7 +452,139 @@ export class PersonalWorkbenchController {
       return { kind: "failed", message: errorMessage(error, "Could not save the request.") };
     }
     const outcome = await this.publishRecord(workbenchRecordPath(existing), (project) => publishScratch(project, existing, options), shared, writeShared);
-    if (outcome.kind === "published") this.selectAfterPublication({ kind: "scratch", scratchId }, outcome);
+    if (outcome.kind === "published") this.selectAfterPublication(existing, outcome);
+    return outcome;
+  }
+
+  /**
+   * The decision equivalent of `updateChatRequestDraft` (D11): the request's
+   * one active draft over a saved revision, selected. Another draft for the
+   * same request is kept as a scratch; content equal to the base drops the
+   * draft and selects the base. The caller supplies content the record can
+   * hold: inline values only for variables the decision uses, and sparse
+   * template-use overrides.
+   */
+  updateDecisionRequestDraft(
+    base: ProjectDecisionRequestRevision,
+    content: WorkbenchDecisionRequestContent,
+    options: { draftId?: string } = {},
+  ): WorkbenchDecisionRequestDraftV1 | undefined {
+    const asset = { kind: "decision-request" as const, id: base.decisionRequestId };
+    let existing = this.draftFor(asset) as WorkbenchDecisionRequestDraftV1 | undefined;
+    if (existing && existing.draftId !== options.draftId) {
+      const path = workbenchRecordPath(existing);
+      if (existing.publishing || this.publishing.has(path)) return undefined;
+      this.createDecisionScratch(existing.edited, {
+        parent: { kind: "saved-decision-request-revision", revisionId: existing.base.revisionId },
+        select: false,
+      });
+      this.dropRecord(path);
+      existing = undefined;
+    }
+    const path = existing ? workbenchRecordPath(existing) : undefined;
+    const inFlight = path !== undefined && this.publishing.has(path);
+    const baseSnapshot = existing && inFlight ? existing.base.snapshot : base;
+    if (same(decisionRevisionContent(baseSnapshot as ProjectDecisionRequestRevision), content) && !inFlight) {
+      if (path) this.dropRecord(path);
+      this.selectDecision({ kind: "saved-decision-request-revision", revisionId: (existing?.base.revisionId ?? base.id) as typeof base.id });
+      return undefined;
+    }
+    const record = parseWorkbenchRecord({
+      schemaVersion: 1,
+      kind: "draft",
+      projectId: this.projectId,
+      draftId: existing?.draftId ?? this.options.newDraftId?.() ?? `draft_${randomUUID()}`,
+      asset,
+      // A publication in flight keeps its base: the intent names it as parent.
+      base: existing && inFlight ? existing.base : { revisionId: base.id, snapshot: structuredClone(base) },
+      edited: structuredClone(content),
+      ...(existing?.publishing ? { publishing: existing.publishing } : {}),
+    }, this.projectId) as WorkbenchDecisionRequestDraftV1;
+    const recordPath = workbenchRecordPath(record);
+    this.records.set(recordPath, record);
+    this.deletions.delete(recordPath);
+    this.schedule(recordPath);
+    this.selectDecision({ kind: "draft", draftId: record.draftId });
+    return record;
+  }
+
+  /** A local decision request: a new one (Q2), or a draft kept aside (D6). Selected unless `select` is false. */
+  createDecisionScratch(
+    content: WorkbenchDecisionRequestContent,
+    options: { parent?: DecisionScratchParent; select?: boolean },
+  ): WorkbenchScratchV1 {
+    const { parent } = options;
+    const record = parseWorkbenchRecord({
+      schemaVersion: 1,
+      kind: "scratch",
+      projectId: this.projectId,
+      scratchId: this.options.newScratchId?.() ?? `scratch_${randomUUID()}`,
+      createdAt: this.options.now?.() ?? new Date().toISOString(),
+      // Decision traces carry no request pin (D12); the schema still asks for one.
+      localConversationId: this.options.newLocalConversationId?.() ?? createEntityId("conversation", `local-${randomUUID()}`),
+      request: { kind: "decision", content: structuredClone(content), ...(parent ? { parent } : {}) },
+    }, this.projectId) as WorkbenchScratchV1;
+    const path = workbenchRecordPath(record);
+    this.records.set(path, record);
+    this.schedule(path);
+    if (options.select !== false) this.selectDecision({ kind: "scratch", scratchId: record.scratchId });
+    return record;
+  }
+
+  updateDecisionScratch(scratchId: string, content: WorkbenchDecisionRequestContent): void {
+    const existing = this.scratch(scratchId);
+    if (!existing || existing.request.kind !== "decision") return;
+    if (same(existing.request.content, content)) return;
+    const record = parseWorkbenchRecord({
+      ...existing,
+      request: { ...existing.request, content: structuredClone(content) },
+    }, this.projectId);
+    const path = workbenchRecordPath(record);
+    this.records.set(path, record);
+    this.schedule(path);
+  }
+
+  /** Discards the request's draft and selects its base when the draft was selected. */
+  async discardDecisionRequestDraft(decisionRequestId: DecisionRequestId): Promise<WorkbenchStoreOutcome | undefined> {
+    const existing = this.draftFor({ kind: "decision-request", id: decisionRequestId }) as WorkbenchDecisionRequestDraftV1 | undefined;
+    if (!existing) return undefined;
+    const outcome = await this.discardDraft(existing.asset);
+    if (outcome?.kind === "blocked" && outcome.reason === "reconciliation") return outcome;
+    const selection = this.decisionSelection;
+    if (selection?.kind === "draft" && selection.draftId === existing.draftId) {
+      this.selectDecision({ kind: "saved-decision-request-revision", revisionId: existing.base.revisionId });
+    }
+    return outcome;
+  }
+
+  /** Saves the decision request's draft as a child revision (D11); see `publishRecord`. */
+  async publishDecisionRequestDraft(decisionRequestId: DecisionRequestId, shared: ProjectFile, writeShared: WriteShared): Promise<PublishOutcome> {
+    const blocked = this.publicationBlocked();
+    if (blocked) return blocked;
+    const existing = this.draftFor({ kind: "decision-request", id: decisionRequestId }) as WorkbenchDecisionRequestDraftV1 | undefined;
+    if (!existing) return { kind: "failed", message: "There is no draft to save." };
+    const pending = this.pendingPublication(existing);
+    if (pending) return pending;
+    const options = this.publicationOptions();
+    let planned: ReturnType<typeof publishDecisionRequestDraft>;
+    try {
+      planned = publishDecisionRequestDraft(shared, existing, options);
+    } catch (error) {
+      return { kind: "failed", message: errorMessage(error, "Could not save the request.") };
+    }
+    const path = workbenchRecordPath(existing);
+    if (planned.kind === "unchanged") {
+      this.dropRecord(path);
+      await this.persist(path);
+      this.selectDecision({ kind: "saved-decision-request-revision", revisionId: existing.base.revisionId });
+      return { kind: "published", revisionId: existing.base.revisionId, keptEdits: false, project: shared };
+    }
+    const outcome = await this.publishRecord(path, (project) => {
+      const replanned = publishDecisionRequestDraft(project, existing, options);
+      if (replanned.kind !== "publish") throw new ProjectValidationError([{ code: "custom", path: [], message: "The draft no longer differs from its base." }]);
+      return replanned;
+    }, shared, writeShared);
+    if (outcome.kind === "published") this.selectAfterPublication(existing, outcome);
     return outcome;
   }
 
@@ -705,9 +873,34 @@ export class PersonalWorkbenchController {
   }
 
   /** A published record that was selected selects its revision, unless it kept later edits. */
-  private selectAfterPublication(selected: LocalChatInput, outcome: Extract<PublishOutcome, { kind: "published" }>): void {
-    if (outcome.keptEdits || !same(this.chatSelection, selected)) return;
-    this.selectChat({ kind: "saved-conversation-revision", revisionId: outcome.revisionId as never });
+  private selectAfterPublication(record: WorkbenchDraftV1 | WorkbenchScratchV1, outcome: Extract<PublishOutcome, { kind: "published" }>): void {
+    if (outcome.keptEdits) return;
+    this.moveSelectionToPublished(record, outcome.revisionId);
+  }
+
+  /**
+   * Which selection a request record answers to, and the selection of its
+   * published revision. Undefined for a prompt draft, which no selection names.
+   */
+  private moveSelectionToPublished(record: WorkbenchDraftV1 | WorkbenchScratchV1, revisionId: string): boolean {
+    const local = record.kind === "scratch"
+      ? { kind: "scratch" as const, scratchId: record.scratchId }
+      : { kind: "draft" as const, draftId: record.draftId };
+    const decision = record.kind === "scratch" ? record.request.kind === "decision" : record.asset.kind === "decision-request";
+    const chat = record.kind === "scratch" ? record.request.kind === "chat" : record.asset.kind === "chat-request";
+    if (chat) {
+      if (same(this.chatSelection, local)) {
+        this.selectChat({ kind: "saved-conversation-revision", revisionId: revisionId as ProjectConversationRevision["id"] });
+      }
+      return true;
+    }
+    if (decision) {
+      if (same(this.decisionSelection, local)) {
+        this.selectDecision({ kind: "saved-decision-request-revision", revisionId: revisionId as ProjectDecisionRequestRevision["id"] });
+      }
+      return true;
+    }
+    return false;
   }
 
   /** Persist the selection before deleting its published record, so reopening
@@ -715,17 +908,7 @@ export class PersonalWorkbenchController {
    * On failure the caller retains the intent for recovery on the next open.
    */
   private async persistPublishedSelection(record: WorkbenchDraftV1 | WorkbenchScratchV1, revisionId: string): Promise<boolean> {
-    let selected: LocalChatInput;
-    if (record.kind === "scratch" && record.request.kind === "chat") {
-      selected = { kind: "scratch", scratchId: record.scratchId };
-    } else if (record.kind === "draft" && record.asset.kind === "chat-request") {
-      selected = { kind: "draft", draftId: record.draftId };
-    } else {
-      return true;
-    }
-    if (same(this.chatSelection, selected)) {
-      this.selectChat({ kind: "saved-conversation-revision", revisionId: revisionId as ProjectConversationRevision["id"] });
-    }
+    if (!this.moveSelectionToPublished(record, revisionId)) return true;
     // Also flush a newer selection: disk may still select this record.
     this.cancelTimer(SELECTIONS_PATH);
     const outcome = await this.persist(SELECTIONS_PATH);
@@ -746,12 +929,14 @@ export class PersonalWorkbenchController {
     }
   }
 
+  /** Removes a record now; its file is deleted after the debounce, like any write (D14). */
   private dropRecord(path: string): void {
     this.cancelTimer(path);
     this.records.delete(path);
     this.dirty.delete(path);
     this.deletions.add(path);
     this.changed();
+    this.scheduleWrite(path);
   }
 
   private async settlePublications(shared: ProjectFile): Promise<void> {
@@ -816,6 +1001,14 @@ export class PersonalWorkbenchController {
         }
         continue;
       }
+      if (record.kind === "draft" && record.asset.kind === "decision-request") {
+        const request = record as WorkbenchDecisionRequestDraftV1;
+        const base = shared.decisionRequestRevisions.find(({ id }) => id === request.base.revisionId);
+        if (!base || base.decisionRequestId !== request.asset.id) {
+          this.recoveryItems.push({ kind: "orphaned-draft", path, asset: record.asset, message: "This decision request draft's base revision no longer exists." });
+        }
+        continue;
+      }
       if (!isPromptDraft(record)) continue;
       const kind = record.asset.kind === "chat-prompt" ? "chat" : "decision";
       const template = shared.promptTemplates.find(({ id }) => id === record.asset.id);
@@ -832,7 +1025,12 @@ export class PersonalWorkbenchController {
   private schedule(path: string): void {
     this.dirty.add(path);
     this.changed();
-    if (!this.store) return;
+    this.scheduleWrite(path);
+  }
+
+  /** Persists the path's current state, a record or its deletion, after the debounce. */
+  private scheduleWrite(path: string): void {
+    if (!this.store || this.closed) return;
     this.cancelTimer(path);
     const delay = this.options.debounceMs ?? DEFAULT_DEBOUNCE_MS;
     const run = () => {

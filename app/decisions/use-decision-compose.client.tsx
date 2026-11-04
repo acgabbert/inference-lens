@@ -36,6 +36,12 @@ import { decisionDisplayStatus } from "./decision-result-view";
 import { CopyRunLink } from "../run/copy-run-link.client";
 import { DecisionResponse } from "./decision-response.client";
 import { useDecisionDraft } from "./use-decision-draft.client";
+import type { DecisionDraftHandle } from "./use-decision-draft.client";
+import { DECISION_EXAMPLE } from "./decision-example";
+import { decisionContentAfterMutation, resolveDecisionContent } from "./local-decision-request";
+import type { DecisionRequestRecordHandle } from "./use-decision-request-record.client";
+import { useDecisionRecordSync } from "./use-decision-record-sync.client";
+import type { LocalRequestState } from "../request/local-request-notice.client";
 import { useDecisionProject } from "./use-decision-project.client";
 import type { DecisionProjectHandle } from "./use-decision-project.client";
 import { useDecisionSession } from "./use-decision-session.client";
@@ -50,6 +56,11 @@ export interface UseDecisionComposeOptions {
   workspace: ProjectWorkspaceHandle | null;
   /** The open project, which owns the active decision request (D37, D42). */
   project: ProjectFile | null;
+  /**
+   * Which personal record Compose edits (2b step 4). Enabled only in a
+   * personal session; otherwise every path is today's.
+   */
+  record?: DecisionRequestRecordHandle;
   adoptProjectMutation(project: ProjectFile): void;
   /** The draft changed; the project, if one is open, needs saving. */
   onProjectEdited(): void;
@@ -65,7 +76,8 @@ export interface UseDecisionComposeOptions {
   /** Invalid request replacement is an explicit user choice. */
   requestConfirmation(request: ConfirmationDialogRequest): void;
   onCapture?(content: { decision: DecisionInput; values: Record<string, string> }): void;
-  onEditSource?(requestRevisionId: DecisionRequestRevisionId, templateId: PromptTemplateId, templateRevisionId: PromptTemplateRevisionId): void;
+  /** `requestRevisionId` is absent for a local request that has no saved revision. */
+  onEditSource?(requestRevisionId: DecisionRequestRevisionId | undefined, templateId: PromptTemplateId, templateRevisionId: PromptTemplateRevisionId): void;
   onTemplateUsed?(): void;
   /** "New suite from this request" was chosen; the route hands it to suite authoring. */
   onNewSuite?(source: DecisionSuiteSource): void;
@@ -89,7 +101,8 @@ export interface DecisionComposeHandle {
   compose: ComposeKindHandle;
   capture(): { decision: DecisionInput; values: Record<string, string> } | { problems: DecisionDraftProblem[] };
   useTemplate(project: ProjectFile, templateId: PromptTemplateId, revisionId: PromptTemplateRevisionId): void;
-  returnToRevision(id: DecisionRequestRevisionId): boolean;
+  /** Absent `id`: back to the local request the source was opened from. */
+  returnToRevision(id: DecisionRequestRevisionId | undefined): boolean;
   /** The same chooser used by the request pane and the contextual header. */
   connection: Pick<DecisionTargetHandle, "profiles" | "profile" | "selectProfile">;
   /** For D30: open a saved or imported decision trace. */
@@ -117,12 +130,16 @@ export interface DecisionComposeHandle {
  */
 export function useDecisionCompose(options: UseDecisionComposeOptions): DecisionComposeHandle {
   const modelInputRef = useRef<HTMLInputElement>(null);
-  const draft = useDecisionDraft({ onEdited: options.onProjectEdited });
+  // A personal session's edits reach a personal record, not the project (2b step 4).
+  const record = options.record?.enabled ? options.record : undefined;
+  const draft = useDecisionDraft(record ? {} : { onEdited: options.onProjectEdited });
   const decisionProject = useDecisionProject({
     draft,
     project: options.project,
     adoptProjectMutation: options.adoptProjectMutation,
+    personal: Boolean(record),
   });
+  const recordSync = useDecisionRecordSync({ draft, record, project: options.project });
   const target = useDecisionTarget({
     profiles: options.profiles,
     transport: options.transport,
@@ -166,13 +183,22 @@ export function useDecisionCompose(options: UseDecisionComposeOptions): Decision
     void session.retry();
   }
 
+  const localRecord = record?.record;
+  // Q3: a suite pins a saved revision, never local input.
+  const requestBlockedReason = record
+    ? localRecord?.kind === "draft" || localRecord?.kind === "scratch"
+      ? "Save this request to start a suite from it."
+      : localRecord?.kind !== "saved" ? "Write a decision request first." : undefined
+    // A valid touched draft becomes a request when it is folded in.
+    : options.project && !activeDecisionRequestRevision(options.project) && !draft.touched
+      ? "Write a decision request first."
+      : undefined;
   const suiteBlockedReason = !options.project
     ? "Open or save a project first."
     : decisionProject.unsaved
       ? "Fix the request’s problems first."
-      // A valid touched draft becomes a request when it is folded in.
-      : !activeDecisionRequestRevision(options.project) && !draft.touched
-        ? "Write a decision request first."
+      : requestBlockedReason
+        ? requestBlockedReason
         : !target.profile
           ? "Turn on System One for a connection first."
           : target.model.trim() === ""
@@ -182,6 +208,11 @@ export function useDecisionCompose(options: UseDecisionComposeOptions): Decision
     ...(suiteBlockedReason ? { blockedReason: suiteBlockedReason } : {}),
     take() {
       if (suiteBlockedReason || !options.project) return undefined;
+      if (record) {
+        return localRecord?.kind === "saved" && target.profile
+          ? { project: options.project, decisionRequestRevisionId: localRecord.revision.id, model: target.model.trim(), profile: target.profile }
+          : undefined;
+      }
       const folded = decisionProject.fold(options.project);
       const active = activeDecisionRequestRevision(folded);
       return active && target.profile
@@ -190,25 +221,24 @@ export function useDecisionCompose(options: UseDecisionComposeOptions): Decision
     },
   };
 
-  const active = options.project && activeDecisionRequestRevision(options.project);
-  const pinned =
-    active?.kind === "template-use"
-      ? options.project?.promptTemplates.find(
-          (entry): entry is DecisionPromptTemplate => entry.id === active.templateId && entry.kind === "decision",
-        )
-      : undefined;
+  // The template-use pin Compose shows: the project's active revision, or
+  // the personal record's content in a personal session.
+  const pin = activePin(options.project, record);
+  const pinned = pin
+    ? options.project?.promptTemplates.find(
+        (entry): entry is DecisionPromptTemplate => entry.id === pin.templateId && entry.kind === "decision",
+      )
+    : undefined;
 
   // The overrides a fold would record now, so a revision switch can say which
   // in-progress values it would clear.
-  const pinnedResolved =
-    pinned && active?.kind === "template-use" ? resolveProjectDecisionRequestRevision(options.project!, active.id) : undefined;
   const pinnedOverrideNames =
-    active?.kind === "template-use" && pinnedResolved
+    pin?.resolved && pinned
       ? Object.keys(
           decisionTemplateUseOverrides({
-            variables: pinnedResolved.variables,
-            effectiveValues: pinnedResolved.values,
-            existingOverrides: active.overrides,
+            variables: pin.resolved.variables,
+            effectiveValues: pin.resolved.values,
+            existingOverrides: pin.overrides,
             values: draft.values,
           }),
         )
@@ -237,8 +267,8 @@ export function useDecisionCompose(options: UseDecisionComposeOptions): Decision
         }
       : undefined;
 
-  const modelWarnings = usePromptModelWarnings(options.project?.projectId ?? "session", pinned && active?.kind === "template-use" ? [{
-    id: active.decisionRequestId,
+  const modelWarnings = usePromptModelWarnings(options.project?.projectId ?? "session", pinned && pin ? [{
+    id: pin.warningKey,
     recommendation: pinned.recommendedTarget,
     selectedModel: target.model,
   }] : []);
@@ -251,6 +281,19 @@ export function useDecisionCompose(options: UseDecisionComposeOptions): Decision
 
   function mutatePin(change: { kind: "retarget"; templateRevisionId: PromptTemplateRevisionId } | { kind: "detach" }): void {
     if (!options.project || session.executing) return;
+    if (record) {
+      const content = localRecord?.content;
+      if (content?.kind !== "template-use") return;
+      try {
+        const next = decisionContentAfterMutation(options.project, content, (project, revisionId) => change.kind === "retarget"
+          ? updateDecisionRequestTemplateRevision(project, { decisionRequestRevisionId: revisionId, templateRevisionId: change.templateRevisionId })
+          : detachDecisionRequestTemplate(project, { decisionRequestRevisionId: revisionId }));
+        if (record.edit(next)) session.reset();
+      } catch (error) {
+        options.onError(error instanceof Error ? error.message : "Could not change the pinned prompt.");
+      }
+      return;
+    }
     const folded = decisionProject.fold(options.project);
     const revision = activeDecisionRequestRevision(folded);
     if (revision?.kind !== "template-use") return;
@@ -266,6 +309,11 @@ export function useDecisionCompose(options: UseDecisionComposeOptions): Decision
 
   function editPinnedSource(): void {
     if (!options.project) return;
+    if (record) {
+      // Value edits are already in the record; a draft returns to its base.
+      if (pin) options.onEditSource?.(localRecord?.revision?.id, pin.templateId, pin.templateRevisionId);
+      return;
+    }
     // Keep value edits before leaving, so Back to request finds them.
     const folded = decisionProject.fold(options.project);
     const revision = activeDecisionRequestRevision(folded);
@@ -294,6 +342,22 @@ export function useDecisionCompose(options: UseDecisionComposeOptions): Decision
       values: Object.fromEntries(Object.entries(draft.values).filter(([key]) => discovery.variables.includes(key))),
     };
   }
+  // Q2: in a personal session the worked example starts a new local request.
+  const editorHandle: DecisionDraftHandle = record
+    ? { ...draft, loadExample() { record.startNew({ kind: "inline", decision: structuredClone(DECISION_EXAMPLE), values: {} }); } }
+    : draft;
+  const localRequest: LocalRequestState | undefined = record && (localRecord?.kind === "draft" || localRecord?.kind === "scratch")
+    ? {
+        kind: localRecord.kind,
+        branched: false,
+        needsName: record.needsName,
+        suggestedName: record.suggestedName,
+        saving: record.saving,
+        onSave: (name?: string) => record.save(name),
+        onDiscard: () => void record.discard(),
+      }
+    : undefined;
+
   const finished = isTerminalRunState(run);
   const compose: ComposeKindHandle = {
     executing: session.executing,
@@ -315,7 +379,9 @@ export function useDecisionCompose(options: UseDecisionComposeOptions): Decision
           kindSwitch={kindSwitch}
           blockers={blockers}
           unsaved={decisionProject.unsaved}
-          draft={draft}
+          {...(record ? { unsavedDetail: "Not saved until the request is valid. Your workbench keeps its last valid version." } : {})}
+          draft={editorHandle}
+          {...(localRequest ? { localRequest } : {})}
           locked={session.executing}
           target={target}
           modelInputRef={modelInputRef}
@@ -327,18 +393,18 @@ export function useDecisionCompose(options: UseDecisionComposeOptions): Decision
               if ("decision" in content) options.onCapture?.(content);
             },
           }}
-          {...(pinned && active?.kind === "template-use"
+          {...(pinned && pin
             ? {
                 pinned: (
                   <DecisionTemplateUse
                     template={pinned}
-                    revisionId={active.templateRevisionId}
+                    revisionId={pin.templateRevisionId}
                     overrideNames={pinnedOverrideNames}
                     locked={session.executing}
                     recommendation={recommendation}
                     selectedModel={target.model}
-                    modelWarningDismissed={modelWarnings.isDismissed(active.decisionRequestId)}
-                    onDismissModelWarning={() => modelWarnings.dismiss(active.decisionRequestId)}
+                    modelWarningDismissed={modelWarnings.isDismissed(pin.warningKey)}
+                    onDismissModelWarning={() => modelWarnings.dismiss(pin.warningKey)}
                     onChooseModel={() => {
                       if (!modelInputRef.current) { options.onOpenConnections(); return; }
                       modelInputRef.current.scrollIntoView({ block: "center" });
@@ -391,6 +457,26 @@ export function useDecisionCompose(options: UseDecisionComposeOptions): Decision
     capture,
     useTemplate(project, templateId, revisionId) {
       if (session.executing) return;
+      if (record) {
+        // Q2: a new local request pinned to the prompt; Save names it.
+        const start = () => {
+          if (!record.startNew({ kind: "template-use", templateId, templateRevisionId: revisionId, overrides: {} })) return;
+          session.reset();
+          options.onTemplateUsed?.();
+        };
+        if (draft.touched && !("input" in validated)) {
+          options.requestConfirmation({
+            title: "Discard incomplete decision request?",
+            description: "The current request has invalid edits that cannot be saved. Discard them to use this saved revision.",
+            confirmLabel: "Discard and use revision",
+            destructive: true,
+            onConfirm: start,
+          });
+        } else {
+          start();
+        }
+        return;
+      }
       const apply = (discard: boolean) => {
         const folded = discard ? project : decisionProject.fold(project);
         adoptMutation(createDecisionTemplateUse(folded, { templateId, templateRevisionId: revisionId }));
@@ -410,7 +496,15 @@ export function useDecisionCompose(options: UseDecisionComposeOptions): Decision
     },
     returnToRevision(id) {
       const project = options.project;
-      if (!project || !project.decisionRequestRevisions.some((entry) => entry.id === id)) return false;
+      if (record) {
+        // The source was opened from this record: a local one, or a draft of `id`.
+        if (!id || localRecord?.revision?.id === id) return true;
+        if (!project?.decisionRequestRevisions.some((entry) => entry.id === id)) return false;
+        record.selectSaved(id);
+        session.reset();
+        return true;
+      }
+      if (!id || !project || !project.decisionRequestRevisions.some((entry) => entry.id === id)) return false;
       if (project.defaults.decisionRequestRevisionId === id) return true;
       adoptMutation({ ...project, defaults: { ...project.defaults, decisionRequestRevisionId: id } });
       return true;
@@ -424,8 +518,55 @@ export function useDecisionCompose(options: UseDecisionComposeOptions): Decision
       adopt(project) {
         session.reset();
         decisionProject.adopt(project);
+        if (record) recordSync.resync();
       },
+      // A personal session's editor follows its record, which follows the project.
       refresh: decisionProject.adopt,
     },
+  };
+}
+
+interface ActivePin {
+  templateId: PromptTemplateId;
+  templateRevisionId: PromptTemplateRevisionId;
+  overrides: Record<string, string>;
+  /** Keys a dismissed model warning: the request, or the local record. */
+  warningKey: string;
+  resolved?: { variables: string[]; values: Record<string, string> };
+}
+
+function activePin(project: ProjectFile | null, record: DecisionRequestRecordHandle | undefined): ActivePin | undefined {
+  if (!project) return undefined;
+  if (record) {
+    const selected = record.record;
+    const content = selected?.content;
+    if (content?.kind !== "template-use") return undefined;
+    const warningKey = selected?.kind === "scratch"
+      ? selected.scratch.scratchId
+      : selected?.kind === "draft" ? selected.draft.asset.id : selected!.revision!.decisionRequestId;
+    const resolved = resolveDecisionContent(project, content);
+    return {
+      templateId: content.templateId as PromptTemplateId,
+      templateRevisionId: content.templateRevisionId as PromptTemplateRevisionId,
+      overrides: content.overrides,
+      warningKey,
+      ...(resolved ? { resolved } : {}),
+    };
+  }
+  const active = activeDecisionRequestRevision(project);
+  if (active?.kind !== "template-use") return undefined;
+  // A pin whose prompt is gone resolves to nothing rather than throwing.
+  let resolved: ReturnType<typeof resolveProjectDecisionRequestRevision>;
+  try {
+    resolved = resolveProjectDecisionRequestRevision(project, active.id);
+  } catch {
+    resolved = undefined;
+  }
+  return {
+    templateId: active.templateId,
+    templateRevisionId: active.templateRevisionId,
+    overrides: active.overrides,
+    warningKey: active.decisionRequestId,
+    ...(resolved ? { resolved } : {}),
   };
 }

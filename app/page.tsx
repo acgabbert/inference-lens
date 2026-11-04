@@ -128,6 +128,7 @@ import { projectTabBanner } from "./project-tab-banner";
 import { chooseAppBanner } from "./notifications/banner-priority.client";
 import { usePersonalWorkbench } from "./workbench/use-personal-workbench.client";
 import { useChatRequestRecord } from "./request/use-chat-request-record.client";
+import { useDecisionRequestRecord } from "./decisions/use-decision-request-record.client";
 import type { LocalChatRunInput } from "./request/use-chat-request-record.client";
 import type { AppBanner as AppBannerCandidate } from "./notifications/banner-priority.client";
 
@@ -482,6 +483,23 @@ function HomeContent() {
     },
   });
 
+  // The 2b personal owner (D3). Off in a legacy session; a legacy folder in a
+  // personal session keeps its drafts session-only (S1).
+  const personalWorkbench = usePersonalWorkbench({
+    session: project.projectSession,
+    storage: project.projectWorkspace && project.projectSession?.format?.kind === "shared"
+      ? project.projectWorkspace.storage.workbench
+      : null,
+    shared: projectFile,
+    writeShared: project.writeShared,
+  });
+  // Which decision request Decision Compose edits in a personal session (2b step 4).
+  const decisionRequest = useDecisionRequestRecord({
+    personal: personalWorkbench,
+    project: projectFile,
+    onError(message) { project.setError(message); },
+  });
+
   const batchActive = repeatedExperiment.isRunning || evaluationExecution.isRunning;
   // The decision feature owns its draft, target, session, and panes (D19,
   // D29). The route supplies only what crosses features: the activity guard
@@ -493,6 +511,7 @@ function HomeContent() {
     updateProfile,
     workspace: projectWorkspace,
     project: projectFile,
+    record: decisionRequest,
     adoptProjectMutation: project.adoptProjectMutation,
     onProjectEdited: project.markDirty,
     ...(isRequestActive
@@ -575,16 +594,6 @@ function HomeContent() {
     ensureProjectDocument,
     applyEnvironment: (environmentId, document) =>
       projectTemplates.applyEnvironment(environmentId, document),
-  });
-  // The 2b personal owner (D3). Off in a legacy session; a legacy folder in a
-  // personal session keeps its drafts session-only (S1).
-  const personalWorkbench = usePersonalWorkbench({
-    session: project.projectSession,
-    storage: project.projectWorkspace && project.projectSession?.format?.kind === "shared"
-      ? project.projectWorkspace.storage.workbench
-      : null,
-    shared: projectFile,
-    writeShared: project.writeShared,
   });
   // Which request the composer edits in a personal session (I4).
   const chatRequest = useChatRequestRecord({

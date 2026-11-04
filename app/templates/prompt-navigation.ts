@@ -12,7 +12,8 @@ import type {
  */
 export type PromptReturnTarget =
   | { kind: "template-use"; useId: PromptTemplateUseId }
-  | { kind: "decision-request"; revisionId: DecisionRequestRevisionId };
+  /** No revision: a personal session's local request, which keeps its selection. */
+  | { kind: "decision-request"; revisionId?: DecisionRequestRevisionId };
 
 /**
  * The prompt the Prompts mode shows. `key` changes only when navigation opens

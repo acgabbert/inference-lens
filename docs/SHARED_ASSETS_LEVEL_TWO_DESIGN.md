@@ -1447,3 +1447,82 @@ in `tests/prepare-workbench-run.test.ts`. The gated
 branches and saves a branch in a v19 folder. With the record owner forced off,
 both of its tests fail: no draft is written, and a run rewrites
 `project.json`.
+
+### Step 4 decisions (approved November 4, 2026)
+
+The user approved three interim behaviors for step 4, which the owner
+interfaces left open. All of them apply only with the gate on.
+
+- **Q1. Invalid edits stay in the editor.** The decision editor can hold edits
+  that do not validate: unfinished rows or JSON that does not parse. Only a
+  valid edit reaches the draft or scratch record, so `.workbench/` keeps the
+  last valid version and the composer says the newest edits are not saved yet.
+  The record format is unchanged, and the editor's draft shape stays
+  application-local (D18).
+- **Q2. New decision requests are local.** Using a decision prompt in Compose
+  (Use in Compose, Save and use), a first edit in a project with no decision
+  request, and the worked example each create a decision scratch with no
+  parent. Nothing reaches `project.json` until Save, which asks for a name
+  prefilled with the prompt's name or "Decision request" (D10, D11).
+- **Q3. A new suite needs a saved request.** While a decision draft or scratch
+  is selected, "New suite from this request" is disabled and asks the user to
+  save the request first, as R4 does for chat Repeat.
+
+### Step 4 delivered (November 4, 2026)
+
+Decision request drafts and decision scratch, behind the gate. With the gate
+off every path is today's.
+
+- **Personal owner.** The controller gains the decision selection
+  (`selections.json`'s `decision.selectedInput`), decision-request drafts,
+  decision scratch records and Save for both, through the same `publishRecord`
+  protocol as chat. Opening marks a decision draft whose base is gone as
+  orphaned. Selecting chat never moves the decision selection, and the reverse
+  holds too.
+- **Record owner.** [use-decision-request-record.client.ts](../app/decisions/use-decision-request-record.client.ts)
+  decides what Decision Compose edits, over the pure helpers in
+  [local-decision-request.ts](../app/decisions/local-decision-request.ts): the
+  selection with launch-default fallback, the overlay that runs the core
+  retarget and detach helpers on local content, the sparse overrides of a
+  template-use pin, and the name Save offers.
+  [use-decision-record-sync.client.ts](../app/decisions/use-decision-record-sync.client.ts)
+  keeps the editor and the record in step: a valid edit becomes the record's
+  content (Q1), and a record changed by Save, Discard or a new scratch is
+  loaded into the editor.
+- **Compose.** In a personal session `useDecisionProject` folds, freezes and
+  adopts nothing, and an invalid edit never blocks a shared save. Value edits,
+  retarget and Detach go to the record. Use in Compose, Save and use, and the
+  worked example start a scratch with no parent (Q2). The decision pane shows
+  the same local-request notice as the chat composer, with Save, Discard and a
+  name field prefilled with the prompt's name. "New suite from this request"
+  waits for Save (Q3). Edit source on a local request returns to it.
+
+Implementation choices inside the approved contracts:
+
+- **Decision scratch records keep a local conversation ID.** The scratch
+  schema requires one; decision runs never use it (D12).
+- **The prompt name survives a detach for this session only.** A scratch
+  started from a prompt offers that prompt's name even after Detach makes it
+  inline. Without a place in the record format, a reload falls back to the
+  content's own suggestion.
+- **A dropped record is deleted after the debounce.** Found by the gated
+  decision spec: a draft dropped because an edit returned to its base stayed on
+  disk until the next flush, so a reopened folder found a stale draft. This
+  also affected chat-request and prompt drafts from steps 2 and 3. Every
+  dropped record now schedules its deletion like any other write.
+
+Not changed in step 4: decision runs carry no request pin, so there is no
+decision branch or run identity. The decision target stays session state. A
+draft or scratch replaced by a new one stays in `.workbench/` and is
+unreachable until step 5's switcher (R1).
+
+Checks: `tests/personal-workbench-decision-requests.test.ts` (drafts, the
+competing-draft rule, both selections apart, scratch Save with a name, Save of a
+draft, Discard of each, orphans, settling on open, and the debounced deletion,
+which ran red first). `tests/local-decision-request.test.ts` covers selection
+fallback, pin resolution, sparse overrides, the overlay and names. It was
+written after the module, so it was never shown failing. The gated
+`tests/e2e/personal-workbench-decision-drafts.spec.ts` covers a new request
+through run and named Save, a draft through Save and reopen, and Use in Compose
+through Detach and Save. With the record owner forced off, all three of its
+tests fail because no draft or scratch is written.
