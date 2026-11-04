@@ -158,15 +158,25 @@ export interface UnfinishedUpgrade {
   remaining: number;
 }
 
-/** Read-only V3 check. A parseable v19 manifest alone does not confirm this operation. */
+/**
+ * Read-only V3 check. A parseable v19 manifest alone does not confirm this
+ * operation: `confirmed` means the manifest is exactly its staged shared output.
+ * `unchanged` means the write never landed and the manifest is still exactly its
+ * source, so the folder reopens as a pre-v19 folder and Upgrade is offered again.
+ * Either way the caller reopens only if the file still holds `manifest`.
+ */
 export async function inspectProjectUpgrade(storage: ProjectMigrationStorage, projectId: ProjectId, operationId: string): Promise<
-  { kind: "confirmed"; manifest: string } | { kind: "blocked"; message: string }
+  { kind: "confirmed" | "unchanged"; manifest: string } | { kind: "blocked"; message: string }
 > {
   try {
     const snapshot = await storage.migrationCompletion.read();
     const inspection = await inspectSharedProjectMigrationCompletion(snapshot, projectId, operationId);
+    const decode = (bytes: Uint8Array) => new TextDecoder("utf-8", { fatal: true }).decode(bytes);
     if (inspection.kind === "shared-written" && snapshot.manifest) {
-      return { kind: "confirmed", manifest: new TextDecoder("utf-8", { fatal: true }).decode(snapshot.manifest) };
+      return { kind: "confirmed", manifest: decode(snapshot.manifest) };
+    }
+    if (inspection.kind === "ready" && snapshot.manifest) {
+      return { kind: "unchanged", manifest: decode(snapshot.manifest) };
     }
     return { kind: "blocked", message: "The upgraded project.json still cannot be confirmed against this upgrade's staged output. Shared saves stay off." };
   } catch (error) {

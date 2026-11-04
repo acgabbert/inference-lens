@@ -126,6 +126,16 @@ test("inspection confirms only this operation's exact persisted shared output", 
   divergent.name = "Changed externally";
   directory.seed("project.json", JSON.stringify(divergent));
   assert.equal((await inspectProjectUpgrade(storage, preview.projectId, preview.operationId)).kind, "blocked");
-  directory.seed("project.json", source);
-  assert.equal((await inspectProjectUpgrade(storage, preview.projectId, preview.operationId)).kind, "blocked");
+});
+
+test("inspection after a write that never landed reports the unchanged source, to reopen as a pre-v19 folder", async () => {
+  const { directory, storage } = folder();
+  const preview = await previewOf(storage);
+  directory.failPath = "project.json";
+  assert.equal((await upgradeProject(storage, preview)).kind, "inspection");
+  directory.failPath = undefined;
+  assert.deepEqual(await inspectProjectUpgrade(storage, preview.projectId, preview.operationId), {
+    kind: "unchanged",
+    manifest: new TextDecoder().decode(source),
+  });
 });

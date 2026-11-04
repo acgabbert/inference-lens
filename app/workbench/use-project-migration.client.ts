@@ -177,8 +177,12 @@ export function useProjectMigration(input: {
       setInspection({ ...current, checking: false, message: checked.message });
       return;
     }
-    // Drafts the session never edited are covered by the staged copies (V2).
-    const reopened = await reopenRef.current({ activated: [], lifted: current.lifted }, checked.manifest);
+    // A write that never landed reopens the pre-v19 folder, whose session keeps
+    // its records, and Upgrade is offered again. A confirmed one carries them
+    // over: drafts the session never edited are covered by the staged copies (V2).
+    const reopened = checked.kind === "unchanged"
+      ? await reopenRef.current(undefined, checked.manifest)
+      : await reopenRef.current({ activated: [], lifted: current.lifted }, checked.manifest);
     if (!reopened && workspaceRef.current !== workspace) return;
     setInspection(reopened ? undefined : { ...current, checking: false });
   }

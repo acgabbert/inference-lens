@@ -1727,8 +1727,10 @@ Implementation choices inside the approved contracts:
   activated records, so an unedited session draft gives way to its staged
   candidate, which Finish then activates. Rechecking confirms this operation's
   exact staged shared output before reopening; the reopened manifest must
-  still match that inspected output. Divergent or unreadable files keep shared
-  saves blocked. Existing personal selections win a collision with carried
+  still match that inspected output. A write that never landed, leaving exactly
+  the source bytes, reopens the folder as a pre-v19 folder with the session's
+  records and offers Upgrade again (V3). Divergent or unreadable files keep
+  shared saves blocked. Existing personal selections win a collision with carried
   session selections; the session copy remains in memory for recovery. Only
   selections activated by this upgrade can be replaced by the session copy.
 - **Finish is offered only while the manifest is exactly the upgrade's

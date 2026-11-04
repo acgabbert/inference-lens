@@ -217,3 +217,56 @@ test("Upgrade preserves existing personal selections when session settings colli
   await expect(page.getByRole("combobox", { name: "Model", exact: true })).toHaveValue("existing-personal-model");
   expect((await folderFiles(page))[".workbench/selections.json"]).toBe(contents);
 });
+
+test("Check again after a write that never landed reopens the old file and offers Upgrade again", async ({ page }) => {
+  const manifest = serializeProjectFile(legacyProject());
+  await openFolder(page, manifest);
+  await openMode(page, "Prompts");
+  const editor = page.locator(".template-editor");
+  await editor.getByLabel("Prompt content").fill("Triage {{incident}} edited before a failed upgrade.");
+  // The first v19 write fails before it reaches the file.
+  await page.evaluate(async () => {
+    const root = await (window as unknown as {
+      showDirectoryPicker(): Promise<import("../../app/project-directory.client").FileSystemDirectoryHandleLike>;
+    }).showDirectoryPicker();
+    let failed = false;
+    const getFileHandle = root.getFileHandle.bind(root);
+    root.getFileHandle = async (name, options) => {
+      const handle = await getFileHandle(name, options);
+      if (name !== "project.json") return handle;
+      const createWritable = handle.createWritable.bind(handle);
+      handle.createWritable = async () => {
+        const writable = await createWritable();
+        const write = writable.write.bind(writable);
+        writable.write = async (contents) => {
+          const text = typeof contents === "string" ? contents : new TextDecoder().decode(contents);
+          if (!failed && JSON.parse(text).schemaVersion === 19) {
+            failed = true;
+            throw new Error("injected write failure");
+          }
+          return write(contents);
+        };
+        return writable;
+      };
+      return handle;
+    };
+  });
+  await page.getByRole("button", { name: "Upgrade project…" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Upgrade", exact: true }).click();
+  await expect(page.locator("[data-app-banner='project-upgrade']")).toContainText("could not be confirmed");
+  await page.getByRole("button", { name: "Check again", exact: true }).click();
+
+  // Back to a pre-v19 folder: shared saves off, Upgrade offered, the session edit kept.
+  await expect(page.locator("[data-app-banner='project-upgrade']")).toContainText("older project format");
+  await expect(page.getByRole("button", { name: "Check again", exact: true })).toBeHidden();
+  await expect(page.locator(".brand")).toContainText("Not saved — shared saves need this older-format folder upgraded");
+  expect((await folderFiles(page))["project.json"]).toBe(manifest);
+  await expect(editor.getByLabel("Prompt content")).toHaveValue("Triage {{incident}} edited before a failed upgrade.");
+
+  await page.getByRole("button", { name: "Upgrade project…" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Upgrade", exact: true }).click();
+  await expect(page.locator(".brand")).toContainText("Saved to upgrade-fixture");
+  await expect.poll(async () => activeDrafts(await folderFiles(page))
+    .map(([, contents]) => JSON.parse(contents).edited.messages[0].content))
+    .toEqual(["Triage {{incident}} edited before a failed upgrade."]);
+});
