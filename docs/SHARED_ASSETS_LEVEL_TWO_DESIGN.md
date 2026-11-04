@@ -1622,3 +1622,58 @@ makes it the launch default, reads a seeded model override back and clears it,
 records an environment choice, and switches and pins a decision revision. Its
 decision test failed first on the sync loop (the selection never reached
 disk); with the fix removed it fails again the same way.
+
+### Step 6 decisions (approved November 4, 2026)
+
+The user approved four behaviors for step 6, which the owner interfaces and
+D4–D8 left open. All of them apply only with the gate on.
+
+- **V1. Step 6 lands in two parts.** 6a delivers the upgrade: the Upgrade
+  action on a pre-v19 folder, the preview, staging and completion through
+  `useProjectMigration`, reopening as a v19 session, D5's inspection, and
+  "Finish upgrade" for an operation an earlier attempt left staged or
+  half-activated. 6b delivers the Recovery drawer and chip, reconciliation
+  (Compare, "Use this one", Discard), the resolutions record, "Remove
+  migration backup" and the pane marks. Both stay behind the gate, and 6b
+  lands before the gate can be removed (the completion approval condition).
+- **V2. Session edits carry over.** A pre-v19 folder keeps its personal
+  records in memory (S1), and staging copies the drafts from the file on disk,
+  so edits made in that session are not in the staged copy. After completion
+  the reopened session writes the in-memory records into the new
+  `.workbench/`. A session prompt draft replaces the draft that completion
+  just activated for the same prompt: it is the newer edit of the same work,
+  and the staged candidate stays in `migrations/` as the backup. Any other
+  collision (an active draft that existed before the upgrade, or a candidate
+  left pending) is a recovery item, and the session copy stays in memory
+  rather than being dropped.
+- **V3. Inspection reuses blocked saves.** An `uncertain` or `diverged`
+  completion (D5) reopens the folder in the same mode as a pre-v19 folder:
+  viewing, running and evidence writes work, and shared saves are refused. A
+  notice says what happened and offers "Check again", which re-inspects the
+  operation and reopens as v19 once the manifest is confirmed. No separate
+  inspection page is added.
+- **V4. Every recovery item has its actions in 6b.** Pending migration
+  candidates and competing drafts: Compare, "Use this one", Discard. Orphaned
+  drafts: Compare with the base snapshot, Save as new, Discard (never
+  rebased). Publication conflicts: Compare, Keep as draft, Discard. Failed
+  writes: Retry. Unreadable records show their path and message only; the app
+  never deletes them.
+
+Defaults taken with them, reversible and inside the approved contracts:
+
+- **Upgrade is offered in the editing tab only.** A viewing tab shows the
+  blocked notice and says the upgrade runs from the tab that edits the
+  project (tab coordination's U1).
+- **One confirmation stages and completes.** The preview's Upgrade runs
+  staging and then completion. A `stale-plan` result returns to a fresh
+  preview; nothing is written by opening or previewing.
+- **The completion guard narrows instead of lifting.** The approval-condition
+  test allows one caller, the migration owner in `app/workbench/`, which runs
+  only in a `personal` session. The guard lifts with the gate (D2).
+- **The journal records target v19.** Its `targetVersion` literal is still 16
+  from before the October 30 renumbering. No application has written a
+  journal, so it is amended in place, as D9 amends workbench v1.
+- **The desktop host gains a reopen command.** Native open always shows a
+  folder picker, and completion invalidates the native handle. A
+  `reopen_project_workspace` command registers the same directory afresh from
+  its current manifest, as the browser's `reopenProjectWorkspace` does.
