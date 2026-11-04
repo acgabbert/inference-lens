@@ -128,6 +128,9 @@ import { projectTabBanner } from "./project-tab-banner";
 import { chooseAppBanner } from "./notifications/banner-priority.client";
 import { usePersonalWorkbench } from "./workbench/use-personal-workbench.client";
 import { useChatRequestRecord } from "./request/use-chat-request-record.client";
+import { useChatExecution } from "./request/use-chat-execution.client";
+import { RequestSwitcher } from "./workbench/request-switcher.client";
+import type { LaunchDefaultState } from "./request/launch-default-notice.client";
 import { useDecisionRequestRecord } from "./decisions/use-decision-request-record.client";
 import type { LocalChatRunInput } from "./request/use-chat-request-record.client";
 import type { AppBanner as AppBannerCandidate } from "./notifications/banner-priority.client";
@@ -322,6 +325,31 @@ function HomeContent() {
     projectErrorKind,
     mappedProfileIds,
   } = project;
+  // The 2b personal owner (D3). Off in a legacy session; a legacy folder in a
+  // personal session keeps its drafts session-only (S1).
+  const personalWorkbench = usePersonalWorkbench({
+    session: project.projectSession,
+    storage: project.projectWorkspace && project.projectSession?.format?.kind === "shared"
+      ? project.projectWorkspace.storage.workbench
+      : null,
+    shared: projectFile,
+    writeShared: project.writeShared,
+  });
+  // Which request the composer edits in a personal session (I4).
+  const chatRequest = useChatRequestRecord({
+    personal: personalWorkbench,
+    project: projectFile,
+    onError(message) { project.setError(message); },
+  });
+  // A personal session's model, temperature, protocol, tools and environment,
+  // and the chat launch-default action (2b step 5).
+  const chatExecution = useChatExecution({
+    personal: personalWorkbench,
+    project: projectFile,
+    record: chatRequest.record,
+    requestConfirmation: setConfirmation,
+    onError(message) { project.setError(message); },
+  });
   const runHistory = useProjectRunHistory(
     projectWorkspace,
     suiteHistoryRequested || mode === "runs",
@@ -367,6 +395,9 @@ function HomeContent() {
   } = useRequestDraft({
     onProjectDirty: project.markDirty,
     onProjectError: project.setError,
+    ...(chatExecution.enabledToolIds
+      ? { personalTools: { enabledToolIds: chatExecution.enabledToolIds, set: (ids) => chatExecution.patch({ field: "enabledToolIds", value: ids }) } }
+      : {}),
   });
   const requestSettings = useRequestSettings({
     projectFile,
@@ -376,6 +407,7 @@ function HomeContent() {
     messages,
     updateActiveProfile,
     onProjectEdited: project.markDirty,
+    execution: chatExecution,
   });
   // Device-local execution capability. Owned here only long enough to be
   // joined with the project's mocks below: what serves a tool is one question,
@@ -483,21 +515,12 @@ function HomeContent() {
     },
   });
 
-  // The 2b personal owner (D3). Off in a legacy session; a legacy folder in a
-  // personal session keeps its drafts session-only (S1).
-  const personalWorkbench = usePersonalWorkbench({
-    session: project.projectSession,
-    storage: project.projectWorkspace && project.projectSession?.format?.kind === "shared"
-      ? project.projectWorkspace.storage.workbench
-      : null,
-    shared: projectFile,
-    writeShared: project.writeShared,
-  });
   // Which decision request Decision Compose edits in a personal session (2b step 4).
   const decisionRequest = useDecisionRequestRecord({
     personal: personalWorkbench,
     project: projectFile,
     onError(message) { project.setError(message); },
+    requestConfirmation: setConfirmation,
   });
 
   const batchActive = repeatedExperiment.isRunning || evaluationExecution.isRunning;
@@ -594,12 +617,14 @@ function HomeContent() {
     ensureProjectDocument,
     applyEnvironment: (environmentId, document) =>
       projectTemplates.applyEnvironment(environmentId, document),
-  });
-  // Which request the composer edits in a personal session (I4).
-  const chatRequest = useChatRequestRecord({
-    personal: personalWorkbench,
-    project: projectFile,
-    onError(message) { project.setError(message); },
+    ...(chatExecution.execution
+      ? {
+          personal: {
+            selectedId: chatExecution.execution.environmentId,
+            select: (environmentId) => chatExecution.patch({ field: "environmentId", value: environmentId }),
+          },
+        }
+      : {}),
   });
   const projectTemplates = useProjectTemplates({
     projectFile,
@@ -1316,6 +1341,19 @@ function HomeContent() {
       {...(projectFile ? { onPromoteTrace: (trace: RunTrace) => evaluationCaseSource.requestPromotion(trace) } : {})}
     />
   );
+  // The personal session's request switcher and launch-default status (2b step 5).
+  const chatRequestMenu = chatRequest.menu;
+  // A local selection already has its own notice; this one adds what else differs.
+  const chatLaunchDifferences = chatExecution.differences.filter(({ field }) =>
+    !(field === "request" && chatRequest.record && chatRequest.record.kind !== "saved"));
+  const chatLaunchDefault: LaunchDefaultState | undefined = chatExecution.enabled && chatLaunchDifferences.length > 0
+    ? {
+        differences: chatExecution.differences.map(({ label }) => label),
+        ...(chatExecution.launchDefaultBlockedReason ? { blockedReason: chatExecution.launchDefaultBlockedReason } : {}),
+        saving: chatExecution.saving,
+        onUse: chatExecution.useAsLaunchDefault,
+      }
+    : undefined;
   // Chat's request pane, unchanged; Compose selects it by kind.
   const chatRequestPane = (kindSwitch: ReactNode) => (
     <RequestComposer
@@ -1336,7 +1374,9 @@ function HomeContent() {
         protocol: requestSettings.protocol,
         supportedProtocols: requestSettings.supportedProtocols,
         onProtocolChange: requestSettings.setProtocol,
-        protocolScope: projectFile
+        protocolScope: chatExecution.enabled
+          ? "Yours on this device. Evaluations set their own protocol in their execution settings."
+          : projectFile
           ? "Project default. Evaluations set their own protocol in their execution settings."
           : `Remembered for "${requestSettings.profile.name}".`,
         streamingAvailable: requestSettings.capabilities.streaming,
@@ -1398,6 +1438,20 @@ function HomeContent() {
           }
         : {})}
       {...(requestPreview ? { requestPreview } : {})}
+      {...(chatExecution.enabled ? { personalSettings: true } : {})}
+      {...(chatRequestMenu
+        ? {
+            requestSwitcher: (
+              <RequestSwitcher
+                noun="request"
+                menu={chatRequestMenu}
+                {...(isRequestActive ? { disabledReason: "Finish or stop the run before switching requests." } : {})}
+                onSelect={(target) => chatRequest.select(target)}
+              />
+            ),
+          }
+        : {})}
+      {...(chatLaunchDefault ? { launchDefault: chatLaunchDefault } : {})}
       {...(projectEnvironments.environments.length > 0
         ? {
             environmentSelector: (

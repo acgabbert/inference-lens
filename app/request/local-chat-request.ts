@@ -21,6 +21,8 @@ import type {
 } from "../../packages/core/src/run-kernel/types.ts";
 import { randomUUID } from "../../packages/core/src/random-id.ts";
 import type { ChatScratchParent } from "../workbench/personal-workbench-controller.ts";
+import { requestMenu } from "../workbench/request-menu.ts";
+import type { RequestMenu } from "../workbench/request-menu.ts";
 
 /**
  * Pure helpers for the chat request a personal session's composer edits
@@ -216,4 +218,57 @@ export function branchItems(
     }
   }
   return messages.map((message) => ({ kind: "message", message: structuredClone(message) }));
+}
+
+/** The nearest saved revision a chat scratch's parent chain reaches. */
+export function chatSavedAncestor(
+  scratch: WorkbenchScratchV1,
+  records: Pick<LocalChatRecords, "scratch">,
+): ConversationRevisionId | undefined {
+  let parent = scratch.request.kind === "chat" ? scratch.request.parent : undefined;
+  const seen = new Set([scratch.scratchId]);
+  while (parent?.kind === "scratch" && !seen.has(parent.scratchId)) {
+    seen.add(parent.scratchId);
+    const next = records.scratch(parent.scratchId);
+    parent = next?.request.kind === "chat" ? next.request.parent : undefined;
+  }
+  return parent?.kind === "saved-conversation-revision" ? parent.revisionId : undefined;
+}
+
+/** The chat switcher's entries (T1). */
+export function chatRequestMenu(
+  project: ProjectFile,
+  selected: SelectedChatRecord,
+  records: LocalChatRecords & {
+    scratches: readonly WorkbenchScratchV1[];
+    draftFor(asset: { kind: "chat-request"; id: ConversationId }): WorkbenchDraftV1 | undefined;
+  },
+): RequestMenu {
+  return requestMenu({
+    requests: project.conversations,
+    revisions: project.conversationRevisions.map(({ id, conversationId, createdAt }) => ({ id, requestId: conversationId, createdAt })),
+    launchRevisionId: project.defaults.conversationRevisionId,
+    draftFor(requestId) {
+      const draft = records.draftFor({ kind: "chat-request", id: requestId as ConversationId });
+      return draft?.asset.kind === "chat-request"
+        ? { draftId: draft.draftId, baseRevisionId: (draft as WorkbenchChatRequestDraftV1).base.revisionId }
+        : undefined;
+    },
+    scratches: records.scratches
+      .filter((scratch) => scratch.request.kind === "chat" && scratch.projectId === project.projectId)
+      .map((scratch) => {
+        const ancestor = chatSavedAncestor(scratch, records);
+        return {
+          scratchId: scratch.scratchId,
+          createdAt: scratch.createdAt,
+          branched: Boolean(scratch.branchedFrom),
+          ...(ancestor ? { savedAncestorRevisionId: ancestor } : {}),
+        };
+      }),
+    selected: selected.kind === "saved"
+      ? selected.revision && { kind: "saved", revisionId: selected.revision.id }
+      : selected.kind === "draft"
+        ? { kind: "draft", draftId: selected.draft.draftId }
+        : { kind: "scratch", scratchId: selected.scratch.scratchId },
+  });
 }

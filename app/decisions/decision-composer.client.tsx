@@ -11,6 +11,8 @@ import type { DecisionDraftProblem, DecisionQuestionRow, DraftValue } from "./de
 import type { DecisionDraftHandle } from "./use-decision-draft.client";
 import type { DecisionTargetHandle } from "./use-decision-target.client";
 import { LocalRequestNotice } from "../request/local-request-notice.client";
+import { LaunchDefaultNotice } from "../request/launch-default-notice.client";
+import type { LaunchDefaultState } from "../request/launch-default-notice.client";
 import type { LocalRequestState } from "../request/local-request-notice.client";
 
 /** Names the element that says, in visible text, why Run is refused. */
@@ -45,6 +47,10 @@ export interface DecisionComposerProps {
   unsavedDetail?: string;
   /** A personal session's local request: Save, Discard and a name (2b step 4). */
   localRequest?: LocalRequestState;
+  /** A personal session's request switcher (2b step 5, T1). */
+  requestSwitcher?: ReactNode;
+  /** A saved request other than the decision launch default is selected (T4). */
+  launchDefault?: LaunchDefaultState;
   onOpenConnections(): void;
   /**
    * Starts an evaluation suite pinned to this request's revision (D51).
@@ -408,7 +414,7 @@ export function DecisionInputEditor({
 
 export const DECISION_NEW_SUITE_REASON_ID = "decision-new-suite-reason";
 
-export function DecisionComposer({ modelInputRef, kindSwitch, draft: handle, target, blockers, locked, unsaved, unsavedDetail, localRequest, onOpenConnections, newSuite, pinned, capture }: DecisionComposerProps) {
+export function DecisionComposer({ modelInputRef, kindSwitch, draft: handle, target, blockers, locked, unsaved, unsavedDetail, localRequest, requestSwitcher, launchDefault, onOpenConnections, newSuite, pinned, capture }: DecisionComposerProps) {
   const { draft } = handle;
   const discovery = target.discovery;
   return (
@@ -444,6 +450,8 @@ export function DecisionComposer({ modelInputRef, kindSwitch, draft: handle, tar
           </div>
         )}
         {localRequest && <LocalRequestNotice state={localRequest} />}
+        {launchDefault && <LaunchDefaultNotice state={launchDefault} />}
+        {requestSwitcher}
         {capture && (
           <div className="decision-new-suite">
             <button className="text-button" disabled={capture.disabled} type="button" onClick={capture.onCapture}>

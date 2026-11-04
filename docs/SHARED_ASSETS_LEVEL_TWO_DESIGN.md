@@ -1526,3 +1526,99 @@ written after the module, so it was never shown failing. The gated
 through run and named Save, a draft through Save and reopen, and Use in Compose
 through Detach and Save. With the record owner forced off, all three of its
 tests fail because no draft or scratch is written.
+
+### Step 5 decisions (approved November 4, 2026)
+
+The user approved four behaviors for step 5, which the owner interfaces left
+open. All of them apply only with the gate on.
+
+- **T1. The switcher groups by request.** Chat Compose and Decision Compose
+  each get a request menu with one entry per saved request. Picking a request
+  opens its draft if one exists, otherwise its newest revision. Older revisions
+  sit under a per-request disclosure. Local scratches form their own group,
+  labelled by their parent, and the launch default is marked. This lifts R1.
+- **T2. Execution overrides stay sparse.** Model, temperature, protocol and
+  tool-enable choices are written to `chat.execution`, and a field set back to
+  its launch-default value is cleared. Fields the user never moved away from
+  follow a teammate's later change to `defaults`. The differs-from-default
+  status compares values, so an override that happens to equal a changed
+  default does not count as a difference.
+- **T3. A local selection cannot become the launch default.** While a request
+  draft or scratch is selected, "Use as launch default" is disabled and asks
+  the user to save the request first, as R4 and Q3 do. Each launch action is
+  one shared write.
+- **T4. The status is a notice chip.** An advisory chip among the composer's
+  notices, inside its scroll area, names what differs from the launch default
+  (request, model, temperature, protocol, tools) and carries "Use as launch
+  default…", which previews the shared fields it changes. Decision Compose
+  shows the same for its request pin. Environment keeps its own set-default
+  and the selector's default marker (D13), so the chip does not cover it.
+
+### Step 5 delivered (November 4, 2026)
+
+Selections, execution overrides, environment selection, the launch-default
+actions and the differs-from-default status, behind the gate. With the gate off
+every path is today's.
+
+- **Personal owner.** The controller records `chat.execution` in
+  `selections.json` beside both selections; moving either selection keeps it.
+  The handle applies an update to the overrides as they are now, and offers the
+  launch actions' one shared write.
+- **Execution.** [chat-execution.ts](../app/request/chat-execution.ts) holds the
+  pure rules: the effective execution over `defaults`, the sparse patch (T2) and
+  the differences (T4). [use-chat-execution.client.ts](../app/request/use-chat-execution.client.ts)
+  owns them for the composer: model, temperature and protocol edits
+  (`useRequestSettings`), tool enables (`useRequestDraft`) and the environment
+  choice (`useProjectEnvironments`) become overrides, and none of them marks
+  the project dirty. The settings panel says "Your settings".
+- **Switcher.** [request-menu.ts](../app/workbench/request-menu.ts) builds T1's
+  entries for both kinds, and [request-switcher.client.tsx](../app/workbench/request-switcher.client.tsx)
+  renders them at the top of the Chat and Decision Compose scroll areas. It is
+  disabled while a run is executing. Leaving a decision request with invalid
+  edits asks first, as Use in Compose does.
+- **Launch defaults.** "Use as launch default…" previews each differing field
+  and writes through `setLaunchDefaults` or `setDecisionLaunchDefault`. After
+  the chat action, published overrides are cleared; edits made while the write
+  is pending are rebased onto the confirmed defaults. Environment is kept as
+  recorded, since it has its own action.
+
+Implementation choices inside the approved contracts:
+
+- **The per-request disclosure is a second list.** The selected request's
+  revisions, and its unsaved changes when it has a draft, sit in a Revision
+  list beside the Request list. Native selects keep the switcher keyboard- and
+  screen-reader-friendly without a custom menu.
+- **Revisions are named by position.** Saved chat and decision revisions carry
+  no label, so the switcher and the preview name them "Revision N", oldest
+  first, by creation time and then file order.
+- **A local selection's status.** The local-request notice already says a
+  draft or scratch is unsaved, so the chat status chip appears for one only
+  when something else differs too, and then gives T3's reason instead of the
+  action. Decision Compose shows the chip only for a saved revision other than
+  the pin.
+- **Stale overrides are ignored, not refused.** An override that names a tool
+  or environment the project no longer holds falls back to the launch default.
+  The tool list as recorded is not filtered, so a project tool attached a
+  moment ago stays enabled before its auto-save lands; the launch action keeps
+  only tools the project holds.
+- **Fixed a step 4 sync loop.** Selecting another saved decision revision ran
+  the editor→record effect in the same commit as the adopt, with the old editor
+  content, so it wrote that content as a draft of the new record and the two
+  selections alternated. The effect now skips the editor state an adopt is
+  replacing. Step 4's `returnToRevision` could reach the same path.
+
+Not changed in step 5: decisions keep no execution overrides; the decision
+target stays session state. Connection, maximum tokens, seed, stop and provider
+options have no personal editor, so they always follow the launch default. The
+Recovery drawer and reconciliation are step 6.
+
+Checks: `tests/chat-execution.test.ts` (effective execution, sparse patches,
+differences) and `tests/request-menu.test.ts` (grouping, newest revision, draft
+entry, scratch labels, decision menu) were written with their modules, so they
+were never shown failing. `tests/personal-workbench-requests.test.ts` gains an
+overrides case that failed first on the missing `setChatExecution`. The gated
+`tests/e2e/personal-workbench-selections.spec.ts` switches a chat revision and
+makes it the launch default, reads a seeded model override back and clears it,
+records an environment choice, and switches and pins a decision revision. Its
+decision test failed first on the sync loop (the selection never reached
+disk); with the fix removed it fails again the same way.

@@ -56,6 +56,7 @@ export type PromptDraftContent = WorkbenchPromptDraftV1["edited"];
 export type ChatScratchParent = NonNullable<Extract<WorkbenchScratchV1["request"], { kind: "chat" }>["parent"]>;
 export type DecisionScratchParent = NonNullable<Extract<WorkbenchScratchV1["request"], { kind: "decision" }>["parent"]>;
 export type ScratchBranchPoint = NonNullable<WorkbenchScratchV1["branchedFrom"]>;
+export type ChatExecutionOverrides = NonNullable<NonNullable<WorkbenchSelectionsV1["chat"]>["execution"]>;
 type WriteShared = (update: (current: ProjectFile) => ProjectFile) => Promise<SharedWriteOutcome>;
 
 export type PersonalWorkbenchStatus =
@@ -240,6 +241,28 @@ export class PersonalWorkbenchController {
     const chat = { ...(current?.chat ?? {}) };
     if (input) chat.selectedInput = structuredClone(input);
     else delete chat.selectedInput;
+    this.writeSelections({
+      ...(current?.decision ? { decision: current.decision } : {}),
+      ...(Object.keys(chat).length ? { chat } : {}),
+    });
+  }
+
+  /** Personal execution choices over the launch defaults (step 5); undefined inherits them. */
+  get chatExecution(): ChatExecutionOverrides | undefined {
+    const selections = this.records.get(SELECTIONS_PATH) as WorkbenchSelectionsV1 | undefined;
+    return selections?.chat?.execution ? structuredClone(selections.chat.execution) : undefined;
+  }
+
+  /**
+   * Replaces the execution overrides. The caller keeps them sparse (T2); this
+   * owner only records them, beside the selections it never disturbs.
+   */
+  setChatExecution(execution: ChatExecutionOverrides | undefined): void {
+    if (same(this.chatExecution, execution)) return;
+    const current = this.records.get(SELECTIONS_PATH) as WorkbenchSelectionsV1 | undefined;
+    const chat = { ...(current?.chat ?? {}) };
+    if (execution && Object.keys(execution).length) chat.execution = structuredClone(execution);
+    else delete chat.execution;
     this.writeSelections({
       ...(current?.decision ? { decision: current.decision } : {}),
       ...(Object.keys(chat).length ? { chat } : {}),

@@ -2,12 +2,17 @@
 
 import { useState } from "react";
 import type { ProjectFile } from "../../packages/core/src/project.ts";
-import type { WorkbenchDecisionRequestContent } from "../../packages/core/src/personal-workbench.ts";
+import type { LocalDecisionInput, WorkbenchDecisionRequestContent } from "../../packages/core/src/personal-workbench.ts";
+import { setDecisionLaunchDefault } from "../../packages/core/src/workbench-local-input.ts";
+import type { ConfirmationDialogRequest } from "../confirmation-dialog.client.tsx";
+import type { LaunchDefaultState } from "../request/launch-default-notice.client.tsx";
+import type { RequestMenu, RequestMenuTarget } from "../workbench/request-menu.ts";
 import type { DecisionRequestId, DecisionRequestRevisionId } from "../../packages/core/src/run-kernel/types.ts";
 import { stableJsonValue } from "../../packages/core/src/stable-json.ts";
 import { decisionRevisionContent } from "../workbench/personal-workbench-controller.ts";
 import type { PersonalWorkbenchHandle } from "../workbench/use-personal-workbench.client.ts";
 import {
+  decisionRequestMenu,
   decisionScratchNeedsName,
   selectedDecisionRecord,
   suggestedDecisionRequestName,
@@ -47,6 +52,16 @@ export interface DecisionRequestRecordHandle {
   discard(): Promise<void>;
   /** Selects a saved revision, as returning from a run or a prompt source does. */
   selectSaved(revisionId: DecisionRequestRevisionId): void;
+  /** The switcher's entries (2b step 5, T1); undefined while disabled. */
+  menu: RequestMenu | undefined;
+  /** Moves the personal selection to a switcher entry; never `defaults`. */
+  select(target: RequestMenuTarget): void;
+  /**
+   * Set when a saved revision other than the launch default is selected (T4).
+   * A local selection already has its own notice, and decisions carry no
+   * execution overrides, so nothing else can differ.
+   */
+  launchDefault: LaunchDefaultState | undefined;
 }
 
 type PersonalDecisionOwner = Pick<
@@ -54,6 +69,7 @@ type PersonalDecisionOwner = Pick<
   | "enabled" | "status" | "decisionSelection" | "scratch" | "draftById" | "selectDecision"
   | "updateDecisionRequestDraft" | "createDecisionScratch" | "updateDecisionScratch"
   | "discardDecisionRequestDraft" | "discardScratch" | "publishDecisionRequestDraft" | "publishScratch"
+  | "scratches" | "draftFor" | "writeLaunchDefaults"
 >;
 
 function same(left: unknown, right: unknown): boolean {
@@ -68,9 +84,12 @@ export function useDecisionRequestRecord(input: {
   personal: PersonalDecisionOwner;
   project: ProjectFile | null;
   onError(message: string | undefined): void;
+  /** Previews the decision launch-default write (D13). */
+  requestConfirmation(request: ConfirmationDialogRequest): void;
 }): DecisionRequestRecordHandle {
   const { personal, project, onError } = input;
   const [saving, setSaving] = useState(false);
+  const [settingDefault, setSettingDefault] = useState(false);
   // The prompt a scratch was started from names it even after a detach. Held
   // for this session only: the record format has no place for it.
   const [startedFrom, setStartedFrom] = useState<Readonly<Record<string, string>>>({});
@@ -79,6 +98,38 @@ export function useDecisionRequestRecord(input: {
   const needsName = record?.kind === "scratch" && decisionScratchNeedsName(record.scratch, personal);
   const suggestedName = (record?.kind === "scratch" && startedFrom[record.scratch.scratchId])
     || (project && record?.content ? suggestedDecisionRequestName(project, record.content) : "");
+
+  const menu = record && project ? decisionRequestMenu(project, record, personal) : undefined;
+  const pinned = project?.defaults.decisionRequestRevisionId;
+  const launchDefault: LaunchDefaultState | undefined = project && record?.kind === "saved" && record.revision.id !== pinned
+    ? {
+        differences: ["Decision request"],
+        saving: settingDefault,
+        onUse() {
+          const revisionId = record.revision.id;
+          const label = (id: DecisionRequestRevisionId | undefined) => {
+            for (const request of menu?.requests ?? []) {
+              const revision = request.revisions.find((entry) => entry.revisionId === id);
+              if (revision) return request.revisions.length > 1 ? `${request.name}, revision ${revision.ordinal}` : request.name;
+            }
+            return "none";
+          };
+          input.requestConfirmation({
+            title: "Use as decision launch default?",
+            description: "Teammates and the CLI open this decision request. Only the request pin changes.",
+            details: [{ label: "Decision request", value: `${label(pinned)} → ${label(revisionId)}` }],
+            confirmLabel: "Use as launch default",
+            onConfirm() {
+              setSettingDefault(true);
+              void personal.writeLaunchDefaults((current) => setDecisionLaunchDefault(current, revisionId))
+                .then((outcome) => onError(outcome.kind === "confirmed" ? undefined : outcome.message || "The launch default could not be saved."),
+                  (error: unknown) => onError(error instanceof Error ? error.message : "The launch default could not be saved."))
+                .finally(() => setSettingDefault(false));
+            },
+          });
+        },
+      }
+    : undefined;
 
   function ready(): boolean {
     if (personal.status.kind === "ready" || personal.status.kind === "session") return true;
@@ -173,5 +224,16 @@ export function useDecisionRequestRecord(input: {
     selectSaved(revisionId) {
       personal.selectDecision({ kind: "saved-decision-request-revision", revisionId });
     },
+    menu,
+    select(target) {
+      if (!enabled) return;
+      personal.selectDecision(target.kind === "saved"
+        ? { kind: "saved-decision-request-revision", revisionId: target.revisionId as DecisionRequestRevisionId }
+        : target.kind === "draft"
+          ? { kind: "draft", draftId: target.draftId as Extract<LocalDecisionInput, { kind: "draft" }>["draftId"] }
+          : { kind: "scratch", scratchId: target.scratchId as Extract<LocalDecisionInput, { kind: "scratch" }>["scratchId"] });
+      onError(undefined);
+    },
+    launchDefault,
   };
 }

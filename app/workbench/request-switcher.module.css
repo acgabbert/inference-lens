@@ -1,0 +1,24 @@
+/* The request switcher in Chat and Decision Compose (2b step 5, T1). */
+
+.switcher {
+  margin: 0 0 var(--space-sm);
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-xs) var(--space-sm);
+  font-size: var(--type-compact);
+}
+
+.switcher label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  min-width: 0;
+  max-width: 100%;
+  color: var(--text-secondary);
+}
+
+.switcher select {
+  min-width: 0;
+  max-width: 100%;
+}

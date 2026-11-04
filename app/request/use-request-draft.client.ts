@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { ToolMock } from "../../packages/core/src/project.ts";
 import { createEntityId } from "../../packages/core/src/run-kernel/types.ts";
 import type {
@@ -127,12 +127,37 @@ export function removeDraftMessage(
 export function useRequestDraft(input: {
   onProjectDirty(): void;
   onProjectError(message: string | undefined, options?: { clearKind?: boolean }): void;
+  /**
+   * A personal session's tool selection (2b step 5). When given, which
+   * project tools are enabled is its override over the launch default, and
+   * enabling one is no project edit.
+   */
+  personalTools?: { enabledToolIds: ToolId[]; set(enabledToolIds: ToolId[]): void };
 }): RequestDraftHandle {
-  const { onProjectDirty, onProjectError } = input;
+  const { onProjectDirty, onProjectError, personalTools } = input;
   const [messages, setMessages] = useState<ConversationMessage[]>(createInitialMessages);
   const [tools, setTools] = useState<ToolDefinition[]>([]);
   const [toolMocks, setToolMocks] = useState<ToolMock[]>([]);
-  const [enabledToolIds, setEnabledToolIds] = useState<ToolId[]>([]);
+  const [localEnabledToolIds, setLocalEnabledToolIds] = useState<ToolId[]>([]);
+  // Several updates can land in one handler, before the owner re-renders.
+  const personalToolsRef = useRef(personalTools);
+  const personalEnabledRef = useRef(personalTools?.enabledToolIds);
+  useEffect(() => {
+    personalToolsRef.current = personalTools;
+    personalEnabledRef.current = personalTools?.enabledToolIds;
+  });
+  const enabledToolIds = personalTools?.enabledToolIds ?? localEnabledToolIds;
+  function setEnabledToolIds(update: ToolId[] | ((current: ToolId[]) => ToolId[])): void {
+    const personal = personalToolsRef.current;
+    if (!personal) {
+      setLocalEnabledToolIds(update);
+      return;
+    }
+    const current = personalEnabledRef.current ?? personal.enabledToolIds;
+    const next = typeof update === "function" ? update(current) : update;
+    personalEnabledRef.current = next;
+    personal.set(next);
+  }
   const [requestTools, setRequestTools] = useState<ToolDefinition[]>([]);
 
   function serializedTools(): ToolDefinition[] {
@@ -264,7 +289,8 @@ export function useRequestDraft(input: {
     setEnabledToolIds((current) =>
       enabled ? [...current, id] : current.filter((toolId) => toolId !== id),
     );
-    onProjectDirty();
+    // A personal selection is not a project edit (2b step 5).
+    if (!personalToolsRef.current) onProjectDirty();
   }
 
   /**
@@ -355,7 +381,10 @@ export function useRequestDraft(input: {
     setMessages(snapshot.messages);
     setTools(snapshot.tools);
     setToolMocks(snapshot.toolMocks);
-    setEnabledToolIds(snapshot.enabledToolIds);
+    // Never written through to a personal selection: an adoption must not
+    // replace it with the launch default. Unused while a personal session
+    // supplies the selection, and ready for a legacy one that follows.
+    setLocalEnabledToolIds(snapshot.enabledToolIds);
   }
 
   return {

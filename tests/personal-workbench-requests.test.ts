@@ -288,3 +288,29 @@ test("recovery keeps later scratch edits and does not replace another selection"
     if (laterEdits) assert.equal(reopened.scratch(scratch.scratchId)?.publishing, undefined);
   }
 });
+
+test("execution overrides persist beside the selection, and moving the selection keeps them (step 5)", async () => {
+  const storage = new MemoryStorage();
+  const instance = controller(storage);
+  await instance.open(shared);
+  assert.equal(instance.chatExecution, undefined);
+  instance.setChatExecution({ target: { model: "other-model" }, environmentId: null });
+  instance.selectChat({ kind: "saved-conversation-revision", revisionId: launch.id });
+  instance.selectDecision({ kind: "saved-decision-request-revision", revisionId: shared.defaults.decisionRequestRevisionId! });
+  await instance.flush();
+  assert.deepEqual(storedSelections(storage)?.chat, {
+    selectedInput: { kind: "saved-conversation-revision", revisionId: launch.id },
+    execution: { target: { model: "other-model" }, environmentId: null },
+  });
+  instance.setChatExecution(undefined);
+  await instance.flush();
+  assert.deepEqual(storedSelections(storage)?.chat, { selectedInput: { kind: "saved-conversation-revision", revisionId: launch.id } });
+  assert.equal(instance.chatExecution, undefined);
+
+  // A reopened folder reads them back.
+  instance.setChatExecution({ enabledToolIds: [] });
+  await instance.flush();
+  const reopened = controller(storage);
+  await reopened.open(shared);
+  assert.deepEqual(reopened.chatExecution, { enabledToolIds: [] });
+});

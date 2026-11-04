@@ -14,15 +14,18 @@ import type {
   RunId,
 } from "../../packages/core/src/run-kernel/types.ts";
 import { stableJsonValue } from "../../packages/core/src/stable-json.ts";
+import type { LocalChatInput } from "../../packages/core/src/personal-workbench.ts";
 import type { ChatScratchParent, PersonalWorkbenchHandle } from "../workbench/use-personal-workbench.client.ts";
 import {
   branchItems,
   branchScratchParent,
   chatParentItems,
+  chatRequestMenu,
   localRunInput,
   selectedChatRecord,
 } from "./local-chat-request.ts";
 import type { LocalChatRunInput, SelectedChatRecord } from "./local-chat-request.ts";
+import type { RequestMenu, RequestMenuTarget } from "../workbench/request-menu.ts";
 
 export type { LocalChatRunInput, SelectedChatRecord };
 
@@ -64,11 +67,15 @@ export interface ChatRequestRecordHandle {
   branch(source: ChatBranchSource, messages: ConversationMessage[], context: TemplateResolutionContext): boolean;
   /** Selects a saved revision, as a confirmed import does. */
   selectSaved(revisionId: ConversationRevisionId): void;
+  /** The switcher's entries (2b step 5, T1); undefined while disabled. */
+  menu: RequestMenu | undefined;
+  /** Moves the personal selection to a switcher entry; never `defaults`. */
+  select(target: RequestMenuTarget): void;
 }
 
 type PersonalRequestOwner = Pick<
   PersonalWorkbenchHandle,
-  | "enabled" | "status" | "chatSelection" | "scratches" | "scratch" | "draftById" | "selectChat"
+  | "enabled" | "status" | "chatSelection" | "scratches" | "scratch" | "draftById" | "draftFor" | "selectChat"
   | "updateChatRequestDraft" | "createChatScratch" | "updateChatScratch" | "discardChatRequestDraft"
   | "discardScratch" | "publishChatRequestDraft" | "publishScratch"
 >;
@@ -211,6 +218,16 @@ export function useChatRequestRecord(input: {
     },
     selectSaved(revisionId) {
       personal.selectChat({ kind: "saved-conversation-revision", revisionId });
+    },
+    menu: record && project ? chatRequestMenu(project, record, personal) : undefined,
+    select(target) {
+      if (!enabled) return;
+      personal.selectChat(target.kind === "saved"
+        ? { kind: "saved-conversation-revision", revisionId: target.revisionId as ConversationRevisionId }
+        : target.kind === "draft"
+          ? { kind: "draft", draftId: target.draftId as Extract<LocalChatInput, { kind: "draft" }>["draftId"] }
+          : { kind: "scratch", scratchId: target.scratchId as Extract<LocalChatInput, { kind: "scratch" }>["scratchId"] });
+      onError(undefined);
     },
   };
 }

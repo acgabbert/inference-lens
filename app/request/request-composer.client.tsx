@@ -26,6 +26,8 @@ import type { ToolAttachmentDestination, ToolAttachmentSource } from "./use-requ
 import { StatusChip } from "../notifications/status-chip.client";
 import { LocalRequestNotice } from "./local-request-notice.client";
 import type { LocalRequestState } from "./local-request-notice.client";
+import { LaunchDefaultNotice } from "./launch-default-notice.client";
+import type { LaunchDefaultState } from "./launch-default-notice.client";
 import { PromptInsertionDialog } from "../templates/prompt-insertion-dialog.client";
 import { PromptModelRecommendation } from "../templates/prompt-model-recommendation.client";
 import { SavedPromptPicker } from "../templates/saved-prompt-picker.client";
@@ -100,6 +102,12 @@ export interface RequestComposerProps {
   requestPreview?: RequestPreview;
   /** A personal session's unsaved request draft or scratch (2b step 3). */
   localRequest?: LocalRequestState;
+  /** A personal session's request switcher (2b step 5, T1), composed by the route. */
+  requestSwitcher?: ReactNode;
+  /** Where a personal session differs from the launch default (T4). */
+  launchDefault?: LaunchDefaultState;
+  /** Settings edits are a personal session's own, not the project's (2b step 5). */
+  personalSettings?: boolean;
   /** Composed by the route from the environment owner; absent without a project. */
   environmentSelector?: ReactNode;
   /** The selected environment, so each template use can say what it supplies. */
@@ -134,6 +142,9 @@ export function RequestComposer({
   pendingBranch,
   requestPreview,
   localRequest,
+  requestSwitcher,
+  launchDefault,
+  personalSettings = false,
   environmentSelector,
   environment,
   onOpenConnectionSettings,
@@ -325,6 +336,7 @@ export function RequestComposer({
         notices={<>
           <RunReadinessNotice {...(readiness ? { readiness } : {})} onAction={routeReadinessAction} />
           {localRequest && <LocalRequestNotice state={localRequest} />}
+          {launchDefault && <LaunchDefaultNotice state={launchDefault} />}
           {pendingBranch && (
             <StatusChip
               tone="advisory"
@@ -348,13 +360,14 @@ export function RequestComposer({
       >
         {activeTab === "messages" ? (
           <>
+            {requestSwitcher}
             <div className="run-settings">
               <RequestSettings
                 {...settings}
                 modelInputRef={modelRef}
                 open={settingsOpen}
                 onOpenChange={setSettingsOpen}
-                scopeLabel={project ? "Project settings" : "Profile defaults"}
+                scopeLabel={personalSettings ? "Your settings" : project ? "Project settings" : "Profile defaults"}
               />
               {environmentSelector}
               {/* Outside the panel deliberately: how many tools accompany the

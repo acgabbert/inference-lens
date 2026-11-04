@@ -22,6 +22,7 @@ import type { WorkbenchStorage, WorkbenchStoreOutcome } from "../../packages/cor
 import type { ProjectSession, SharedWriteOutcome } from "../use-project-workspace.client.ts";
 import { PersonalWorkbenchController } from "./personal-workbench-controller.ts";
 import type {
+  ChatExecutionOverrides,
   ChatScratchParent,
   DecisionScratchParent,
   PersonalWorkbenchStatus,
@@ -36,6 +37,7 @@ import type {
 } from "./personal-workbench-controller.ts";
 
 export type {
+  ChatExecutionOverrides,
   ChatScratchParent,
   DecisionScratchParent,
   PersonalWorkbenchStatus,
@@ -50,8 +52,9 @@ export type {
 /**
  * The personal owner (D3): record load and save, recovery status and
  * publication. Step 2 routes prompt drafts, step 3 chat request drafts, chat
- * scratch and the chat selection, and step 4 their decision equivalents;
- * execution overrides and reconciliation arrive in steps 5–6
+ * scratch and the chat selection, step 4 their decision equivalents, and
+ * step 5 execution overrides and the launch-default write; reconciliation
+ * arrives in step 6
  * (docs/SHARED_ASSETS_LEVEL_TWO_DESIGN.md, "Delivery inside the gate").
  */
 export interface PersonalWorkbenchHandle {
@@ -112,6 +115,15 @@ export interface PersonalWorkbenchHandle {
   updateDecisionScratch(scratchId: string, content: WorkbenchDecisionRequestContent): void;
   discardDecisionRequestDraft(decisionRequestId: DecisionRequestId): Promise<WorkbenchStoreOutcome | undefined>;
   publishDecisionRequestDraft(decisionRequestId: DecisionRequestId): Promise<PublishOutcome>;
+  /** Personal execution choices over the launch defaults (step 5); undefined inherits them. */
+  chatExecution: ChatExecutionOverrides | undefined;
+  /** Applies `update` to the overrides as they are now, not as last rendered. */
+  updateChatExecution(update: (current: ChatExecutionOverrides | undefined) => ChatExecutionOverrides | undefined): void;
+  /**
+   * The D13 launch-default actions' one shared write. `update` must be
+   * deterministic, since the workspace may apply it twice.
+   */
+  writeLaunchDefaults(update: (project: ProjectFile) => ProjectFile): Promise<SharedWriteOutcome>;
 }
 
 const OFF: PersonalWorkbenchStatus = { kind: "off" };
@@ -274,6 +286,14 @@ export function usePersonalWorkbench(input: {
       const shared = sharedRef.current;
       if (!current || !shared) return { kind: "blocked", message: "Open a project before saving a request." };
       return current.publishDecisionRequestDraft(decisionRequestId, shared, (update) => writeSharedRef.current(update));
+    },
+    chatExecution: controller?.chatExecution,
+    updateChatExecution(update) {
+      const current = controllerRef.current;
+      current?.setChatExecution(update(current.chatExecution));
+    },
+    writeLaunchDefaults(update) {
+      return writeSharedRef.current(update);
     },
   };
 }
