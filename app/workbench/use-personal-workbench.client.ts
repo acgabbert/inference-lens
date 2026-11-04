@@ -172,6 +172,7 @@ export function usePersonalWorkbench(input: {
       projectId: personal.projectId,
       storage,
       seeds,
+      ...(personal.upgrade ? { upgrade: personal.upgrade } : {}),
       onChange: () => setRevision((current) => current + 1),
     });
     controllerRef.current = next;

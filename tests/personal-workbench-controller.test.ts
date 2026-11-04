@@ -260,3 +260,121 @@ test("a workbench that belongs to another project blocks the controller", async 
   const outcome = await instance.publishPromptDraft(asset, shared, sharedWriter(shared).write);
   assert.equal(outcome.kind, "blocked");
 });
+
+// Step 6a, V2: records carried out of a pre-v19 session into the upgraded folder.
+const activatedDraft = { ...seed, draftId: "draft_migrated-activated" } as WorkbenchPromptDraftV1;
+const activatedPath = `drafts/${activatedDraft.draftId}.json`;
+
+function upgradedStorage(stored: WorkbenchPromptDraftV1 = activatedDraft) {
+  const storage = new MemoryStorage();
+  storage.files.set(`drafts/${stored.draftId}.json`, serializeWorkbenchRecord(stored));
+  return storage;
+}
+
+test("after an upgrade, an unedited carried draft gives way to the draft completion activated", async () => {
+  const storage = upgradedStorage();
+  const { instance } = controller(storage, { seeds: [seed], upgrade: { activated: [activatedPath], lifted: [seed] } });
+  await instance.open(shared);
+  assert.deepEqual(instance.recovery, []);
+  assert.equal(instance.draftFor(asset)?.draftId, activatedDraft.draftId);
+  await instance.flush();
+  assert.deepEqual(storage.writes, []);
+});
+
+test("after an upgrade, a carried draft edited in the session replaces the activated draft's content in place", async () => {
+  const storage = upgradedStorage();
+  const carried = { ...seed, edited: edited("Edited before the upgrade.") } as WorkbenchPromptDraftV1;
+  const { instance } = controller(storage, { seeds: [carried], upgrade: { activated: [activatedPath], lifted: [seed] } });
+  await instance.open(shared);
+  await instance.flush();
+  assert.deepEqual(instance.recovery, []);
+  assert.deepEqual([...storage.files.keys()], [activatedPath]);
+  const stored = parseWorkbenchRecordJson(storage.files.get(activatedPath)!, projectId);
+  assert.deepEqual(stored.kind === "draft" && stored.edited, edited("Edited before the upgrade."));
+});
+
+test("after an upgrade, an edited carried draft that meets an older active draft stays in memory for recovery", async () => {
+  const older = { ...seed, draftId: "draft_from-before", edited: edited("An older personal draft.") } as WorkbenchPromptDraftV1;
+  const storage = upgradedStorage(older);
+  const carried = { ...seed, edited: edited("Edited before the upgrade.") } as WorkbenchPromptDraftV1;
+  const { instance } = controller(storage, { seeds: [carried], upgrade: { activated: [], lifted: [seed] } });
+  await instance.open(shared);
+  await instance.flush();
+  assert.deepEqual(storage.writes, []);
+  assert.equal(instance.draftFor(asset)?.draftId, older.draftId);
+  assert.equal(instance.recovery.length, 1);
+  const [item] = instance.recovery;
+  assert.equal(item!.kind, "competing-draft");
+  assert.deepEqual(item!.record && item!.record.kind === "draft" && item!.record.edited, edited("Edited before the upgrade."));
+  assert.equal(instance.hasUnpersistedWork, true, "the session copy exists only in memory");
+});
+
+test("upgrading preserves existing selections when carried selections collide", async () => {
+  const storage = new MemoryStorage();
+  const existing = structuredClone(plan.selections);
+  existing.chat!.execution!.target!.model = "existing-personal-model";
+  storage.files.set("selections.json", serializeWorkbenchRecord(existing));
+  const carried = structuredClone(plan.selections);
+  carried.chat!.execution!.target!.model = "session-personal-model";
+  const { instance } = controller(storage, {
+    seeds: [carried],
+    upgrade: { activated: [], lifted: plan.drafts },
+  });
+  await instance.open(shared);
+  const result = parseWorkbenchRecordJson(storage.files.get("selections.json")!, projectId);
+  assert.equal(result.kind === "selections" && result.chat?.execution?.target?.model, "existing-personal-model");
+  assert.deepEqual(instance.recovery.map((item) => item.record), [carried]);
+  assert.equal(instance.hasUnpersistedWork, true);
+});
+
+test("upgrading carries selections over the record completion just activated", async () => {
+  const storage = new MemoryStorage();
+  storage.files.set("selections.json", serializeWorkbenchRecord(plan.selections));
+  const carried = structuredClone(plan.selections);
+  carried.chat!.execution!.target!.model = "session-personal-model";
+  const { instance } = controller(storage, {
+    seeds: [carried], upgrade: { activated: ["selections.json"], lifted: plan.drafts, stagedSelections: plan.selections },
+  });
+  await instance.open(shared);
+  assert.deepEqual(parseWorkbenchRecordJson(storage.files.get("selections.json")!, projectId), carried);
+  assert.deepEqual(instance.recovery, []);
+});
+
+test("upgrading identical selections creates no recovery copy or write", async () => {
+  const storage = new MemoryStorage();
+  storage.files.set("selections.json", serializeWorkbenchRecord(plan.selections));
+  const { instance } = controller(storage, {
+    seeds: [plan.selections], upgrade: { activated: [], lifted: plan.drafts },
+  });
+  await instance.open(shared);
+  assert.deepEqual(storage.writes, []);
+  assert.deepEqual(instance.recovery, []);
+  assert.equal(instance.hasUnpersistedWork, false);
+});
+
+test("an activated draft edited before reopen keeps both writers' versions", async () => {
+  const newer = { ...activatedDraft, edited: edited("Edited by another writer.") } as WorkbenchPromptDraftV1;
+  const storage = upgradedStorage(newer);
+  const carried = { ...seed, edited: edited("Edited before the upgrade.") } as WorkbenchPromptDraftV1;
+  const { instance } = controller(storage, { seeds: [carried], upgrade: { activated: [activatedPath], lifted: [seed] } });
+  await instance.open(shared);
+  assert.deepEqual(instance.draftFor(asset)?.edited, newer.edited);
+  assert.deepEqual(instance.recovery.map((item) => item.record), [carried]);
+  assert.deepEqual(storage.writes, []);
+});
+
+test("activated selections edited before reopen preserve the newer record", async () => {
+  const storage = new MemoryStorage();
+  const newer = structuredClone(plan.selections);
+  newer.chat!.execution!.target!.model = "another-writers-model";
+  storage.files.set("selections.json", serializeWorkbenchRecord(newer));
+  const carried = structuredClone(plan.selections);
+  carried.chat!.execution!.target!.model = "session-model";
+  const { instance } = controller(storage, {
+    seeds: [carried],
+    upgrade: { activated: ["selections.json"], lifted: plan.drafts, stagedSelections: plan.selections },
+  });
+  await instance.open(shared);
+  assert.deepEqual(parseWorkbenchRecordJson(storage.files.get("selections.json")!, projectId), newer);
+  assert.deepEqual(instance.recovery.map((item) => item.record), [carried]);
+});

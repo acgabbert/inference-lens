@@ -39,6 +39,7 @@ import type {
 import { LEGACY_FOLDER_SAVE_BLOCKED_MESSAGE, readProjectManifest } from "./workbench/project-manifest.ts";
 import type { ProjectManifestFormat, ProjectSessionMode } from "./workbench/project-manifest.ts";
 import type { WorkbenchPromptDraftV1 } from "../packages/core/src/personal-workbench.ts";
+import type { UpgradeCarry } from "./workbench/personal-workbench-controller.ts";
 import {
   prunedProjectProfileMap,
   readLegacyProjectProfileMap,
@@ -131,6 +132,8 @@ export interface ProjectSession {
   format?: ProjectManifestFormat;
   /** Template drafts lifted from a legacy document, held session-only (S1, S2). */
   personalSeeds: readonly WorkbenchPromptDraftV1[];
+  /** Set when an upgrade reopened the folder, so carried drafts settle against it (V2). */
+  upgrade?: UpgradeCarry;
 }
 
 export interface ProjectWorkspaceHandleState {
@@ -169,8 +172,11 @@ export interface ProjectWorkspaceHandleState {
   confirmProjectEditorTakeover(): void;
   cancelProjectEditorTakeover(): void;
   holdsProjectEditorLock(): Promise<boolean>;
+  requireMigrationEditor(workspace: ProjectWorkspaceHandle): Promise<void>;
   cancelLinkedProjectReplacement(intent: () => boolean): void;
   adoptLinkedWorkspace(opened: OpenedProjectWorkspace, isCurrent: () => boolean, blockedReason: () => string | undefined, revalidateEvidence: () => Promise<void>): Promise<"adopted" | "cancelled" | "blocked">;
+  /** Rereads the open folder and adopts it in place; see the implementation. */
+  reopenProjectFolder(upgrade?: UpgradeCarry, expectedManifest?: string): Promise<boolean>;
   markDirty(): void;
   setError(message: string | undefined, options?: { clearKind?: boolean }): void;
   clearErrorKind(): void;
@@ -602,6 +608,28 @@ export function useProjectWorkspace(input: {
     }
   }
 
+  /**
+   * Reads the folder again into a fresh handle and adopts it in place, keeping
+   * the tab's role: after an upgrade, whose carry settles this session's
+   * personal records against the new store (V2), or to check a folder again
+   * after an upgrade that could not be confirmed (V3). Resolves false when the
+   * folder could not be read or another project was adopted meanwhile.
+   */
+  async function reopenProjectFolder(upgrade?: UpgradeCarry, expectedManifest?: string): Promise<boolean> {
+    const workspace = projectWorkspaceRef.current;
+    const projectId = adoptedProjectIdRef.current as ProjectFile["projectId"] | undefined;
+    if (!workspace || !projectId) return false;
+    try {
+      const opened = await reopenProjectWorkspace(workspace, projectId, expectedManifest);
+      if (projectWorkspaceRef.current !== workspace) return false;
+      applyProjectDocument(opened.project, opened.handle, undefined, { keepTabRole: true, ...(upgrade ? { upgrade } : {}) });
+      return true;
+    } catch (error) {
+      if (projectWorkspaceRef.current === workspace) projectFailure(error, "Could not reopen the project folder.");
+      return false;
+    }
+  }
+
   function onTabAcquired(cause: LockAcquisition): void {
     const acquisition = ++tabAcquisitionRef.current;
     const version = cause === "requested"
@@ -847,7 +875,7 @@ export function useProjectWorkspace(input: {
     project: ProjectFile,
     workspace: ProjectWorkspaceHandle | null,
     profileId?: string,
-    options?: { keepTabRole: true },
+    options?: { keepTabRole: true; upgrade?: UpgradeCarry },
     sessionManifest?: Omit<ProjectWorkspaceManifest, "format"> & { format?: ProjectManifestFormat },
   ): void {
     const adoption = options?.keepTabRole ? "refresh" : "replace";
@@ -876,6 +904,7 @@ export function useProjectWorkspace(input: {
       projectId: project.projectId,
       ...(workspace && manifest.format ? { format: manifest.format } : {}),
       personalSeeds: manifest.personalSeeds,
+      ...(options?.upgrade ? { upgrade: options.upgrade } : {}),
     });
     setProjectFile(project);
     setCurrentWorkspace(workspace, project.projectId, options);
@@ -1357,7 +1386,15 @@ export function useProjectWorkspace(input: {
       : {}),
     cancelLinkedProjectReplacement,
     holdsProjectEditorLock: () => tabCoordinatorRef.current?.holdsEditorLock() ?? Promise.resolve(false),
+    async requireMigrationEditor(workspace) {
+      const coordinator = workspaceCoordinatorsRef.current.get(workspace);
+      const holdsLock = !coordinator || await coordinator.holdsEditorLock();
+      if (projectWorkspaceRef.current !== workspace || !holdsLock || (coordinator && tabRoleRef.current !== "editor")) {
+        throw new Error(SECONDARY_SAVE_MESSAGE);
+      }
+    },
     adoptLinkedWorkspace,
+    reopenProjectFolder,
     becomeProjectEditor,
     confirmProjectEditorTakeover,
     cancelProjectEditorTakeover,

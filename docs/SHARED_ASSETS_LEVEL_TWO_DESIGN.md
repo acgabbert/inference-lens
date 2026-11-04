@@ -1622,3 +1622,138 @@ makes it the launch default, reads a seeded model override back and clears it,
 records an environment choice, and switches and pins a decision revision. Its
 decision test failed first on the sync loop (the selection never reached
 disk); with the fix removed it fails again the same way.
+
+### Step 6 decisions (approved November 4, 2026)
+
+The user approved four behaviors for step 6, which the owner interfaces and
+D4–D8 left open. All of them apply only with the gate on.
+
+- **V1. Step 6 lands in two parts.** 6a delivers the upgrade: the Upgrade
+  action on a pre-v19 folder, the preview, staging and completion through
+  `useProjectMigration`, reopening as a v19 session, D5's inspection, and
+  "Finish upgrade" for an operation an earlier attempt left staged or
+  half-activated. 6b delivers the Recovery drawer and chip, reconciliation
+  (Compare, "Use this one", Discard), the resolutions record, "Remove
+  migration backup" and the pane marks. Both stay behind the gate, and 6b
+  lands before the gate can be removed (the completion approval condition).
+- **V2. Session edits carry over.** A pre-v19 folder keeps its personal
+  records in memory (S1), and staging copies the drafts from the file on disk,
+  so edits made in that session are not in the staged copy. After completion
+  the reopened session writes the in-memory records into the new
+  `.workbench/`. A session prompt draft replaces the draft that completion
+  just activated for the same prompt: it is the newer edit of the same work,
+  and the staged candidate stays in `migrations/` as the backup. Any other
+  collision (an active draft that existed before the upgrade, or a candidate
+  left pending) is a recovery item, and the session copy stays in memory
+  rather than being dropped.
+- **V3. Inspection reuses blocked saves.** An `uncertain` or `diverged`
+  completion (D5) reopens the folder in the same mode as a pre-v19 folder:
+  viewing, running and evidence writes work, and shared saves are refused. A
+  notice says what happened and offers "Check again", which re-inspects the
+  operation and reopens as v19 once the manifest is confirmed. No separate
+  inspection page is added.
+- **V4. Every recovery item has its actions in 6b.** Pending migration
+  candidates and competing drafts: Compare, "Use this one", Discard. Orphaned
+  drafts: Compare with the base snapshot, Save as new, Discard (never
+  rebased). Publication conflicts: Compare, Keep as draft, Discard. Failed
+  writes: Retry. Unreadable records show their path and message only; the app
+  never deletes them.
+
+Defaults taken with them, reversible and inside the approved contracts:
+
+- **Upgrade is offered in the editing tab only.** A viewing tab shows the
+  blocked notice and says the upgrade runs from the tab that edits the
+  project (tab coordination's U1).
+- **One confirmation stages and completes.** The preview's Upgrade runs
+  staging and then completion. A `stale-plan` result returns to a fresh
+  preview; nothing is written by opening or previewing.
+- **The completion guard narrows instead of lifting.** The approval-condition
+  test allows one caller, the migration owner in `app/workbench/`, which runs
+  only in a `personal` session. The guard lifts with the gate (D2).
+- **The journal records target v19.** Its `targetVersion` literal is still 16
+  from before the October 30 renumbering. No application has written a
+  journal, so it is amended in place, as D9 amends workbench v1.
+- **The desktop host gains a reopen command.** Native open always shows a
+  folder picker, and completion invalidates the native handle. A
+  `reopen_project_workspace` command registers the same directory afresh from
+  its current manifest, as the browser's `reopenProjectWorkspace` does.
+
+### Step 6a delivered (November 4, 2026)
+
+The upgrade of a pre-v19 folder, behind the gate. With the gate off every path
+is today's, and nothing calls migration completion.
+
+- **Migration owner.** [project-migration.ts](../app/workbench/project-migration.ts)
+  holds the protocol apart from React: the preview, Upgrade (staging, skipped
+  when an earlier attempt staged the same bytes, then completion), finding an
+  upgrade that stopped after the shared write, and Finish.
+  [use-project-migration.client.ts](../app/workbench/use-project-migration.client.ts)
+  owns it for the page, in the tab that edits the project. It is the one
+  caller of completion, and the approval-condition test now allows exactly
+  that file.
+- **Surfaces.** The page's banner slot carries the upgrade's conditions, after
+  the project-error and tab banners: "Upgrade project…" on a pre-v19 folder,
+  "Finish upgrade" when staged records still wait, V3's failure with "Check
+  again", and what the upgrade could not restore.
+  [project-upgrade-dialog.client.tsx](../app/workbench/project-upgrade-dialog.client.tsx)
+  is the preview: the source format, the drafts that become personal, the
+  backup, D4's warning about older builds and D15's wording.
+- **Reopen.** The workspace's new `reopenProjectFolder` rereads the folder into
+  a fresh handle and adopts it in place, keeping the tab's role. The desktop
+  host gains `reopen_project_workspace`, which registers the folder afresh
+  under its workspace lock; the invalidated registration stays refused, and a
+  reopened handle keeps its folder identity for run navigation, as a browser
+  reopen does.
+- **V2 carry.** The adoption after an upgrade names the records completion
+  activated and the drafts the file held. The personal controller drops a
+  carried draft the session never edited (its staged candidate covers it),
+  writes an edited one over the draft completion just activated for the same
+  prompt, and keeps any other colliding session copy in memory on its recovery
+  item, so unload still warns about it.
+- **Journal.** `targetVersion` is 19 (amended in place).
+
+Implementation choices inside the approved contracts:
+
+- **The owner interface is the page's, not the protocol's.** The proposed
+  `preview`, `stage` and `complete` handle became open, confirm and close of
+  one dialog, since one confirmation stages and completes. `outcome` became
+  `inspection`, and `unfinished` and `finish` were added for an upgrade that
+  stopped after the shared write.
+- **Unsaved shared changes are offered for export.** A pre-v19 session can
+  hold shared edits it could never save. The preview says the reopen discards
+  them, offers "Export JSON copy…", and labels its action "Discard changes and
+  upgrade".
+- **Check again carries too.** It reopens with the drafts the file held and no
+  activated records, so an unedited session draft gives way to its staged
+  candidate, which Finish then activates. Rechecking confirms this operation's
+  exact staged shared output before reopening; the reopened manifest must
+  still match that inspected output. A write that never landed, leaving exactly
+  the source bytes, reopens the folder as a pre-v19 folder with the session's
+  records and offers Upgrade again (V3). Divergent or unreadable files keep
+  shared saves blocked. Existing personal selections win a collision with carried
+  session selections; the session copy remains in memory for recovery. Only
+  selections activated by this upgrade can be replaced by the session copy.
+- **Finish is offered only while the manifest is exactly the upgrade's
+  output.** Any later shared save diverges it; the candidates then wait for
+  6b's reconciliation.
+
+Not changed in 6a: no Recovery drawer, chip or pane marks, and pending
+candidates and colliding session copies are only reported (6b). A viewing tab
+gets no upgrade banner (its tab banner already says it does not save), and it
+learns of the upgrade when it next reads the folder. The desktop reopen is
+covered by a Rust unit test only; the gated e2e suite runs in the browser.
+
+Checks: `tests/project-migration.test.ts` (preview, Upgrade over the browser
+adapters, a stale manifest, continuing an earlier staging, a failed manifest
+write as inspection, and finding and finishing an interrupted upgrade) was
+written with its module, so it was never shown failing.
+`tests/personal-workbench-controller.test.ts` gains three V2 cases, which
+failed first: the carried draft became a competing item, and the colliding
+session copy was not kept. The Rust test
+`reopening_registers_the_folder_afresh_and_leaves_an_invalidated_handle_refused`
+was written with the command. The gated
+`tests/e2e/personal-workbench-upgrade.spec.ts` upgrades a v18 folder with a
+draft edited in the session and saves it afterwards, and checks that Cancel
+writes nothing. Both of its tests failed first because no Upgrade action
+existed; with the V2 carry disabled, the first fails again on the draft's
+content.

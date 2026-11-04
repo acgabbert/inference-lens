@@ -62,7 +62,7 @@ const journalSchema = z.object({
   schemaVersion: z.literal(1), kind: z.literal("shared-project-migration"),
   operationId: operationIdSchema, projectId: projectContentSchemas.entityId("project"),
   sourceVersion: z.union([z.literal(10), z.literal(11), z.literal(12), z.literal(13), z.literal(14), z.literal(15), z.literal(16), z.literal(17), z.literal(18)]),
-  targetVersion: z.literal(16),
+  targetVersion: z.literal(19),
   source: z.object({ ...descriptor, path: z.literal("source.project.json") }).strict(),
   shared: z.object({ ...descriptor, path: z.literal("shared.project.json") }).strict(),
   candidates: z.array(candidates).min(1),
@@ -93,7 +93,7 @@ export type MigrationStageOutcome =
 /** The host coordinates the entire batch with ordinary workbench mutations. No deletion or manifest writer. */
 export interface MigrationStorage {
   read(): Promise<MigrationSnapshot>;
-  stage(projectId: ProjectId, files: MigrationPayload[]): Promise<MigrationStageOutcome>;
+  stage(projectId: ProjectId, files: MigrationPayload[], beforeWrite?: () => Promise<void>): Promise<MigrationStageOutcome>;
 }
 export interface PreparedSharedProjectMigration { projectId: ProjectId; operationId: string; files: MigrationPayload[] }
 export type MigrationInspection = { kind: "none" | "incomplete-intent" | "incomplete" | "ready" | "shared-written" | "manifest-diverged" | "needs-review" | "foreign-project"; message?: string };
@@ -144,7 +144,7 @@ export async function prepareSharedProjectMigration(source: Uint8Array): Promise
   }
   const journal = parseMigrationJournal({
     schemaVersion: 1, kind: "shared-project-migration", operationId, projectId: plan.shared.projectId,
-    sourceVersion: plan.sourceVersion, targetVersion: 16,
+    sourceVersion: plan.sourceVersion, targetVersion: 19,
     source: { path: "source.project.json", sha256: sourceHash, byteLength: plan.sourceBytes.length },
     shared: { path: "shared.project.json", sha256: await sha256(sharedBytes), byteLength: sharedBytes.length },
     candidates: candidateDescriptors,
@@ -201,7 +201,7 @@ export async function inspectSharedProjectMigration(snapshot: MigrationSnapshot,
   } catch (error) { return { kind: "needs-review", message: message(error) }; }
 }
 /** Explicit call only: verifies caller payloads, stages immutable copies, and confirms the final inventory. */
-export async function stageSharedProjectMigration(storage: MigrationStorage, prepared: PreparedSharedProjectMigration): Promise<MigrationStageOutcome> {
+export async function stageSharedProjectMigration(storage: MigrationStorage, prepared: PreparedSharedProjectMigration, beforeWrite?: () => Promise<void>): Promise<MigrationStageOutcome> {
   let path = prepared.files[0]?.path ?? "migrations";
   try {
     // Capture caller-owned buffers before the first await.
@@ -215,7 +215,7 @@ export async function stageSharedProjectMigration(storage: MigrationStorage, pre
     if (inspection.kind === "shared-written") return { kind: "blocked", reason: "shared-written", message: "Shared migration output is already present. Inspect personal recovery before continuing." };
     if (!["none", "incomplete-intent", "incomplete", "ready"].includes(inspection.kind)) return { kind: "blocked", reason: inspection.kind, message: inspection.message ?? inspection.kind };
     if (!sameMigrationBytes(snapshot.manifest, source.bytes)) return { kind: "blocked", reason: "manifest-diverged", message: "Manifest no longer matches the migration source. Inspect before continuing." };
-    const outcome = await storage.stage(frozen.projectId, frozen.files);
+    const outcome = await storage.stage(frozen.projectId, frozen.files, beforeWrite);
     if (outcome.kind !== "staged") return outcome;
     path = frozen.files[1].path;
     const confirmed = await inspectSharedProjectMigration(await storage.read(), frozen.projectId, frozen.operationId);

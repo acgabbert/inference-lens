@@ -39,7 +39,7 @@ export interface ProjectManifestRead {
 }
 
 export const LEGACY_FOLDER_SAVE_BLOCKED_MESSAGE =
-  "This project folder uses an older project format. Viewing, running and run history still work, but saving shared changes needs the project upgraded first, which this build does not offer yet.";
+  "This project folder uses an older project format. Viewing, running and run history still work, but saving shared changes needs the project upgraded first: choose Upgrade project… in the notice above.";
 
 /** The active in-memory label for a v19 document; the content is unchanged. */
 function activeDocument(shared: SharedProjectFileV19): ProjectFile {
