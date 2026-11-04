@@ -121,8 +121,8 @@ export function PromptsMode({
         onCreateDecision={templates.createDecisionTemplate}
         onDecisionDraftChange={templates.updateDecisionTemplateDraft}
         onSaveDecision={templates.saveDecisionTemplate}
-        onSaveAndUseDecision={(id, name, content, defaults, revisionName) => {
-          const saved = templates.saveDecisionTemplateForUse(id, name, content, defaults, revisionName);
+        onSaveAndUseDecision={async (id, name, content, defaults, revisionName) => {
+          const saved = await templates.saveDecisionTemplateForUse(id, name, content, defaults, revisionName);
           if (saved) decision.useTemplate(saved.project, id, saved.revisionId);
           return saved?.revisionId;
         }}
@@ -133,8 +133,8 @@ export function PromptsMode({
         onDraftChange={templates.updateProjectTemplateDraft}
         onRecommendedTargetChange={templates.updateProjectTemplateRecommendedTarget}
         onSave={templates.saveProjectTemplate}
-        onSaveAndInsert={(...args) => {
-          const revisionId = templates.saveAndInsertProjectTemplate(...args);
+        onSaveAndInsert={async (...args) => {
+          const revisionId = await templates.saveAndInsertProjectTemplate(...args);
           if (revisionId) onInserted();
           return revisionId;
         }}

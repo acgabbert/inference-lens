@@ -1235,3 +1235,111 @@ the approved contracts:
 - **Launch defaults.** `setLaunchDefaults` and `setDecisionLaunchDefault`
   refuse a revision ID the project does not hold, which covers every local
   and fresh run ID. `defaults.environmentId` is left to its own set-default.
+
+### Step 2 decisions (approved October 31, 2026)
+
+The user approved three interim behaviors for step 2, which the owner
+interfaces left open. All of them apply only with the gate on.
+
+- **S1. A pre-v19 folder blocks shared saves.** D4's blocking lands in step 2,
+  without the upgrade flow that step 6 adds. A gated session opens a v15–v18
+  folder for viewing, running, evidence writes and session-only edits, and a
+  plain notice says shared saves need an upgrade. The app gains no interim
+  legacy writer. Gated e2e specs seed v19 folders directly.
+- **S2. New projects are v19; imports keep their drafts in the session.**
+  Creating a folder and saving a session project to a folder write v19 and
+  create `.workbench/`. A legacy JSON import (v10–v18) opens session-only: the
+  existing migration planner lifts its template drafts into in-memory personal
+  drafts, and saving it to a folder writes v19 and then persists them. Export
+  writes v19 shared definitions only.
+- **S3. Template saves return a Promise in both modes.** `saveProjectTemplate`,
+  `saveDecisionTemplate` and the save-and-insert variants resolve once the
+  save has landed or been refused; the legacy path resolves at once. Editors
+  show a saving state, and a conflict or failure keeps the draft and reports
+  the error.
+
+Two facts changed after the interfaces were read at `6a5600b`. vinext 1.3
+allows one dev server per checkout (`.vinext/dev/lock.json`), so the second,
+gated e2e server sets `VINEXT_NO_DEV_LOCK=1` and its own Vite `cacheDir`; the
+ungated server keeps the lock. The gate is read through vinext's
+`NEXT_PUBLIC_` inlining, which still applies under Vite.
+
+### Step 2 delivered (October 31, 2026)
+
+The gate, the second e2e server, the workspace's `personal` mode and
+`usePersonalWorkbench` with prompt drafts and publication. With the gate off,
+every path is today's and the app still writes v18; migration completion keeps
+its no-application-caller guard.
+
+- **Gate.** [personal-workbench-gate.ts](../app/workbench/personal-workbench-gate.ts)
+  reads `NEXT_PUBLIC_INFERENCE_LENS_PERSONAL_WORKBENCH`, which `vite.config.ts`
+  always defines. A folder handle records the mode it was read in, and the
+  workspace adopts it with the handle as `projectSession.mode`.
+- **Manifest boundary.** [project-manifest.ts](../app/workbench/project-manifest.ts)
+  is the only conversion (I1). A `personal` session reads v19 and labels it
+  with the active version. It plans a legacy document in memory: the shared
+  candidate becomes the document and its prompt drafts become session-only
+  seeds. It writes through the v19 serializer, so a missed routing is a save
+  error.
+- **Workspace.** `projectSession`, `sharedSaveBlockedReason` and `writeShared`
+  are new. A personal session folds only `tools` and `toolMocks` into
+  auto-save, through the new core `updateProjectTools`, which also drops a
+  deleted tool from suites and from the launch default's enabled tools. A
+  legacy folder in a personal session never auto-saves, `save` throws
+  `SharedSaveBlockedError`, and the top bar shows a new `blocked` storage state.
+  Export writes v19 in a personal session.
+- **Personal owner.** [personal-workbench-controller.ts](../app/workbench/personal-workbench-controller.ts)
+  holds the records and protocols apart from React, and
+  [use-personal-workbench.client.ts](../app/workbench/use-personal-workbench.client.ts)
+  makes one controller per adoption. A legacy folder, like a session without a
+  folder, gets no storage: its drafts stay in memory (S1). Saving a session
+  to a folder carries its in-memory records into the new store (S2).
+- **Templates.** Draft edits go to `personal.updateDraft`. `libraryTemplates`
+  presents a record as `template.draft`, so the editors are unchanged apart
+  from S3. The save methods return a Promise, and the editors disable Save
+  and show "Saving…" while one runs.
+
+Implementation choices inside the approved contracts:
+
+- **`writeShared` takes a deterministic update, not a document.** A fixed
+  `next` would drop direct shared edits (D15) that a queued auto-save or the
+  user made while the publication waited. The workspace applies `update` to the
+  latest document when the write reaches the front of the queue, and again to
+  the in-memory document once confirmed. Publication makes that deterministic
+  by fixing the revision suffix and timestamp once. The confirmed outcome
+  returns the document as written.
+- **The step 2 handle is prompt-only.** `updateDraft(asset, base, edited)` and
+  `publish(asset, { extend })` take prompt assets. `extend` carries the direct
+  shared edits that ride with a Save (rename and recommended model), applied
+  inside the same shared write. The published outcome carries the confirmed
+  project, so Save and add, and Save and use, pin the new revision without
+  waiting for a render. Steps 3 and 4 widen both to request drafts and scratch.
+- **A draft equal to its base is no draft,** as `updatePromptTemplateDraft`
+  does today, unless it carries a revision label.
+- **Settling on open.** A record with an intent is settled before `ready`: a
+  publication that landed is completed, one that never landed loses its intent,
+  and a conflict stays as a recovery item and blocks a new Save of that draft. A
+  scratch intent is left for step 3. Orphaned drafts, unreadable records,
+  competing drafts and failed writes are recovery items too; step 6 renders
+  them.
+- **`.workbench/` is created by the first personal write,** through the
+  existing protection check, rather than when the folder is created. A
+  carried session draft that meets a stored draft for the same prompt is
+  reported, not written.
+- **Unload.** The owner warns before unload while a draft is only in memory or
+  not yet written. The replacement dialog does not count personal drafts yet;
+  personal backup before replacement is slice 2e.
+
+Not changed in step 2, and left for later steps: creating a prompt and
+materializing a session prompt are still direct shared writes. Request edits,
+including the use that Save and add inserts, still reach `project.json`
+directly until step 3. Two tabs share `.workbench/` with best-effort conflict
+detection only, and the desktop host is not exercised by the gated e2e suite.
+
+Checks: `tests/personal-workbench-controller.test.ts` (draft debounce, the
+four-step publication, in-flight edits, a refused shared write, an unrecordable
+intent, settling on open, session-only and carried records, a foreign
+workbench) and `tests/project-manifest.test.ts` (codec, both modes). The gated
+`tests/e2e/personal-workbench-prompt-drafts.spec.ts` runs a v19 folder edit and
+Save, and checks that a v18 folder is never written; run against the ungated
+server, both of its tests fail.

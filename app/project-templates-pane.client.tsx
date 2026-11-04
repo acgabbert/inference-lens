@@ -35,7 +35,7 @@ type SaveDecisionTemplate = (
   decision: DecisionInput,
   defaults: Record<string, string>,
   revisionName?: string,
-) => PromptTemplateRevisionId | undefined;
+) => Promise<PromptTemplateRevisionId | undefined>;
 
 export interface ProjectTemplatesPaneProps
   extends Omit<ChatPromptTemplateEditorProps, "template" | "templates"> {

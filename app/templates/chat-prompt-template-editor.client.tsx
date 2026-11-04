@@ -80,7 +80,7 @@ export interface ChatPromptTemplateEditorProps {
     defaults: Record<string, string>,
     recommendedTarget?: PromptTemplateRecommendedTarget,
     revisionName?: string,
-  ): PromptTemplateRevisionId | undefined;
+  ): Promise<PromptTemplateRevisionId | undefined>;
   onSaveAndInsert(
     templateId: PromptTemplateId,
     name: string,
@@ -89,7 +89,7 @@ export interface ChatPromptTemplateEditorProps {
     recommendedTarget: PromptTemplateRecommendedTarget | undefined,
     revisionName: string | undefined,
     itemIndex: number,
-  ): PromptTemplateRevisionId | undefined;
+  ): Promise<PromptTemplateRevisionId | undefined>;
   onDraftChange(
     templateId: PromptTemplateId,
     sourceRevisionId: PromptTemplateRevisionId,
@@ -318,7 +318,10 @@ export function ChatPromptTemplateEditor({
       JSON.stringify(defaults) !== JSON.stringify(viewedRevision.variableDefaults)
     ),
   );
+  // A save resolves once it has landed or been refused (S3); one at a time.
+  const [saving, setSaving] = useState(false);
   const canCreateRevision = Boolean(
+    !saving &&
     selected &&
       viewedRevision &&
       !readOnly &&
@@ -368,9 +371,19 @@ export function ChatPromptTemplateEditor({
     setN8nPasteSuggestionsEnabled(enabled);
   }
 
-  function createRevision(): void {
+  async function saveOnce<T>(save: () => Promise<T>): Promise<T | undefined> {
+    if (saving) return undefined;
+    setSaving(true);
+    try {
+      return await save();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function createRevision(): Promise<void> {
     if (!selected || !viewedRevision || !canCreateRevision) return;
-    const saved = onSave(
+    const saved = await saveOnce(() => onSave(
       selected.id,
       name,
       messages,
@@ -386,7 +399,7 @@ export function ChatPromptTemplateEditor({
           }
         : undefined,
       revisionName,
-    );
+    ));
     if (!saved) return;
     setCandidateSourceRevisionId(undefined);
     setViewedRevisionId(saved);
@@ -470,7 +483,7 @@ export function ChatPromptTemplateEditor({
           // message promise more than the action did.
           event.preventDefault();
           event.stopPropagation();
-          createRevision();
+          void createRevision();
         }}
       >
         {!selected || !viewedRevision ? (
@@ -589,10 +602,11 @@ export function ChatPromptTemplateEditor({
                       <button
                         className="button primary"
                         disabled={!canCreateRevision}
+                        aria-busy={saving || undefined}
                         type="button"
-                        onClick={createRevision}
+                        onClick={() => void createRevision()}
                       >
-                        {sessionOwned ? "Save to project" : "Create revision"}
+                        {saving ? "Saving…" : sessionOwned ? "Save to project" : "Create revision"}
                       </button>
                     )}
                     {/* Evaluation pins a saved revision, so unsaved edits would silently go untested. */}
@@ -876,6 +890,7 @@ export function ChatPromptTemplateEditor({
               <button
                 className="button primary"
                 disabled={
+                  saving ||
                   (sessionOwned || draftChanged) && (
                     !name.trim() ||
                     discovery.diagnostics.length > 0 ||
@@ -883,13 +898,13 @@ export function ChatPromptTemplateEditor({
                   )
                 }
                 type="button"
-                onClick={() => {
+                onClick={async () => {
                   const itemIndex = Math.min(insertionIndex, itemCount);
                   if (!draftChanged && !sessionOwned) {
                     onInsert(selected.id, viewedRevision.id, itemIndex);
                     return;
                   }
-                  const saved = onSaveAndInsert(
+                  const saved = await saveOnce(() => onSaveAndInsert(
                     selected.id,
                     name,
                     messages,
@@ -910,7 +925,7 @@ export function ChatPromptTemplateEditor({
                       : undefined,
                     revisionName || undefined,
                     itemIndex,
-                  );
+                  ));
                   if (!saved) return;
                   setCandidateSourceRevisionId(undefined);
                   setViewedRevisionId(saved);

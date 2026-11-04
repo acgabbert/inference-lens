@@ -23,6 +23,12 @@ later run picks up a stale build. Vinext also allows one dev server per checkout
 suite's server refuses to start with "Another vinext dev server is already
 running." Stop the other one first.
 
+The config also starts a second app server on `127.0.0.1:4301` with the shared
+assets 2b gate on (`NEXT_PUBLIC_INFERENCE_LENS_PERSONAL_WORKBENCH=1`). It skips
+vinext's lock and keeps its own Vite cache, so it runs beside the first. A
+spec reaches it with `test.use({ personalWorkbench: true })` from
+`support/test.ts`; every other spec uses the ungated server.
+
 The runner launches Playwright's pinned Chromium, installing it if it is
 missing. Outside CI, when that install fails (a sandbox that blocks
 `cdn.playwright.dev`, say), it falls back to the newest other `chromium-<revision>`

@@ -33,7 +33,7 @@ type SaveDecisionTemplate = (
   decision: DecisionInput,
   defaults: Record<string, string>,
   revisionName?: string,
-) => PromptTemplateRevisionId | undefined;
+) => Promise<PromptTemplateRevisionId | undefined>;
 
 interface Props extends DecisionPromptEvaluationActions {
   template: DecisionPromptTemplate;
@@ -267,9 +267,17 @@ function DecisionTemplateContent(
   const canSave = !readOnly && !invalid && Boolean(name.trim()) && needsSave;
   const duplicateName = hasDuplicatePromptName(props.templates, template.id, name);
 
-  function commit(save: SaveDecisionTemplate | undefined): PromptTemplateRevisionId | undefined {
-    if (!canSave || !("input" in validated)) return undefined;
-    const id = save?.(template.id, name.trim(), validated.input, defaults, revisionName);
+  // A save resolves once it has landed or been refused (S3); one at a time.
+  const [saving, setSaving] = useState(false);
+  async function commit(save: SaveDecisionTemplate | undefined): Promise<PromptTemplateRevisionId | undefined> {
+    if (!canSave || saving || !("input" in validated)) return undefined;
+    setSaving(true);
+    let id: PromptTemplateRevisionId | undefined;
+    try {
+      id = await save?.(template.id, name.trim(), validated.input, defaults, revisionName);
+    } finally {
+      setSaving(false);
+    }
     if (id) {
       memory.delete(template.id);
       props.onSaved(id);
@@ -278,7 +286,7 @@ function DecisionTemplateContent(
   }
 
   function use(): void {
-    if (needsSave) commit(props.onSaveAndUse);
+    if (needsSave) void commit(props.onSaveAndUse);
     else props.onUse?.(template.id, revision.id);
   }
 
@@ -293,7 +301,7 @@ function DecisionTemplateContent(
         if (!(changed || invalid || props.sessionOwned)) return;
         event.preventDefault();
         event.stopPropagation();
-        commit(props.onSave);
+        void commit(props.onSave);
       }}
     >
       <header className="template-editor-header">
@@ -336,8 +344,8 @@ function DecisionTemplateContent(
               Edit as new revision
             </button>
           ) : (
-            <button className="button primary" type="button" disabled={!canSave} onClick={() => commit(props.onSave)}>
-              {props.sessionOwned ? "Save to project" : "Create revision"}
+            <button className="button primary" type="button" disabled={!canSave || saving} aria-busy={saving || undefined} onClick={() => void commit(props.onSave)}>
+              {saving ? "Saving…" : props.sessionOwned ? "Save to project" : "Create revision"}
             </button>
           )}
           {!template.archivedAt && !props.sessionOwned && (

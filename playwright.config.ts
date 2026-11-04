@@ -7,6 +7,12 @@ import { CHROMIUM_OVERRIDE_ENV } from "./scripts/e2e-chromium.mjs";
 // Fixed ports stay below 32768, where the OS never assigns an outgoing
 // connection's local port; tests/fixture-ports.test.ts enforces it.
 const appPort = 4300;
+/**
+ * The shared assets 2b gate's server (D2): the same app with
+ * NEXT_PUBLIC_INFERENCE_LENS_PERSONAL_WORKBENCH on. Specs reach it through the
+ * `personalWorkbench` option in `tests/e2e/support/test.ts`.
+ */
+const personalWorkbenchAppPort = 4301;
 const bufferedFixturePort = 24014;
 const flakyFixturePort = 24015;
 const mcpFixturePort = 24018;
@@ -66,6 +72,27 @@ const themeSensitiveSpecs = [
 const chromiumOverride = process.env[CHROMIUM_OVERRIDE_ENV];
 const launchOptions = chromiumOverride ? { executablePath: chromiumOverride } : {};
 
+// A developer's repo-root `.env` must not decide what the suite sees.
+// With a server-side endpoint configured, the app provisions a server
+// default profile and shows the "Server default connection available"
+// notice, whose overlay silently intercepts clicks in specs that seed
+// their own profiles. Next.js leaves an already-set process variable
+// alone, so declaring these empty here neutralizes the file for every
+// machine rather than only the ones without an `.env`.
+const appServerEnv = {
+  INFERENCE_LENS_API_ENDPOINT: "",
+  INFERENCE_LENS_API_KEY: "",
+  INFERENCE_LENS_MODEL: "",
+  INFERENCE_LENS_CONNECTIONS: "",
+  INFERENCE_LENS_N8N_BASE_URL: "",
+  INFERENCE_LENS_N8N_API_KEY: "",
+  INFERENCE_LENS_COMMAND_TOOLS: commandToolCatalog,
+  INFERENCE_LENS_MCP_SERVERS: mcpServerCatalog,
+  INFERENCE_LENS_SOURCE_ROOTS: sourceRootCatalog,
+  // The 2b gate is off on this server, whatever a developer's `.env` says.
+  NEXT_PUBLIC_INFERENCE_LENS_PERSONAL_WORKBENCH: "",
+};
+
 export default defineConfig({
   testDir: "./tests/e2e",
   fullyParallel: true,
@@ -97,23 +124,21 @@ export default defineConfig({
       url: `http://127.0.0.1:${appPort}`,
       reuseExistingServer: false,
       timeout: 30_000,
-      // A developer's repo-root `.env` must not decide what the suite sees.
-      // With a server-side endpoint configured, the app provisions a server
-      // default profile and shows the "Server default connection available"
-      // notice, whose overlay silently intercepts clicks in specs that seed
-      // their own profiles. Next.js leaves an already-set process variable
-      // alone, so declaring these empty here neutralizes the file for every
-      // machine rather than only the ones without an `.env`.
+      env: appServerEnv,
+    },
+    {
+      command: `npm run dev -- --host 127.0.0.1 --port ${personalWorkbenchAppPort}`,
+      url: `http://127.0.0.1:${personalWorkbenchAppPort}`,
+      reuseExistingServer: false,
+      timeout: 30_000,
       env: {
-        INFERENCE_LENS_API_ENDPOINT: "",
-        INFERENCE_LENS_API_KEY: "",
-        INFERENCE_LENS_MODEL: "",
-        INFERENCE_LENS_CONNECTIONS: "",
-        INFERENCE_LENS_N8N_BASE_URL: "",
-        INFERENCE_LENS_N8N_API_KEY: "",
-        INFERENCE_LENS_COMMAND_TOOLS: commandToolCatalog,
-        INFERENCE_LENS_MCP_SERVERS: mcpServerCatalog,
-        INFERENCE_LENS_SOURCE_ROOTS: sourceRootCatalog,
+        ...appServerEnv,
+        NEXT_PUBLIC_INFERENCE_LENS_PERSONAL_WORKBENCH: "1",
+        // vinext 1.3 allows one dev server per checkout. This is the suite's
+        // second, so it skips the lock and keeps its own dependency cache
+        // rather than racing the first server's.
+        VINEXT_NO_DEV_LOCK: "1",
+        INFERENCE_LENS_VITE_CACHE_DIR: "node_modules/.vite-personal-workbench",
       },
     },
     {
