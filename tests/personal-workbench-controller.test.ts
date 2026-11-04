@@ -333,7 +333,7 @@ test("upgrading carries selections over the record completion just activated", a
   const carried = structuredClone(plan.selections);
   carried.chat!.execution!.target!.model = "session-personal-model";
   const { instance } = controller(storage, {
-    seeds: [carried], upgrade: { activated: ["selections.json"], lifted: plan.drafts },
+    seeds: [carried], upgrade: { activated: ["selections.json"], lifted: plan.drafts, stagedSelections: plan.selections },
   });
   await instance.open(shared);
   assert.deepEqual(parseWorkbenchRecordJson(storage.files.get("selections.json")!, projectId), carried);
@@ -350,4 +350,31 @@ test("upgrading identical selections creates no recovery copy or write", async (
   assert.deepEqual(storage.writes, []);
   assert.deepEqual(instance.recovery, []);
   assert.equal(instance.hasUnpersistedWork, false);
+});
+
+test("an activated draft edited before reopen keeps both writers' versions", async () => {
+  const newer = { ...activatedDraft, edited: edited("Edited by another writer.") } as WorkbenchPromptDraftV1;
+  const storage = upgradedStorage(newer);
+  const carried = { ...seed, edited: edited("Edited before the upgrade.") } as WorkbenchPromptDraftV1;
+  const { instance } = controller(storage, { seeds: [carried], upgrade: { activated: [activatedPath], lifted: [seed] } });
+  await instance.open(shared);
+  assert.deepEqual(instance.draftFor(asset)?.edited, newer.edited);
+  assert.deepEqual(instance.recovery.map((item) => item.record), [carried]);
+  assert.deepEqual(storage.writes, []);
+});
+
+test("activated selections edited before reopen preserve the newer record", async () => {
+  const storage = new MemoryStorage();
+  const newer = structuredClone(plan.selections);
+  newer.chat!.execution!.target!.model = "another-writers-model";
+  storage.files.set("selections.json", serializeWorkbenchRecord(newer));
+  const carried = structuredClone(plan.selections);
+  carried.chat!.execution!.target!.model = "session-model";
+  const { instance } = controller(storage, {
+    seeds: [carried],
+    upgrade: { activated: ["selections.json"], lifted: plan.drafts, stagedSelections: plan.selections },
+  });
+  await instance.open(shared);
+  assert.deepEqual(parseWorkbenchRecordJson(storage.files.get("selections.json")!, projectId), newer);
+  assert.deepEqual(instance.recovery.map((item) => item.record), [carried]);
 });

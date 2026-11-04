@@ -128,7 +128,7 @@ export function coordinateProjectWrites<T>(projectId: ProjectId, operation: () =
 export function browserMigrationStorage(directory: FileSystemDirectoryHandleLike): MigrationStorage {
   return {
     read: () => readMigrationSnapshot(directory),
-    async stage(projectId, files) {
+    async stage(projectId, files, beforeWrite) {
       // Freeze before queuing behind another writer.
       const payloads = structuredClone(files);
       validateMigrationBatch(payloads);
@@ -143,6 +143,7 @@ export function browserMigrationStorage(directory: FileSystemDirectoryHandleLike
             const migrationFiles = inventory.map(entry => "contents" in entry ? { path: entry.path, bytes: new TextEncoder().encode(entry.contents) } : entry);
             if (hasForeignMigrationIdentity(migrationFiles, projectId)) return { kind: "blocked", reason: "foreign-project", message: FOREIGN_PROJECT_MESSAGE };
             if (!sameMigrationBytes(await readBytes(directory, "project.json"), payloads[0].bytes)) return { kind: "blocked", reason: "manifest-diverged", message: "Manifest no longer matches migration source." };
+            await beforeWrite?.();
             const protectedDirectory = await protectWorkbench(directory);
             if (protectedDirectory.kind === "blocked") return protectedDirectory;
             const [parent, name] = await migrationLocation(protectedDirectory, file.path, false);
@@ -173,11 +174,11 @@ export function browserMigrationStorage(directory: FileSystemDirectoryHandleLike
 export function browserMigrationCompletionStorage(directory: FileSystemDirectoryHandleLike, projectId: ProjectId, onSharedAttempt: () => void): MigrationCompletionStorage {
   return {
     read: () => readMigrationSnapshot(directory),
-    async execute(input) {
+    async execute(input, beforeWrite) {
       // Freeze before queuing behind another writer.
       const plan = structuredClone(input);
       validateCompletionPlan(plan, projectId);
-      return coordinateProjectWrites(projectId, () => executeCompletion(directory, plan, onSharedAttempt));
+      return coordinateProjectWrites(projectId, () => executeCompletion(directory, plan, onSharedAttempt, beforeWrite));
     },
   };
 }
@@ -218,7 +219,7 @@ const errorMessage = (error: unknown) => error instanceof Error ? error.message 
  * Runs inside the project's write scope. Everything before the first content
  * write only reads, so a failure there throws with nothing attempted.
  */
-async function executeCompletion(directory: FileSystemDirectoryHandleLike, plan: MigrationCompletionPlan, onSharedAttempt: () => void): Promise<MigrationCompletionHostResult> {
+async function executeCompletion(directory: FileSystemDirectoryHandleLike, plan: MigrationCompletionPlan, onSharedAttempt: () => void, beforeWrite?: () => Promise<void>): Promise<MigrationCompletionHostResult> {
   const current = await readMigrationSnapshot(directory);
   if (!sameSnapshot(current, plan.expected)) return { kind: "stale-plan" };
   if (hasForeignMigrationIdentity(current.files, plan.projectId)) throw new Error(FOREIGN_PROJECT_MESSAGE);
@@ -227,14 +228,18 @@ async function executeCompletion(directory: FileSystemDirectoryHandleLike, plan:
   if (sameMigrationBytes(current.manifest, plan.source)) {
     // The expected-source check immediately before replacement; nothing has been written yet.
     if (!sameMigrationBytes(await readBytes(directory, "project.json"), plan.source)) return { kind: "stale-plan" };
+    await beforeWrite?.();
     onSharedAttempt();
     const stopped = await replaceManifest(directory, plan.shared);
     if (stopped) return { kind: "executed", manifest: "failed", activated: [], stopped };
     manifest = "written";
-  } else onSharedAttempt();
+  } else {
+    await beforeWrite?.();
+    onSharedAttempt();
+  }
   const activated: MigrationCompletionActivation[] = [];
   for (const activation of plan.activations) {
-    const stopped = await activate(directory, plan, activation, activated);
+    const stopped = await activate(directory, plan, activation, activated, beforeWrite);
     if (stopped) return { kind: "executed", manifest, activated: activated.map(item => item.destination), stopped };
     activated.push(activation);
   }
@@ -254,7 +259,7 @@ async function replaceManifest(directory: FileSystemDirectoryHandleLike, shared:
 }
 
 /** Creates one absent record after rechecking everything the shared write and earlier activations established. */
-async function activate(directory: FileSystemDirectoryHandleLike, plan: MigrationCompletionPlan, activation: MigrationCompletionActivation, activated: MigrationCompletionActivation[]): Promise<CompletionStop | undefined> {
+async function activate(directory: FileSystemDirectoryHandleLike, plan: MigrationCompletionPlan, activation: MigrationCompletionActivation, activated: MigrationCompletionActivation[], beforeWrite?: () => Promise<void>): Promise<CompletionStop | undefined> {
   const { destination } = activation;
   let phase: CompletionStop["phase"] = "before-write";
   try {
@@ -266,6 +271,7 @@ async function activate(directory: FileSystemDirectoryHandleLike, plan: Migratio
     if (!await isWorkbenchProtected(directory)) return { destination, phase, message: PROTECTION_MESSAGE };
     const [parent, name] = await recordLocation(await directory.getDirectoryHandle(".workbench"), destination, true);
     if (await readBytes(parent!, name) !== null) return { destination, phase, message: "The destination appeared during completion." };
+    await beforeWrite?.();
     phase = "write";
     const writable = await (await parent!.getFileHandle(name, { create: true })).createWritable();
     await writable.write(activation.bytes);

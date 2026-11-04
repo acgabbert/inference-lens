@@ -38,7 +38,7 @@ export type MigrationCompletionHostResult =
 /** Separate capability from WorkbenchStorage and MigrationStorage: only this writes the manifest. */
 export interface MigrationCompletionStorage {
   read(): Promise<MigrationSnapshot>;
-  execute(plan: MigrationCompletionPlan): Promise<MigrationCompletionHostResult>;
+  execute(plan: MigrationCompletionPlan, beforeWrite?: () => Promise<void>): Promise<MigrationCompletionHostResult>;
 }
 export type SharedOutcome = "unchanged-source" | "confirmed-shared" | "diverged" | "uncertain";
 export type MigrationCompletionOutcome =
@@ -139,18 +139,26 @@ export async function inspectSharedProjectMigrationCompletion(snapshot: Migratio
 }
 
 /** Explicit mutation. Never stages or repairs, never accepts caller-supplied manifests or file lists. */
-export async function completeSharedProjectMigration(storage: MigrationCompletionStorage, projectId: ProjectId, operationId: string): Promise<MigrationCompletionOutcome> {
+export async function completeSharedProjectMigration(
+  storage: MigrationCompletionStorage,
+  projectId: ProjectId,
+  operationId: string,
+  options?: { activationOnly?: boolean; beforeWrite?: () => Promise<void> },
+): Promise<MigrationCompletionOutcome> {
   try {
     const snapshot = copySnapshot(await storage.read());
     const verified = await verify(snapshot, projectId, operationId);
     if ("blocked" in verified) return { kind: "blocked", reason: verified.blocked.kind, message: verified.blocked.message ?? verified.blocked.kind };
+    if (options?.activationOnly && verified.state !== "shared-written") {
+      return { kind: "blocked", reason: "manifest-changed", message: "Finish requires the upgraded project.json. Reopen the folder to review its current version." };
+    }
     const candidates = assess(snapshot, verified);
     const byCandidate = new Map(verified.candidates.map(item => [item.candidate, item]));
     const plan: MigrationCompletionPlan = {
       projectId, operationId, expected: snapshot, source: verified.sourceBytes, shared: verified.sharedBytes,
       activations: candidates.filter(item => item.disposition === "activate").map(item => ({ candidate: item.candidate, destination: item.destination, bytes: copy(byCandidate.get(item.candidate)!.bytes) })),
     };
-    const result = await storage.execute(structuredClone(plan));
+    const result = await storage.execute(structuredClone(plan), options?.beforeWrite);
     if (result.kind === "stale-plan") return { kind: "stale-plan" };
     if (result.kind === "blocked") return { kind: "blocked", reason: result.reason, message: result.message };
     // Claims come from reinspection of persisted bytes, not from the host's report.

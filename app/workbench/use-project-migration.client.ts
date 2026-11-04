@@ -61,6 +61,7 @@ export function useProjectMigration(input: {
   workspace: ProjectWorkspaceHandle | null;
   /** False in a tab that views the project while another edits it. */
   editable: boolean;
+  requireEditor(workspace: ProjectWorkspaceHandle): Promise<void>;
   /** Shared edits this session could not save, which a reopen discards. */
   sharedChangesUnsaved: boolean;
   /** The workspace's in-place reopen. */
@@ -78,7 +79,7 @@ export function useProjectMigration(input: {
     setDialogState(state && adoptionKey ? { key: adoptionKey, state } : undefined);
   };
   const [unfinishedState, setUnfinished] = useState<{ key: string; value: NonNullable<ProjectMigrationHandle["unfinished"]> }>();
-  const unfinished = unfinishedState?.key === adoptionKey ? unfinishedState?.value : undefined;
+  const unfinished = editable && unfinishedState?.key === adoptionKey ? unfinishedState?.value : undefined;
   const [inspectionState, setInspection] = useState<{ projectId: ProjectSession["projectId"]; operationId: string; message: string; checking: boolean; lifted: readonly WorkbenchPromptDraftV1[] }>();
   const inspection = inspectionState?.projectId === personal?.projectId ? inspectionState : undefined;
   const [resultState, setResult] = useState<{ projectId: string; message: string }>();
@@ -125,7 +126,7 @@ export function useProjectMigration(input: {
     const current = workspaceRef.current;
     if (!current) return;
     setDialog({ phase: "upgrading", preview });
-    const outcome = await upgradeProject(current.storage, preview);
+    const outcome = await upgradeProject(current.storage, preview, () => input.requireEditor(current));
     if (workspaceRef.current !== current) return;
     switch (outcome.kind) {
       case "stale":
@@ -143,7 +144,7 @@ export function useProjectMigration(input: {
         setInspection(undefined);
         const message = resultMessage(outcome);
         setResult(message ? { projectId: preview.projectId, message } : undefined);
-        const reopened = await reopenRef.current({ activated: outcome.activated, lifted: outcome.lifted });
+        const reopened = await reopenRef.current({ activated: outcome.activated, lifted: outcome.lifted, stagedSelections: outcome.stagedSelections });
         if (!reopened) setInspection({ projectId: preview.projectId, operationId: preview.operationId, message: "The project was upgraded, but the folder could not be reopened. Check again to open it.", checking: false, lifted: outcome.lifted });
       }
     }
@@ -155,7 +156,7 @@ export function useProjectMigration(input: {
     const key = adoptionKey;
     if (!key) return;
     setUnfinished({ key, value: { ...found, finishing: true } });
-    const outcome = await finishUpgrade(current.storage, projectId, found.operationId);
+    const outcome = await finishUpgrade(current.storage, projectId, found.operationId, () => input.requireEditor(current));
     if (workspaceRef.current !== current) return;
     if (outcome.kind !== "upgraded") {
       setUnfinished({ key, value: { ...found, finishing: false, message: outcome.message } });

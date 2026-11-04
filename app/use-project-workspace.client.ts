@@ -172,6 +172,7 @@ export interface ProjectWorkspaceHandleState {
   confirmProjectEditorTakeover(): void;
   cancelProjectEditorTakeover(): void;
   holdsProjectEditorLock(): Promise<boolean>;
+  requireMigrationEditor(workspace: ProjectWorkspaceHandle): Promise<void>;
   cancelLinkedProjectReplacement(intent: () => boolean): void;
   adoptLinkedWorkspace(opened: OpenedProjectWorkspace, isCurrent: () => boolean, blockedReason: () => string | undefined, revalidateEvidence: () => Promise<void>): Promise<"adopted" | "cancelled" | "blocked">;
   /** Rereads the open folder and adopts it in place; see the implementation. */
@@ -1385,6 +1386,13 @@ export function useProjectWorkspace(input: {
       : {}),
     cancelLinkedProjectReplacement,
     holdsProjectEditorLock: () => tabCoordinatorRef.current?.holdsEditorLock() ?? Promise.resolve(false),
+    async requireMigrationEditor(workspace) {
+      const coordinator = workspaceCoordinatorsRef.current.get(workspace);
+      const holdsLock = !coordinator || await coordinator.holdsEditorLock();
+      if (projectWorkspaceRef.current !== workspace || !holdsLock || (coordinator && tabRoleRef.current !== "editor")) {
+        throw new Error(SECONDARY_SAVE_MESSAGE);
+      }
+    },
     adoptLinkedWorkspace,
     reopenProjectFolder,
     becomeProjectEditor,

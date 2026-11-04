@@ -139,3 +139,22 @@ test("inspection after a write that never landed reports the unchanged source, t
     manifest: new TextDecoder().decode(source),
   });
 });
+
+test("Finish refuses to re-upgrade a folder rolled back to its source", async () => {
+  const { directory, storage } = folder();
+  const preview = await previewOf(storage);
+  await upgradeProject(storage, preview);
+  directory.seed("project.json", source);
+  directory.writes = [];
+  await finishUpgrade(storage, preview.projectId, preview.operationId);
+  assert.deepEqual(directory.writes, [], "Finish must leave the restored manifest alone");
+});
+
+test("ownership lost after staging prevents the manifest write", async () => {
+  const { directory, storage } = folder();
+  const preview = await previewOf(storage);
+  await stageSharedProjectMigration(storage.migration, await prepareSharedProjectMigration(source));
+  directory.writes = [];
+  await upgradeProject(storage, preview, async () => { throw new Error("Another tab is editing."); });
+  assert.deepEqual(directory.writes, [], "the former editor cannot write project.json");
+});

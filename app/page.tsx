@@ -334,7 +334,8 @@ function HomeContent() {
   const projectMigration = useProjectMigration({
     session: project.projectSession,
     workspace: project.projectWorkspace,
-    editable: !project.projectTab || project.projectTab.role === "editor" || project.projectTab.role === "uncoordinated",
+    editable: project.projectTab?.role === "editor" || project.projectTab?.role === "uncoordinated",
+    requireEditor: project.requireMigrationEditor,
     sharedChangesUnsaved: project.projectDirty,
     reopen: project.reopenProjectFolder,
   });

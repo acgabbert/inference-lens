@@ -13,7 +13,7 @@ import {
   stageSharedProjectMigration,
 } from "../../packages/core/src/migration-journal.ts";
 import type { MigrationStorage } from "../../packages/core/src/migration-journal.ts";
-import type { WorkbenchPromptDraftV1 } from "../../packages/core/src/personal-workbench.ts";
+import type { WorkbenchPromptDraftV1, WorkbenchSelectionsV1 } from "../../packages/core/src/personal-workbench.ts";
 import type { ProjectId } from "../../packages/core/src/run-kernel/types.ts";
 import { planSharedProjectMigration } from "../../packages/core/src/shared-project-migration.ts";
 
@@ -57,7 +57,7 @@ export type ProjectUpgradeOutcome =
    * completion created; `lifted` are the drafts the file held, so the reopened
    * session can tell an unedited carried draft from an edited one (V2).
    */
-  | { kind: "upgraded"; activated: string[]; lifted: WorkbenchPromptDraftV1[]; recovery: UpgradeRecovery }
+  | { kind: "upgraded"; activated: string[]; lifted: WorkbenchPromptDraftV1[]; stagedSelections?: WorkbenchSelectionsV1; recovery: UpgradeRecovery }
   /** D5, V3: the shared write could not be confirmed, or another writer changed the manifest. */
   | { kind: "inspection"; shared: "diverged" | "uncertain"; message: string; lifted: WorkbenchPromptDraftV1[] }
   /** The file changed since the preview, or since this attempt read it: preview again. */
@@ -108,14 +108,14 @@ function recoveryOf(outcome: Extract<MigrationCompletionOutcome, { kind: "comple
   };
 }
 
-function completionOutcome(outcome: MigrationCompletionOutcome, lifted: WorkbenchPromptDraftV1[]): ProjectUpgradeOutcome {
+function completionOutcome(outcome: MigrationCompletionOutcome, lifted: WorkbenchPromptDraftV1[], stagedSelections?: WorkbenchSelectionsV1): ProjectUpgradeOutcome {
   switch (outcome.kind) {
     case "stale-plan": return { kind: "stale", message: STALE_MESSAGE };
     case "blocked": return { kind: "failed", message: outcome.message };
     case "completed":
       switch (outcome.shared) {
         case "confirmed-shared":
-          return { kind: "upgraded", activated: outcome.personal.activated, lifted, recovery: recoveryOf(outcome) };
+          return { kind: "upgraded", activated: outcome.personal.activated, lifted, stagedSelections, recovery: recoveryOf(outcome) };
         case "unchanged-source":
           return { kind: "failed", message: `project.json was not changed${outcome.personal.stopped ? `: ${outcome.personal.stopped.message}` : "."}` };
         case "diverged":
@@ -130,17 +130,21 @@ function completionOutcome(outcome: MigrationCompletionOutcome, lifted: Workbenc
  * One confirmation stages and completes. Staging is skipped when an earlier
  * attempt already staged these exact bytes.
  */
-export async function upgradeProject(storage: ProjectMigrationStorage, preview: Pick<ProjectMigrationPreview, "projectId" | "operationId">): Promise<ProjectUpgradeOutcome> {
-  let lifted: WorkbenchPromptDraftV1[];
+export async function upgradeProject(
+  storage: ProjectMigrationStorage,
+  preview: Pick<ProjectMigrationPreview, "projectId" | "operationId">,
+  beforeWrite?: () => Promise<void>,
+): Promise<ProjectUpgradeOutcome> {
+  let migration: ReturnType<typeof planSharedProjectMigration>;
   try {
     const snapshot = await storage.migration.read();
     if (!snapshot.manifest) return { kind: "stale", message: STALE_MESSAGE };
     const prepared = await prepareSharedProjectMigration(snapshot.manifest);
     if (prepared.projectId !== preview.projectId || prepared.operationId !== preview.operationId) return { kind: "stale", message: STALE_MESSAGE };
-    lifted = planSharedProjectMigration(snapshot.manifest).drafts;
+    migration = planSharedProjectMigration(snapshot.manifest);
     const inspection = await inspectSharedProjectMigration(snapshot, prepared.projectId, prepared.operationId);
     if (inspection.kind !== "ready") {
-      const staged = await stageSharedProjectMigration(storage.migration, prepared);
+      const staged = await stageSharedProjectMigration(storage.migration, prepared, beforeWrite);
       if (staged.kind === "blocked" && staged.reason === "manifest-diverged") return { kind: "stale", message: STALE_MESSAGE };
       if (staged.kind === "blocked") return { kind: "failed", message: staged.message };
       if (staged.kind === "conflict") return { kind: "failed", message: `${staged.path} changed while the upgrade was being prepared. Nothing in project.json was changed.` };
@@ -149,7 +153,8 @@ export async function upgradeProject(storage: ProjectMigrationStorage, preview: 
   } catch (error) {
     return { kind: "failed", message: message(error, "Could not prepare the upgrade.") };
   }
-  return completionOutcome(await completeSharedProjectMigration(storage.migrationCompletion, preview.projectId, preview.operationId), lifted);
+  const outcome = await completeSharedProjectMigration(storage.migrationCompletion, preview.projectId, preview.operationId, { beforeWrite });
+  return completionOutcome(outcome, migration.drafts, migration.selections);
 }
 
 export interface UnfinishedUpgrade {
@@ -206,6 +211,11 @@ export async function findUnfinishedUpgrade(storage: ProjectMigrationStorage, pr
 }
 
 /** Activates what an interrupted upgrade left staged; never rewrites the manifest. */
-export async function finishUpgrade(storage: ProjectMigrationStorage, projectId: ProjectId, operationId: string): Promise<ProjectUpgradeOutcome> {
-  return completionOutcome(await completeSharedProjectMigration(storage.migrationCompletion, projectId, operationId), []);
+export async function finishUpgrade(
+  storage: ProjectMigrationStorage,
+  projectId: ProjectId,
+  operationId: string,
+  beforeWrite?: () => Promise<void>,
+): Promise<ProjectUpgradeOutcome> {
+  return completionOutcome(await completeSharedProjectMigration(storage.migrationCompletion, projectId, operationId, { activationOnly: true, beforeWrite }), []);
 }

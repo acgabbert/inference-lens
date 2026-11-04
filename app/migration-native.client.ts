@@ -18,7 +18,8 @@ export function nativeMigrationStorage(workspaceId: string, invoke: Invoke): Mig
       const files: MigrationFile[] = snapshot.files.map(file => "bytes" in file ? { path: file.path, bytes: bytes(file.bytes) } : file);
       return { manifest: snapshot.manifest === null ? null : bytes(snapshot.manifest), files };
     },
-    async stage(projectId, files: MigrationPayload[]): Promise<MigrationStageOutcome> {
+    async stage(projectId, files: MigrationPayload[], beforeWrite): Promise<MigrationStageOutcome> {
+      if (beforeWrite) await beforeWrite();
       const outcome = await invoke<Exclude<MigrationStageOutcome, { kind: "conflict" }> | { kind: "conflict"; path: string; phase: "before-write" | "read-back"; actualBytes: number[] | null }>("stage_workbench_migration", {
         workspaceId, projectId, files: files.map(file => ({ path: file.path, bytes: Array.from(file.bytes) })),
       });
@@ -36,7 +37,7 @@ const wireBytes = (value: Uint8Array) => Array.from(value);
 export function nativeMigrationCompletionStorage(workspaceId: string, projectId: ProjectId, invoke: Invoke): MigrationCompletionStorage {
   return {
     read: () => nativeMigrationStorage(workspaceId, invoke).read(),
-    execute(plan: MigrationCompletionPlan): Promise<MigrationCompletionHostResult> {
+    async execute(plan: MigrationCompletionPlan, beforeWrite): Promise<MigrationCompletionHostResult> {
       const wire = {
         projectId: plan.projectId,
         operationId: plan.operationId,
@@ -48,6 +49,7 @@ export function nativeMigrationCompletionStorage(workspaceId: string, projectId:
         shared: wireBytes(plan.shared),
         activations: plan.activations.map(item => ({ candidate: item.candidate, destination: item.destination, bytes: wireBytes(item.bytes) })),
       };
+      if (beforeWrite) await beforeWrite();
       return invoke<MigrationCompletionHostResult>("complete_workbench_migration", { workspaceId, projectId, plan: wire });
     },
   };

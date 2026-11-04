@@ -93,7 +93,7 @@ export type MigrationStageOutcome =
 /** The host coordinates the entire batch with ordinary workbench mutations. No deletion or manifest writer. */
 export interface MigrationStorage {
   read(): Promise<MigrationSnapshot>;
-  stage(projectId: ProjectId, files: MigrationPayload[]): Promise<MigrationStageOutcome>;
+  stage(projectId: ProjectId, files: MigrationPayload[], beforeWrite?: () => Promise<void>): Promise<MigrationStageOutcome>;
 }
 export interface PreparedSharedProjectMigration { projectId: ProjectId; operationId: string; files: MigrationPayload[] }
 export type MigrationInspection = { kind: "none" | "incomplete-intent" | "incomplete" | "ready" | "shared-written" | "manifest-diverged" | "needs-review" | "foreign-project"; message?: string };
@@ -201,7 +201,7 @@ export async function inspectSharedProjectMigration(snapshot: MigrationSnapshot,
   } catch (error) { return { kind: "needs-review", message: message(error) }; }
 }
 /** Explicit call only: verifies caller payloads, stages immutable copies, and confirms the final inventory. */
-export async function stageSharedProjectMigration(storage: MigrationStorage, prepared: PreparedSharedProjectMigration): Promise<MigrationStageOutcome> {
+export async function stageSharedProjectMigration(storage: MigrationStorage, prepared: PreparedSharedProjectMigration, beforeWrite?: () => Promise<void>): Promise<MigrationStageOutcome> {
   let path = prepared.files[0]?.path ?? "migrations";
   try {
     // Capture caller-owned buffers before the first await.
@@ -215,7 +215,7 @@ export async function stageSharedProjectMigration(storage: MigrationStorage, pre
     if (inspection.kind === "shared-written") return { kind: "blocked", reason: "shared-written", message: "Shared migration output is already present. Inspect personal recovery before continuing." };
     if (!["none", "incomplete-intent", "incomplete", "ready"].includes(inspection.kind)) return { kind: "blocked", reason: inspection.kind, message: inspection.message ?? inspection.kind };
     if (!sameMigrationBytes(snapshot.manifest, source.bytes)) return { kind: "blocked", reason: "manifest-diverged", message: "Manifest no longer matches the migration source. Inspect before continuing." };
-    const outcome = await storage.stage(frozen.projectId, frozen.files);
+    const outcome = await storage.stage(frozen.projectId, frozen.files, beforeWrite);
     if (outcome.kind !== "staged") return outcome;
     path = frozen.files[1].path;
     const confirmed = await inspectSharedProjectMigration(await storage.read(), frozen.projectId, frozen.operationId);

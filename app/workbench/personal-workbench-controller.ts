@@ -85,6 +85,7 @@ export interface RecoveryItem {
 export interface UpgradeCarry {
   activated: readonly string[];
   lifted: readonly WorkbenchPromptDraftV1[];
+  stagedSelections?: WorkbenchSelectionsV1;
 }
 
 export interface UnsavedDraftSummary {
@@ -670,9 +671,9 @@ export class PersonalWorkbenchController {
     const upgrade = this.options.upgrade;
     const activated = new Set(upgrade?.activated ?? []);
     for (const record of carried) {
-      if (upgrade && record.kind === "selections" && !activated.has(SELECTIONS_PATH)) {
+      if (upgrade && record.kind === "selections") {
         const active = this.records.get(SELECTIONS_PATH);
-        if (active) {
+        if (active && !(activated.has(SELECTIONS_PATH) && same(active, upgrade.stagedSelections))) {
           if (!same(active, record)) this.recoveryItems.push({
             kind: "record-conflict", path: SELECTIONS_PATH, record,
             message: "Selections from this session were kept in memory because this folder already has personal selections.",
@@ -687,7 +688,7 @@ export class PersonalWorkbenchController {
         // An edited one is the newer version of the draft completion just activated.
         const active = this.draftFor(record.asset);
         const activePath = active && workbenchRecordPath(active);
-        if (active && activePath && activated.has(activePath) && isPromptDraft(active) && !active.publishing) {
+        if (lifted && active && activePath && activated.has(activePath) && same(active, { ...lifted, draftId: active.draftId })) {
           this.records.set(activePath, parseWorkbenchRecord({ ...active, base: record.base, edited: record.edited }, this.projectId));
           this.dirty.add(activePath);
           continue;
