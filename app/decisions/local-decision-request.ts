@@ -10,9 +10,11 @@ import type {
   WorkbenchScratchV1,
 } from "../../packages/core/src/personal-workbench.ts";
 import { createEntityId } from "../../packages/core/src/run-kernel/types.ts";
-import type { DecisionRequestRevisionId } from "../../packages/core/src/run-kernel/types.ts";
+import type { DecisionRequestId, DecisionRequestRevisionId } from "../../packages/core/src/run-kernel/types.ts";
 import { decisionRevisionContent } from "../workbench/personal-workbench-controller.ts";
 import { decisionTemplateUseOverrides } from "./decision-template-use-overrides.ts";
+import { requestMenu } from "../workbench/request-menu.ts";
+import type { RequestMenu } from "../workbench/request-menu.ts";
 
 /**
  * Pure helpers for the decision request a personal session's composer edits
@@ -185,4 +187,59 @@ export function suggestedDecisionRequestName(project: ProjectFile, content: Work
     if (template?.name.trim()) return template.name;
   }
   return DEFAULT_DECISION_REQUEST_NAME;
+}
+
+/** The nearest saved revision a decision scratch's parent chain reaches. */
+export function decisionSavedAncestor(
+  scratch: WorkbenchScratchV1,
+  records: Pick<LocalDecisionRecords, "scratch">,
+): DecisionRequestRevisionId | undefined {
+  let parent = scratch.request.kind === "decision" ? scratch.request.parent : undefined;
+  const seen = new Set([scratch.scratchId]);
+  while (parent?.kind === "scratch" && !seen.has(parent.scratchId)) {
+    seen.add(parent.scratchId);
+    const next = records.scratch(parent.scratchId);
+    parent = next?.request.kind === "decision" ? next.request.parent : undefined;
+  }
+  return parent?.kind === "saved-decision-request-revision" ? parent.revisionId : undefined;
+}
+
+/** The decision switcher's entries (T1). */
+export function decisionRequestMenu(
+  project: ProjectFile,
+  selected: SelectedDecisionRecord,
+  records: LocalDecisionRecords & {
+    scratches: readonly WorkbenchScratchV1[];
+    draftFor(asset: { kind: "decision-request"; id: DecisionRequestId }): WorkbenchDraftV1 | undefined;
+  },
+): RequestMenu {
+  return requestMenu({
+    requests: project.decisionRequests,
+    revisions: project.decisionRequestRevisions.map(({ id, decisionRequestId, createdAt }) => ({ id, requestId: decisionRequestId, createdAt })),
+    launchRevisionId: project.defaults.decisionRequestRevisionId,
+    draftFor(requestId) {
+      const draft = records.draftFor({ kind: "decision-request", id: requestId as DecisionRequestId });
+      return draft?.asset.kind === "decision-request"
+        ? { draftId: draft.draftId, baseRevisionId: (draft as WorkbenchDecisionRequestDraftV1).base.revisionId }
+        : undefined;
+    },
+    scratches: records.scratches
+      .filter((scratch) => scratch.request.kind === "decision" && scratch.projectId === project.projectId)
+      .map((scratch) => {
+        const ancestor = decisionSavedAncestor(scratch, records);
+        return {
+          scratchId: scratch.scratchId,
+          createdAt: scratch.createdAt,
+          branched: false,
+          ...(ancestor ? { savedAncestorRevisionId: ancestor } : {}),
+        };
+      }),
+    selected: selected.kind === "saved"
+      ? { kind: "saved", revisionId: selected.revision.id }
+      : selected.kind === "draft"
+        ? { kind: "draft", draftId: selected.draft.draftId }
+        : selected.kind === "scratch"
+          ? { kind: "scratch", scratchId: selected.scratch.scratchId }
+          : undefined,
+  });
 }

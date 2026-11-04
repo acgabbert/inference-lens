@@ -30,6 +30,8 @@ import type { ProjectWorkspaceHandle } from "../project-workspace.client";
 import type { StoredInferenceProfile, StoredInferenceProfilePatch } from "../profile-store.client";
 import type { TraceOrigin } from "../run/use-run-session.client";
 import { DECISION_READINESS_SUMMARY_ID, DecisionComposer } from "./decision-composer.client";
+import { RequestSwitcher } from "../workbench/request-switcher.client";
+import type { RequestMenuTarget } from "../workbench/request-menu.ts";
 import type { DecisionDraftProblem } from "./decision-draft";
 import { DecisionInspect } from "./decision-inspect.client";
 import { decisionDisplayStatus } from "./decision-result-view";
@@ -358,6 +360,26 @@ export function useDecisionCompose(options: UseDecisionComposeOptions): Decision
       }
     : undefined;
 
+  // Q1 keeps invalid edits only in the editor; switching away would lose them.
+  function switchRequest(target: RequestMenuTarget): void {
+    if (!record || session.executing) return;
+    const go = () => {
+      record.select(target);
+      session.reset();
+    };
+    if (draft.touched && !("input" in validated)) {
+      options.requestConfirmation({
+        title: "Discard incomplete decision request?",
+        description: "The current request has invalid edits that cannot be saved. Discard them to switch requests.",
+        confirmLabel: "Discard and switch",
+        destructive: true,
+        onConfirm: go,
+      });
+    } else {
+      go();
+    }
+  }
+
   const finished = isTerminalRunState(run);
   const compose: ComposeKindHandle = {
     executing: session.executing,
@@ -382,6 +404,19 @@ export function useDecisionCompose(options: UseDecisionComposeOptions): Decision
           {...(record ? { unsavedDetail: "Not saved until the request is valid. Your workbench keeps its last valid version." } : {})}
           draft={editorHandle}
           {...(localRequest ? { localRequest } : {})}
+          {...(record?.launchDefault ? { launchDefault: record.launchDefault } : {})}
+          {...(record?.menu
+            ? {
+                requestSwitcher: (
+                  <RequestSwitcher
+                    noun="decision request"
+                    menu={record.menu}
+                    {...(session.executing ? { disabledReason: "Finish or stop the run before switching requests." } : {})}
+                    onSelect={switchRequest}
+                  />
+                ),
+              }
+            : {})}
           locked={session.executing}
           target={target}
           modelInputRef={modelInputRef}

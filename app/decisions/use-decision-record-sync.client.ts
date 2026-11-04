@@ -42,6 +42,10 @@ export function useDecisionRecordSync(input: {
     unresolved?: boolean;
   } | undefined>(undefined);
   const [generation, setGeneration] = useState(0);
+  // The editor state an adopt or reset in this commit is replacing. The
+  // editor → record effect runs in the same commit and must not write it to
+  // the record that was just loaded.
+  const replacedRef = useRef<{ draft: unknown; values: unknown } | undefined>(undefined);
   const content = record?.record?.content;
   const contentKey = JSON.stringify(stableJsonValue(content ?? null));
   const identity = decisionRecordIdentity(record?.record);
@@ -71,6 +75,7 @@ export function useDecisionRecordSync(input: {
         return;
       }
     }
+    replacedRef.current = { draft: draft.draft, values: draft.values };
     if (!content) {
       draft.reset();
       syncedRef.current = { identity, content: undefined };
@@ -93,6 +98,9 @@ export function useDecisionRecordSync(input: {
   // Editor → record.
   useEffect(() => {
     if (!enabled || !project || !record || !draft.touched || !ready) return;
+    const replaced = replacedRef.current;
+    if (replaced && replaced.draft === draft.draft && replaced.values === draft.values) return;
+    replacedRef.current = undefined;
     const synced = syncedRef.current;
     if (!synced || synced.unresolved || synced.identity !== identity || !same(synced.content, content)) return;
     const validated = draft.validated();

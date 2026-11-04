@@ -14,6 +14,7 @@ import type {
 } from "../profile-store.client.ts";
 import { requestFromSettings, resolveRequestSettings } from "./resolve-request-settings.ts";
 import type { ResolvedRequestSettings } from "./resolve-request-settings.ts";
+import type { ChatExecutionHandle } from "./use-chat-execution.client.ts";
 
 const STREAMING_PREFERENCE_STORAGE_KEY =
   "inference-lens:streaming-preference:v1";
@@ -35,6 +36,12 @@ export interface UseRequestSettingsOptions {
    * their own target, so none of them changes what an evaluation runs.
    */
   onProjectEdited(): void;
+  /**
+   * A personal session's execution owner (2b step 5). When enabled, model,
+   * temperature and protocol are its sparse overrides over the launch
+   * defaults, and edits go there rather than into the project.
+   */
+  execution?: Pick<ChatExecutionHandle, "enabled" | "execution" | "patch">;
 }
 
 /**
@@ -66,6 +73,7 @@ export function useRequestSettings(options: UseRequestSettingsOptions): RequestS
     updateActiveProfile,
     onProjectEdited,
   } = options;
+  const personal = options.execution?.enabled && options.execution.execution ? options.execution : undefined;
   const [sessionModel, setSessionModel] = useState<string>();
   const [sessionTemperature, setSessionTemperature] = useState<number>();
   const [sessionProtocol, setSessionProtocol] = useState<ProviderWireProtocol>();
@@ -100,16 +108,18 @@ export function useRequestSettings(options: UseRequestSettingsOptions): RequestS
     mappedProfileIds,
     profiles,
     activeProfile,
-    sessionModel,
-    sessionTemperature,
-    sessionProtocol,
+    sessionModel: personal ? personal.execution!.target.model : sessionModel,
+    sessionTemperature: personal ? personal.execution!.options.temperature : sessionTemperature,
+    sessionProtocol: personal ? personal.execution!.target.protocol : sessionProtocol,
     streamingPreferred,
   });
 
   return {
     ...resolved,
     setModel(model) {
-      if (projectFile) {
+      if (personal) {
+        personal.patch({ field: "model", value: model });
+      } else if (projectFile) {
         setSessionModel(model);
         onProjectEdited();
       } else {
@@ -117,7 +127,9 @@ export function useRequestSettings(options: UseRequestSettingsOptions): RequestS
       }
     },
     setTemperature(temperature) {
-      if (projectFile) {
+      if (personal) {
+        personal.patch({ field: "temperature", value: temperature });
+      } else if (projectFile) {
         setSessionTemperature(temperature);
         onProjectEdited();
       } else {
@@ -125,7 +137,9 @@ export function useRequestSettings(options: UseRequestSettingsOptions): RequestS
       }
     },
     setProtocol(protocol) {
-      if (projectFile) {
+      if (personal) {
+        personal.patch({ field: "protocol", value: protocol });
+      } else if (projectFile) {
         setSessionProtocol(protocol);
         onProjectEdited();
       } else {

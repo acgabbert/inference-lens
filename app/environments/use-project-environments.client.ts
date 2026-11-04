@@ -22,6 +22,11 @@ export interface UseProjectEnvironmentsInput {
    * given. Reached only from this owner's commands, never during render.
    */
   applyEnvironment(environmentId: EnvironmentId | undefined, project?: ProjectFile): void;
+  /**
+   * A personal session's choice (2b step 5): `chat.execution.environmentId`
+   * over the launch default. Absent in a legacy session.
+   */
+  personal?: { selectedId: EnvironmentId | undefined; select(environmentId: EnvironmentId | undefined): void };
 }
 
 export interface ProjectEnvironmentsHandle {
@@ -48,10 +53,17 @@ export interface ProjectEnvironmentsHandle {
  * The project's environments and the session's choice of one.
  *
  * The choice is session state, like the composer's model: switching it never
- * writes the project. Only "use as project default" does.
+ * writes the project. Only "use as project default" does. In a personal
+ * session the choice is a personal override instead, so it survives a reload.
  */
 export function useProjectEnvironments(input: UseProjectEnvironmentsInput): ProjectEnvironmentsHandle {
-  const [chosenId, setChosenId] = useState<EnvironmentId>();
+  const [sessionChosenId, setSessionChosenId] = useState<EnvironmentId>();
+  const { personal } = input;
+  const chosenId = personal ? personal.selectedId : sessionChosenId;
+  function setChosenId(environmentId: EnvironmentId | undefined): void {
+    if (personal) personal.select(environmentId);
+    else setSessionChosenId(environmentId);
+  }
   const environments = input.projectFile?.environments ?? [];
   const selected = chosenId ? environments.find(({ id }) => id === chosenId) : undefined;
 
@@ -60,7 +72,8 @@ export function useProjectEnvironments(input: UseProjectEnvironmentsInput): Proj
       ? chosenId
       : undefined;
     const next = adoption === "refresh" ? kept : project.defaults.environmentId;
-    setChosenId(next);
+    // A personal session's choice is its record's, read once the record loads.
+    setSessionChosenId(next);
     return next;
   }
 
