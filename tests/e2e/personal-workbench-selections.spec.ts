@@ -197,3 +197,44 @@ test("the decision switcher moves the decision selection, and its launch action 
   expect({ ...after.defaults, decisionRequestRevisionId: before.defaults.decisionRequestRevisionId }).toEqual(before.defaults);
   await expect(chip).toHaveCount(0);
 });
+
+test("edits made during launch-default save survive completion", async ({ page }) => {
+  const project = fixtureProject();
+  await openFolder(page, project, serializeProjectManifest(project, "personal"));
+  const pane = composer(page);
+  const model = pane.getByRole("combobox", { name: /^Model/ });
+  await model.fill("model-to-publish");
+  await model.press("Escape");
+  await page.evaluate(async () => {
+    const w = window as unknown as {
+      showDirectoryPicker(): Promise<import("../../app/project-directory.client").FileSystemDirectoryHandleLike>;
+      launchWriteWaiting?: boolean;
+      releaseLaunchWrite?: () => void;
+    };
+    const dir = await w.showDirectoryPicker();
+    const file = await dir.getFileHandle("project.json");
+    const original = file.createWritable.bind(file);
+    file.createWritable = async () => {
+      const writable = await original();
+      const close = writable.close.bind(writable);
+      writable.close = async () => {
+        w.launchWriteWaiting = true;
+        await new Promise<void>((resolve) => { w.releaseLaunchWrite = resolve; });
+        await close();
+      };
+      return writable;
+    };
+  });
+  await personalChip(pane).getByRole("button", { name: "Use as launch default…" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Use as launch default", exact: true }).click();
+  await expect.poll(() => page.evaluate(() => (window as unknown as { launchWriteWaiting?: boolean }).launchWriteWaiting)).toBe(true);
+  await model.fill("new-personal-model");
+  await model.press("Escape");
+  await expect(model).toHaveValue("new-personal-model");
+  await page.evaluate(() => (window as unknown as { releaseLaunchWrite(): void }).releaseLaunchWrite());
+  await expect.poll(async () => (await shared(page)).defaults.target.model).toBe("model-to-publish");
+  await expect(personalChip(pane).getByRole("button", { name: "Saving…" })).toHaveCount(0);
+  await expect(model).toHaveValue("new-personal-model");
+  await expect.poll(async () => (await selections(page))?.chat?.execution)
+    .toEqual({ target: { model: "new-personal-model" } });
+});

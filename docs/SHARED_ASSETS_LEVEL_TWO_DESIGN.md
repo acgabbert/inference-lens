@@ -1578,7 +1578,9 @@ every path is today's.
   edits asks first, as Use in Compose does.
 - **Launch defaults.** "Use as launch default…" previews each differing field
   and writes through `setLaunchDefaults` or `setDecisionLaunchDefault`. After
-  the chat action, only an environment override is kept.
+  the chat action, published overrides are cleared; edits made while the write
+  is pending are rebased onto the confirmed defaults. Environment is kept as
+  recorded, since it has its own action.
 
 Implementation choices inside the approved contracts:
 

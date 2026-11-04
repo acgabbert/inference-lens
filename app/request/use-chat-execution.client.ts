@@ -8,6 +8,7 @@ import type { ConfirmationDialogRequest } from "../confirmation-dialog.client.ts
 import type { PersonalWorkbenchHandle } from "../workbench/use-personal-workbench.client.ts";
 import {
   chatLaunchDifferences,
+  chatExecutionAfterLaunchSave,
   effectiveChatExecution,
   patchChatExecution,
 } from "./chat-execution.ts";
@@ -99,6 +100,7 @@ export function useChatExecution(input: {
     useAsLaunchDefault() {
       if (!project || !execution || selection?.kind !== "saved" || launchDefaultBlockedReason) return;
       const revisionId = selection.revisionId;
+      const capturedOverrides = structuredClone(overrides);
       const target = structuredClone(execution.target);
       const options = structuredClone(execution.options);
       const toolIds = [...execution.enabledToolIds];
@@ -119,9 +121,9 @@ export function useChatExecution(input: {
               input.onError(outcome.message || "The launch default could not be saved.");
               return;
             }
-            // Everything but the environment now matches the launch default (T2).
+            // Clear published fields, rebasing newer edits onto the confirmed defaults.
             personal.updateChatExecution((current) =>
-              current?.environmentId !== undefined ? { environmentId: current.environmentId } : undefined);
+              chatExecutionAfterLaunchSave(project, outcome.project, capturedOverrides, current));
             input.onError(undefined);
           }, (error: unknown) => {
             input.onError(error instanceof Error ? error.message : "The launch default could not be saved.");

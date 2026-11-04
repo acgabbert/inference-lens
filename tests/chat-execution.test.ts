@@ -7,6 +7,7 @@ import { planSharedProjectMigration } from "../packages/core/src/shared-project-
 import type { ConversationRevisionId, EnvironmentId, ToolId } from "../packages/core/src/run-kernel/types.ts";
 import {
   chatLaunchDifferences,
+  chatExecutionAfterLaunchSave,
   effectiveChatExecution,
   patchChatExecution,
 } from "../app/request/chat-execution.ts";
@@ -105,4 +106,30 @@ test("T3: a local selection always differs, naming the revision it changes", () 
     effectiveChatExecution(shared, undefined),
   );
   assert.deepEqual(differences, [{ field: "request", label: "Request", from: "Explain, revision 2", to: "unsaved changes to Explain, revision 2" }]);
+});
+
+
+test("launch save clears published fields while preserving newer edits and environment", () => {
+  const captured = { target: { model: "published-model" }, options: { temperature: 0.9 }, enabledToolIds: [] };
+  const published = parseProjectFile({ ...shared, defaults: {
+    ...shared.defaults, target: { ...shared.defaults.target, model: "published-model" },
+    options: { temperature: 0.9 }, enabledToolIds: [],
+  } });
+  assert.equal(chatExecutionAfterLaunchSave(shared, published, captured, captured), undefined);
+  assert.deepEqual(chatExecutionAfterLaunchSave(shared, published, captured, {
+    ...captured, target: { model: "new-model" }, environmentId: null,
+  }), { target: { model: "new-model" }, environmentId: null });
+  // Resetting a field to the old default removes its sparse override while
+  // saving; after publication that old default must become an explicit value.
+  assert.deepEqual(chatExecutionAfterLaunchSave(shared, published, captured, undefined), {
+    target: { model: shared.defaults.target.model }, options: { temperature: 0.4 }, enabledToolIds: [lookup],
+  });
+});
+
+test("launch save distinguishes clearing an option from inheriting its old default", () => {
+  const published = parseProjectFile({ ...shared, defaults: { ...shared.defaults, options: {} } });
+  assert.deepEqual(chatExecutionAfterLaunchSave(shared, published,
+    { options: { temperature: null } }, undefined), { options: { temperature: 0.4 } });
+  assert.deepEqual(chatExecutionAfterLaunchSave(shared, shared,
+    undefined, { options: { temperature: null } }), { options: { temperature: null } });
 });

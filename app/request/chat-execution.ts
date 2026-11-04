@@ -124,6 +124,46 @@ export function patchChatExecution(
   return Object.keys(next).length ? next : undefined;
 }
 
+/**
+ * Settle a launch-default write without dropping edits made since its preview.
+ * Compare sparse fields before rebasing: removing an override during the write
+ * means choosing the OLD default, which may need an override against the new one.
+ * Environment has its own publication action and is preserved as recorded.
+ */
+export function chatExecutionAfterLaunchSave(
+  before: ProjectFile,
+  published: ProjectFile,
+  captured: ChatExecutionOverrides | undefined,
+  current: ChatExecutionOverrides | undefined,
+): ChatExecutionOverrides | undefined {
+  const next: ChatExecutionOverrides = {};
+  for (const group of ["target", "options"] as const) {
+    const fields = group === "target"
+      ? ["connectionRequirementId", "model", "protocol"] as const
+      : OPTION_FIELDS;
+    const rebased: Record<string, unknown> = {};
+    for (const field of fields) {
+      const previous = (captured?.[group] as Record<string, unknown> | undefined)?.[field];
+      const latest = (current?.[group] as Record<string, unknown> | undefined)?.[field];
+      // Null clears an option; absence inherits it. They are distinct edits.
+      if (latest === previous || (latest !== undefined && previous !== undefined && same(latest, previous))) continue;
+      const value = latest === undefined
+        ? (before.defaults[group] as unknown as Record<string, unknown>)[field]
+        : latest;
+      if (!same(value, (published.defaults[group] as unknown as Record<string, unknown>)[field])) {
+        rebased[field] = structuredClone(value ?? null);
+      }
+    }
+    if (Object.keys(rebased).length) Object.assign(next, { [group]: rebased });
+  }
+  if (!same(current?.enabledToolIds, captured?.enabledToolIds)) {
+    const ids = current?.enabledToolIds ?? before.defaults.enabledToolIds;
+    if (!sameToolSet(ids, published.defaults.enabledToolIds)) next.enabledToolIds = [...ids];
+  }
+  if (current?.environmentId !== undefined) next.environmentId = current.environmentId;
+  return Object.keys(next).length ? next : undefined;
+}
+
 export type LaunchDefaultField = "request" | "connection" | "model" | "protocol" | "temperature" | "options" | "tools";
 
 export interface LaunchDefaultDifference {
