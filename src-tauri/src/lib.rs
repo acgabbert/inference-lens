@@ -588,6 +588,18 @@ fn register_project_workspace(
     directory: PathBuf,
     contents: String,
 ) -> NativeProjectWorkspace {
+    let mut registered = workspaces
+        .0
+        .lock()
+        .expect("project workspaces lock poisoned");
+    register_locked(&mut registered, directory, contents)
+}
+
+fn register_locked(
+    registered: &mut HashMap<String, ProjectWorkspaceState>,
+    directory: PathBuf,
+    contents: String,
+) -> NativeProjectWorkspace {
     let workspace_id = format!("workspace_{}", uuid::Uuid::new_v4());
     let display_name = directory
         .file_name()
@@ -595,18 +607,14 @@ fn register_project_workspace(
         .unwrap_or("Inference Lens project")
         .to_owned();
     let display_path = directory.to_string_lossy().into_owned();
-    workspaces
-        .0
-        .lock()
-        .expect("project workspaces lock poisoned")
-        .insert(
-            workspace_id.clone(),
-            ProjectWorkspaceState {
-                directory,
-                last_contents: contents.clone(),
-                shared_save_invalidated: false,
-            },
-        );
+    registered.insert(
+        workspace_id.clone(),
+        ProjectWorkspaceState {
+            directory,
+            last_contents: contents.clone(),
+            shared_save_invalidated: false,
+        },
+    );
     NativeProjectWorkspace {
         workspace_id,
         display_name,
@@ -636,6 +644,37 @@ async fn open_project_workspace(
         directory,
         contents,
     )))
+}
+
+/// Rereads an open folder's manifest into a fresh registration, as the browser's
+/// reopen does: after a migration upgrade, or to check a folder again after one
+/// that could not be confirmed. The read happens under the workspace lock, so it
+/// never observes a save half-way. The old registration is left as it is; a
+/// handle that completion invalidated is never revived.
+fn reopen_registered_workspace(
+    workspaces: &ProjectWorkspaces,
+    workspace_id: &str,
+) -> Result<NativeProjectWorkspace, String> {
+    let mut registered = workspaces
+        .0
+        .lock()
+        .map_err(|_| command_error("Project workspace state is unavailable."))?;
+    let directory = registered
+        .get(workspace_id)
+        .ok_or_else(|| command_error("This project folder is no longer open."))?
+        .directory
+        .clone();
+    let contents = fs::read_to_string(project_manifest_path(&directory))
+        .map_err(|error| format!("Could not read the project: {error}"))?;
+    Ok(register_locked(&mut registered, directory, contents))
+}
+
+#[tauri::command]
+fn reopen_project_workspace(
+    workspaces: State<'_, ProjectWorkspaces>,
+    workspace_id: String,
+) -> Result<NativeProjectWorkspace, String> {
+    reopen_registered_workspace(&workspaces, &workspace_id)
 }
 
 #[tauri::command]
@@ -1588,6 +1627,7 @@ pub fn run() {
             start_provider_turn,
             cancel_provider_turn,
             open_project_workspace,
+            reopen_project_workspace,
             create_project_workspace,
             save_project_workspace,
             list_workbench_records,
@@ -1719,6 +1759,55 @@ mod tests {
                 Some(b"{\"edited\":true}\n".as_slice())
             );
         }
+    }
+
+    #[test]
+    fn reopening_registers_the_folder_afresh_and_leaves_an_invalidated_handle_refused() {
+        let directory = TemporaryProjectDirectory::new();
+        write_project_manifest(&directory.0, "{\"schemaVersion\":18}\n").expect("write project");
+        let workspaces = ProjectWorkspaces(Mutex::new(HashMap::new()));
+        let opened = register_project_workspace(
+            &workspaces,
+            directory.0.clone(),
+            "{\"schemaVersion\":18}\n".to_owned(),
+        );
+        // Completion wrote v19 and invalidated the opened handle.
+        write_project_manifest(&directory.0, "{\"schemaVersion\":19}\n").expect("upgrade project");
+        workspaces
+            .0
+            .lock()
+            .unwrap()
+            .get_mut(&opened.workspace_id)
+            .unwrap()
+            .shared_save_invalidated = true;
+
+        let reopened = reopen_registered_workspace(&workspaces, &opened.workspace_id)
+            .expect("reopen the folder");
+        assert_ne!(reopened.workspace_id, opened.workspace_id);
+        assert_eq!(reopened.contents, "{\"schemaVersion\":19}\n");
+        assert_eq!(reopened.display_path, opened.display_path);
+
+        let mut registered = workspaces.0.lock().unwrap();
+        let refused = save_workspace(
+            registered.get_mut(&opened.workspace_id).unwrap(),
+            "{\"schemaVersion\":19,\"stale\":true}\n".to_owned(),
+        )
+        .unwrap_err();
+        assert!(
+            refused.contains("started migrating project.json"),
+            "{refused}"
+        );
+        save_workspace(
+            registered.get_mut(&reopened.workspace_id).unwrap(),
+            "{\"schemaVersion\":19,\"name\":\"Saved\"}\n".to_owned(),
+        )
+        .expect("the fresh registration saves");
+        drop(registered);
+        assert_eq!(
+            fs::read_to_string(project_manifest_path(&directory.0)).unwrap(),
+            "{\"schemaVersion\":19,\"name\":\"Saved\"}\n"
+        );
+        assert!(reopen_registered_workspace(&workspaces, "workspace_unknown").is_err());
     }
 
     #[test]

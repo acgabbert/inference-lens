@@ -260,3 +260,51 @@ test("a workbench that belongs to another project blocks the controller", async 
   const outcome = await instance.publishPromptDraft(asset, shared, sharedWriter(shared).write);
   assert.equal(outcome.kind, "blocked");
 });
+
+// Step 6a, V2: records carried out of a pre-v19 session into the upgraded folder.
+const activatedDraft = { ...seed, draftId: "draft_migrated-activated" } as WorkbenchPromptDraftV1;
+const activatedPath = `drafts/${activatedDraft.draftId}.json`;
+
+function upgradedStorage(stored: WorkbenchPromptDraftV1 = activatedDraft) {
+  const storage = new MemoryStorage();
+  storage.files.set(`drafts/${stored.draftId}.json`, serializeWorkbenchRecord(stored));
+  return storage;
+}
+
+test("after an upgrade, an unedited carried draft gives way to the draft completion activated", async () => {
+  const storage = upgradedStorage();
+  const { instance } = controller(storage, { seeds: [seed], upgrade: { activated: [activatedPath], lifted: [seed] } });
+  await instance.open(shared);
+  assert.deepEqual(instance.recovery, []);
+  assert.equal(instance.draftFor(asset)?.draftId, activatedDraft.draftId);
+  await instance.flush();
+  assert.deepEqual(storage.writes, []);
+});
+
+test("after an upgrade, a carried draft edited in the session replaces the activated draft's content in place", async () => {
+  const storage = upgradedStorage();
+  const carried = { ...seed, edited: edited("Edited before the upgrade.") } as WorkbenchPromptDraftV1;
+  const { instance } = controller(storage, { seeds: [carried], upgrade: { activated: [activatedPath], lifted: [seed] } });
+  await instance.open(shared);
+  await instance.flush();
+  assert.deepEqual(instance.recovery, []);
+  assert.deepEqual([...storage.files.keys()], [activatedPath]);
+  const stored = parseWorkbenchRecordJson(storage.files.get(activatedPath)!, projectId);
+  assert.deepEqual(stored.kind === "draft" && stored.edited, edited("Edited before the upgrade."));
+});
+
+test("after an upgrade, an edited carried draft that meets an older active draft stays in memory for recovery", async () => {
+  const older = { ...seed, draftId: "draft_from-before", edited: edited("An older personal draft.") } as WorkbenchPromptDraftV1;
+  const storage = upgradedStorage(older);
+  const carried = { ...seed, edited: edited("Edited before the upgrade.") } as WorkbenchPromptDraftV1;
+  const { instance } = controller(storage, { seeds: [carried], upgrade: { activated: [], lifted: [seed] } });
+  await instance.open(shared);
+  await instance.flush();
+  assert.deepEqual(storage.writes, []);
+  assert.equal(instance.draftFor(asset)?.draftId, older.draftId);
+  assert.equal(instance.recovery.length, 1);
+  const [item] = instance.recovery;
+  assert.equal(item!.kind, "competing-draft");
+  assert.deepEqual(item!.record && item!.record.kind === "draft" && item!.record.edited, edited("Edited before the upgrade."));
+  assert.equal(instance.hasUnpersistedWork, true, "the session copy exists only in memory");
+});

@@ -67,12 +67,24 @@ export type PersonalWorkbenchStatus =
   | { kind: "ready"; saving: boolean }
   | { kind: "blocked"; reason: "foreign-project" | "protection"; message: string };
 
-/** One entry of the D8 Recovery drawer; step 6 renders it. */
+/** One entry of the D8 Recovery drawer; step 6b renders it. */
 export interface RecoveryItem {
   kind: "unreadable" | "record-conflict" | "publication-conflict" | "orphaned-draft" | "competing-draft" | "write-failed";
   path: string;
   message: string;
   asset?: WorkbenchAssetRef;
+  /** A session copy that met an active record: held only in memory until it is reconciled (V2). */
+  record?: WorkbenchRecordV1;
+}
+
+/**
+ * What the upgrade that reopened this folder did (V2). `activated` are the
+ * record paths completion created; `lifted` are the drafts the legacy file
+ * held, which the staged candidates preserve.
+ */
+export interface UpgradeCarry {
+  activated: readonly string[];
+  lifted: readonly WorkbenchPromptDraftV1[];
 }
 
 export interface UnsavedDraftSummary {
@@ -93,6 +105,8 @@ export interface PersonalWorkbenchControllerOptions {
   storage: WorkbenchStorage | null;
   /** Session-only records to start with: lifted legacy drafts or a carried session. */
   seeds: readonly WorkbenchRecordV1[];
+  /** Set when an upgrade just reopened this folder, to settle carried drafts (V2). */
+  upgrade?: UpgradeCarry;
   onChange(): void;
   debounceMs?: number;
   setTimer?(callback: () => void, delay: number): unknown;
@@ -193,6 +207,7 @@ export class PersonalWorkbenchController {
 
   /** Local work a reload would lose: held only in memory, or not yet written. */
   get hasUnpersistedWork(): boolean {
+    if (this.recoveryItems.some((item) => item.record)) return true;
     for (const [path, record] of this.records) {
       if (record.kind === "selections") continue;
       if (!this.store || this.dirty.has(path)) return true;
@@ -652,11 +667,26 @@ export class PersonalWorkbenchController {
       }
       this.records.set(path, record);
     }
+    const upgrade = this.options.upgrade;
+    const activated = new Set(upgrade?.activated ?? []);
     for (const record of carried) {
+      if (record.kind === "draft" && upgrade && isPromptDraft(record)) {
+        // The staged candidate preserves a draft the session never edited.
+        const lifted = upgrade.lifted.find((draft) => assetKey(draft.asset) === assetKey(record.asset));
+        if (lifted && same({ base: lifted.base.revisionId, edited: lifted.edited }, { base: record.base.revisionId, edited: record.edited })) continue;
+        // An edited one is the newer version of the draft completion just activated.
+        const active = this.draftFor(record.asset);
+        const activePath = active && workbenchRecordPath(active);
+        if (active && activePath && activated.has(activePath) && isPromptDraft(active) && !active.publishing) {
+          this.records.set(activePath, parseWorkbenchRecord({ ...active, base: record.base, edited: record.edited }, this.projectId));
+          this.dirty.add(activePath);
+          continue;
+        }
+      }
       if (record.kind === "draft" && this.draftFor(record.asset)) {
         this.recoveryItems.push({
-          kind: "competing-draft", path: workbenchRecordPath(record), asset: record.asset,
-          message: "A session draft was not saved because this folder already has a draft for the same prompt.",
+          kind: "competing-draft", path: workbenchRecordPath(record), asset: record.asset, record,
+          message: "A draft from this session was kept in memory because this folder already has a draft for the same item.",
         });
         continue;
       }

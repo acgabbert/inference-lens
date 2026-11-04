@@ -1677,3 +1677,76 @@ Defaults taken with them, reversible and inside the approved contracts:
   folder picker, and completion invalidates the native handle. A
   `reopen_project_workspace` command registers the same directory afresh from
   its current manifest, as the browser's `reopenProjectWorkspace` does.
+
+### Step 6a delivered (November 4, 2026)
+
+The upgrade of a pre-v19 folder, behind the gate. With the gate off every path
+is today's, and nothing calls migration completion.
+
+- **Migration owner.** [project-migration.ts](../app/workbench/project-migration.ts)
+  holds the protocol apart from React: the preview, Upgrade (staging, skipped
+  when an earlier attempt staged the same bytes, then completion), finding an
+  upgrade that stopped after the shared write, and Finish.
+  [use-project-migration.client.ts](../app/workbench/use-project-migration.client.ts)
+  owns it for the page, in the tab that edits the project. It is the one
+  caller of completion, and the approval-condition test now allows exactly
+  that file.
+- **Surfaces.** The page's banner slot carries the upgrade's conditions, after
+  the project-error and tab banners: "Upgrade project…" on a pre-v19 folder,
+  "Finish upgrade" when staged records still wait, V3's failure with "Check
+  again", and what the upgrade could not restore.
+  [project-upgrade-dialog.client.tsx](../app/workbench/project-upgrade-dialog.client.tsx)
+  is the preview: the source format, the drafts that become personal, the
+  backup, D4's warning about older builds and D15's wording.
+- **Reopen.** The workspace's new `reopenProjectFolder` rereads the folder into
+  a fresh handle and adopts it in place, keeping the tab's role. The desktop
+  host gains `reopen_project_workspace`, which registers the folder afresh
+  under its workspace lock; the invalidated registration stays refused, and a
+  reopened handle keeps its folder identity for run navigation, as a browser
+  reopen does.
+- **V2 carry.** The adoption after an upgrade names the records completion
+  activated and the drafts the file held. The personal controller drops a
+  carried draft the session never edited (its staged candidate covers it),
+  writes an edited one over the draft completion just activated for the same
+  prompt, and keeps any other colliding session copy in memory on its recovery
+  item, so unload still warns about it.
+- **Journal.** `targetVersion` is 19 (amended in place).
+
+Implementation choices inside the approved contracts:
+
+- **The owner interface is the page's, not the protocol's.** The proposed
+  `preview`, `stage` and `complete` handle became open, confirm and close of
+  one dialog, since one confirmation stages and completes. `outcome` became
+  `inspection`, and `unfinished` and `finish` were added for an upgrade that
+  stopped after the shared write.
+- **Unsaved shared changes are offered for export.** A pre-v19 session can
+  hold shared edits it could never save. The preview says the reopen discards
+  them, offers "Export JSON copy…", and labels its action "Discard changes and
+  upgrade".
+- **Check again carries too.** It reopens with the drafts the file held and no
+  activated records, so an unedited session draft gives way to its staged
+  candidate, which Finish then activates.
+- **Finish is offered only while the manifest is exactly the upgrade's
+  output.** Any later shared save diverges it; the candidates then wait for
+  6b's reconciliation.
+
+Not changed in 6a: no Recovery drawer, chip or pane marks, and pending
+candidates and colliding session copies are only reported (6b). A viewing tab
+gets no upgrade banner (its tab banner already says it does not save), and it
+learns of the upgrade when it next reads the folder. The desktop reopen is
+covered by a Rust unit test only; the gated e2e suite runs in the browser.
+
+Checks: `tests/project-migration.test.ts` (preview, Upgrade over the browser
+adapters, a stale manifest, continuing an earlier staging, a failed manifest
+write as inspection, and finding and finishing an interrupted upgrade) was
+written with its module, so it was never shown failing.
+`tests/personal-workbench-controller.test.ts` gains three V2 cases, which
+failed first: the carried draft became a competing item, and the colliding
+session copy was not kept. The Rust test
+`reopening_registers_the_folder_afresh_and_leaves_an_invalidated_handle_refused`
+was written with the command. The gated
+`tests/e2e/personal-workbench-upgrade.spec.ts` upgrades a v18 folder with a
+draft edited in the session and saves it afterwards, and checks that Cancel
+writes nothing. Both of its tests failed first because no Upgrade action
+existed; with the V2 carry disabled, the first fails again on the draft's
+content.

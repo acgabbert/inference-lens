@@ -289,13 +289,16 @@ test("the plan's expected snapshot is independent of storage buffers mutated bet
   assert.equal(setup.host.files.has("selections.json"), false);
 });
 
-test("no application or CLI code path references the completion capability", async () => {
+test("only the gated migration owner calls the completion capability", async () => {
   const { readdirSync, statSync } = await import("node:fs");
   const { join, relative } = await import("node:path");
   const root = new URL("..", import.meta.url).pathname;
   const core = "packages/core/src/migration-completion.ts";
   // Host adapters construct the capability inside the workspace storage factory; nothing else may import it.
   const adapters = new Set(["app/workbench-directory.client.ts", "app/migration-native.client.ts", "app/project-workspace.client.ts"]);
+  // Step 6a narrows the approval condition: the migration owner, which runs only
+  // in a gated personal session, is the one caller until the gate is removed (D2).
+  const owner = "app/workbench/project-migration.ts";
   const offenders: string[] = [];
   const walk = (dir: string) => {
     for (const name of readdirSync(dir)) {
@@ -303,7 +306,7 @@ test("no application or CLI code path references the completion capability", asy
       const path = join(dir, name);
       if (statSync(path).isDirectory()) { walk(path); continue; }
       const file = relative(root, path);
-      if (!/\.(ts|tsx|mjs|js)$/.test(name) || file === core) continue;
+      if (!/\.(ts|tsx|mjs|js)$/.test(name) || file === core || file === owner) continue;
       const source = readFileSync(path, "utf8");
       if (/completeSharedProjectMigration|inspectSharedProjectMigrationCompletion/.test(source)) offenders.push(`${file}: calls completion`);
       if (!adapters.has(file) && /migration-completion/.test(source)) offenders.push(`${file}: imports completion`);
@@ -312,7 +315,7 @@ test("no application or CLI code path references the completion capability", asy
     }
   };
   walk(root);
-  assert.deepEqual(offenders, [], "completion stays opt-in until reconciliation ships");
+  assert.deepEqual(offenders, [], "completion stays with the gated migration owner until the gate is removed");
 });
 
 test("a misnamed valid draft at a candidate destination is unavailable, not a pending competitor", async () => {

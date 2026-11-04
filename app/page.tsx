@@ -127,6 +127,9 @@ import { AppBanner } from "./notifications/app-banner.client";
 import { projectTabBanner } from "./project-tab-banner";
 import { chooseAppBanner } from "./notifications/banner-priority.client";
 import { usePersonalWorkbench } from "./workbench/use-personal-workbench.client";
+import { useProjectMigration } from "./workbench/use-project-migration.client";
+import { projectUpgradeBanner } from "./workbench/project-upgrade-banner";
+import { ProjectUpgradeDialog } from "./workbench/project-upgrade-dialog.client";
 import { useChatRequestRecord } from "./request/use-chat-request-record.client";
 import { useChatExecution } from "./request/use-chat-execution.client";
 import { RequestSwitcher } from "./workbench/request-switcher.client";
@@ -327,6 +330,14 @@ function HomeContent() {
   } = project;
   // The 2b personal owner (D3). Off in a legacy session; a legacy folder in a
   // personal session keeps its drafts session-only (S1).
+  // The upgrade of a pre-v19 folder (D4, I2); the tab that edits it runs it.
+  const projectMigration = useProjectMigration({
+    session: project.projectSession,
+    workspace: project.projectWorkspace,
+    editable: !project.projectTab || project.projectTab.role === "editor" || project.projectTab.role === "uncoordinated",
+    sharedChangesUnsaved: project.projectDirty,
+    reopen: project.reopenProjectFolder,
+  });
   const personalWorkbench = usePersonalWorkbench({
     session: project.projectSession,
     storage: project.projectWorkspace && project.projectSession?.format?.kind === "shared"
@@ -1241,6 +1252,7 @@ function HomeContent() {
       cancelTakeover: project.cancelProjectEditorTakeover,
       exportCopy: project.exportProject,
     }),
+    projectUpgradeBanner(projectMigration, { exportCopy: project.exportProject }),
     insecureOriginBanner(),
     ...serverConnectionBanners(connectionProfiles, () => setConnectionDrawerOpen(true)),
   ]);
@@ -2005,6 +2017,7 @@ function HomeContent() {
           }}
         />
       )}
+      <ProjectUpgradeDialog migration={projectMigration} onExportCopy={project.exportProject} />
       {project.pendingProjectReplacement &&
         projectCreationMode !== "save-before-switch" && (
           <ProjectReplacementDialog

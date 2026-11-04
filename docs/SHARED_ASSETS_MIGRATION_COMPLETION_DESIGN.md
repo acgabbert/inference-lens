@@ -348,3 +348,6 @@ reconciliation UI and a v19 application owner, per the approval condition.
 Their design is approved as
 [integration decisions D4–D8](SHARED_ASSETS_LEVEL_TWO_DESIGN.md#integration-decisions-approved-october-30-2026);
 the guard lifts with the gate (D2).
+Step 6a (November 4) narrows the guard to one caller, the gated migration
+owner in `app/workbench/project-migration.ts`; see
+[step 6a](SHARED_ASSETS_LEVEL_TWO_DESIGN.md#step-6a-delivered-november-4-2026).

@@ -62,7 +62,7 @@ const journalSchema = z.object({
   schemaVersion: z.literal(1), kind: z.literal("shared-project-migration"),
   operationId: operationIdSchema, projectId: projectContentSchemas.entityId("project"),
   sourceVersion: z.union([z.literal(10), z.literal(11), z.literal(12), z.literal(13), z.literal(14), z.literal(15), z.literal(16), z.literal(17), z.literal(18)]),
-  targetVersion: z.literal(16),
+  targetVersion: z.literal(19),
   source: z.object({ ...descriptor, path: z.literal("source.project.json") }).strict(),
   shared: z.object({ ...descriptor, path: z.literal("shared.project.json") }).strict(),
   candidates: z.array(candidates).min(1),
@@ -144,7 +144,7 @@ export async function prepareSharedProjectMigration(source: Uint8Array): Promise
   }
   const journal = parseMigrationJournal({
     schemaVersion: 1, kind: "shared-project-migration", operationId, projectId: plan.shared.projectId,
-    sourceVersion: plan.sourceVersion, targetVersion: 16,
+    sourceVersion: plan.sourceVersion, targetVersion: 19,
     source: { path: "source.project.json", sha256: sourceHash, byteLength: plan.sourceBytes.length },
     shared: { path: "shared.project.json", sha256: await sha256(sharedBytes), byteLength: sharedBytes.length },
     candidates: candidateDescriptors,
