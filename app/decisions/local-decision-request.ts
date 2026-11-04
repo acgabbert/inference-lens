@@ -29,6 +29,19 @@ export type SelectedDecisionRecord =
   | { kind: "draft"; content: WorkbenchDecisionRequestContent; draft: WorkbenchDecisionRequestDraftV1; revision: ProjectDecisionRequestRevision | undefined }
   | { kind: "scratch"; content: WorkbenchDecisionRequestContent; scratch: WorkbenchScratchV1; revision?: undefined };
 
+/**
+ * Which record this is, apart from its content: two scratches with the same
+ * content are still two records.
+ */
+export function decisionRecordIdentity(record: SelectedDecisionRecord | undefined): string {
+  switch (record?.kind) {
+    case "saved": return `saved:${record.revision.id}`;
+    case "draft": return `draft:${record.draft.draftId}`;
+    case "scratch": return `scratch:${record.scratch.scratchId}`;
+    default: return "none";
+  }
+}
+
 export interface LocalDecisionRecords {
   draftById(draftId: string): WorkbenchDraftV1 | undefined;
   scratch(scratchId: string): WorkbenchScratchV1 | undefined;

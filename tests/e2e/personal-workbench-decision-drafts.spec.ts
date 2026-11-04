@@ -203,7 +203,12 @@ test("editing a saved decision request is a draft until Save appends a child", a
   await expect(chip).toHaveCount(0);
   await variables.getByLabel("{{plan}}").fill("enterprise");
   await chip.getByRole("button", { name: "Save request" }).click();
-  await expect.poll(async () => recordFiles(await folderFiles(page), "drafts").length).toBe(0);
+  // The new draft's file is still debounced at the click, so an empty drafts
+  // folder does not yet mean Save finished: wait for the appended revision.
+  await expect.poll(async () => {
+    const current = await folderFiles(page);
+    return [JSON.parse(current["project.json"]!).decisionRequestRevisions.length, recordFiles(current, "drafts").length];
+  }).toEqual([2, 0]);
   files = await folderFiles(page);
   const saved = JSON.parse(files["project.json"]!);
   expect(saved.decisionRequestRevisions).toHaveLength(2);
