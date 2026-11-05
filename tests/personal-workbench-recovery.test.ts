@@ -402,6 +402,23 @@ test("another edit of a conflicted draft keeps the explicit conflict choices", a
   assert.deepEqual(setup.storage.read(`replaced/${base.draftId}.json`), external);
 });
 
+test("Compare on a deletion that met an external edit shows this window's side as deleted", async () => {
+  const setup = await upgraded({ activate: true });
+  const instance = controller(setup.storage);
+  await instance.open(shared);
+  const base = setup.draft.record as WorkbenchPromptDraftV1 & { asset: { kind: "chat-prompt" } };
+  const external = rivalOf(base, base.draftId, "External change");
+  setup.storage.files.set(setup.draft.path, serializeWorkbenchRecord(external));
+  await instance.discardDraft(base.asset);
+  const item = find(instance, "record-conflict")!;
+  assert.ok(item, "the deletion conflicts with the edit on disk");
+  assert.deepEqual(await instance.compareRecovery(item.id, shared), {
+    incoming: { label: "This window: deleted", record: undefined },
+    current: { label: "On disk", record: external },
+  });
+  assert.deepEqual(setup.storage.read(setup.draft.path), external);
+});
+
 test("Retry after an IO failure detects a subsequent external edit", async () => {
   const setup = await upgraded({ activate: true });
   const instance = controller(setup.storage);
