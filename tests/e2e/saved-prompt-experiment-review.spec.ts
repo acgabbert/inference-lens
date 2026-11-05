@@ -12,6 +12,7 @@ import {
   closeProjectMenu,
   importProject,
   openMode,
+  saveSuite,
   seedProfile,
   waitForHydration,
 } from "./support";
@@ -96,6 +97,8 @@ test("review: a composite prompt suite retains named value combinations across e
     await expect(resolved.locator(".request-preview-message")).toHaveCount(2);
   }
   await page.screenshot({ path: testInfo.outputPath("composite-suite.png"), fullPage: true });
+  // Suite edits are a personal draft until saved; an export carries saved content (2c-1).
+  await saveSuite(page);
 
   await page.getByLabel("Project menu").click();
   const download = page.waitForEvent("download");

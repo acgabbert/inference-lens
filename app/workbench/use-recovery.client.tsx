@@ -43,7 +43,7 @@ const NONE: ReadonlySet<string> = new Set();
 const NO_GENERATIONS: ReadonlyMap<string, number> = new Map();
 
 export function useRecovery(input: {
-  personal: Pick<PersonalWorkbenchHandle, "enabled" | "revision" | "recovery" | "migrationBackups" | "reconcile">;
+  personal: Pick<PersonalWorkbenchHandle, "enabled" | "revision" | "recovery" | "migrationBackups" | "reconcile"> & Partial<Pick<PersonalWorkbenchHandle, "draftFor">>;
   project: ProjectFile | null | undefined;
   /** A prompt's name outside the shared project, such as a session prompt. */
   promptName?(id: string): string | undefined;
@@ -76,6 +76,12 @@ export function useRecovery(input: {
         return project?.conversations.find(({ id }) => id === asset.id)?.name;
       case "decision-request":
         return project?.decisionRequests.find(({ id }) => id === asset.id)?.name;
+      case "suite": {
+        // A deleted suite is still named by the draft that outlived it.
+        const draft = personal.draftFor?.(asset);
+        return project?.evaluationSuites.find(({ id }) => id === asset.id)?.name
+          ?? (draft && "name" in draft.edited ? draft.edited.name : undefined);
+      }
     }
   }
 

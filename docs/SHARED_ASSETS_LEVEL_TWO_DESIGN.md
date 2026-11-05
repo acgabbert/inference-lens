@@ -2711,3 +2711,81 @@ through `updateTool` and `updateToolMock` in `use-request-draft.client.ts`.
   drafts" list. The upgrade preview and the Recovery drawer stop saying these
   assets are not separated.
 - **Two pull requests:** 2c-1 suites, then 2c-2 tools and mocks.
+
+### Slice 2c-1 delivered (November 5, 2026)
+
+Edits to a saved evaluation suite are a personal draft until the user saves
+them.
+
+- **Core.** Workbench v1 has a `suite` draft arm
+  ([personal-workbench.ts](../packages/core/src/personal-workbench.ts)): the
+  base is the shared suite the draft started from, `edited` is the whole suite,
+  and the intent freezes the content being saved. Base, edited and intent must
+  carry the asset's ID, and secret-named provider options are refused, as on
+  selections. `projectContentSchemas` exports the suite schema.
+  [workbench-publication.ts](../packages/core/src/workbench-publication.ts)
+  adds `publishSuiteDraft`, which replaces the suite in place and returns
+  `stale` with the current suite when the saved suite is no longer the base
+  (C4), and `rebaseSuiteDraft` for Overwrite. With `asNew`, Save as new
+  restores a deleted suite under its own IDs and the name given. Reconcile
+  treats the frozen content as published, the base or a missing suite as not
+  published, and anything else as a conflict. Completion rebases later edits
+  onto the saved suite.
+- **Controller and hook.** `updateSuiteDraft` keeps the base fixed when the
+  draft starts and drops a draft edited back to it. `publishSuiteDraft` runs the
+  usual intent protocol; `PublishOutcome` gains `stale`, and `overwrite`
+  rebases and saves. A suite that changes while saving refuses the write and
+  keeps the draft. On open a draft whose suite is gone is an orphan, with Save as
+  new; an interrupted save settles like any other draft.
+- **Suite owners.** `useSuiteDrafts` ([use-suite-drafts.client.ts](../app/evaluations/use-suite-drafts.client.ts))
+  sits between the workspace and the suite owners: authoring, decision suite
+  settings, case promotion and the evaluation workspace read the shared project
+  with drafts in place, so runs use the draft (C3) and a promoted case lands in
+  the draft (C2-a). `routeSuiteMutation` ([suite-drafts.ts](../app/evaluations/suite-drafts.ts))
+  splits each mutation: a changed saved suite goes to its draft; creating and
+  deleting suites, and anything outside suites (such as a new input revision
+  from Start from prompt), stay direct shared writes (C2). Decision Compose's
+  folded document gets the drafts overlaid before a suite is created from it.
+  The Prompts mode's "Evaluate in a suite" reads the same view, so a pin
+  changed in a draft shows as pinned.
+- **Surfaces.** The suite header shows "Unsaved changes" with Save suite and
+  Discard changes (confirmed), or, when the saved suite changed, "Suite
+  changed elsewhere" with Overwrite with mine and Discard my draft. The rail
+  marks suites with unsaved changes. Recovery names suite drafts, including a
+  deleted suite's. The upgrade preview needed no change: it says suites stay
+  shared, which is still true of the migration.
+
+Decided during implementation: owners keep mutating a whole project rather
+than gaining suite-draft APIs, and the route splits the result; the rail mark
+stands in for an "Unsaved drafts" list, which no surface renders yet.
+
+Not covered: a shared change made outside the suite owners (deleting a project
+tool, say) does not touch drafts, so a draft naming a deleted tool fails Save
+with the validation message. A suite changed elsewhere is found at Save, not
+when it changes. History does not label a run of a draft (C3).
+
+Checks: lint, typecheck, `test:core` (1985, 22 new), and the evaluation and
+prompts render and interaction tests (57).
+
+- `workbench-suite-drafts.test.ts` ran red first, on the missing
+  `publishSuiteDraft`. The controller tests
+  (`personal-workbench-suites.test.ts`), the route tests
+  (`suite-drafts-route.test.ts`) and the e2e spec were written after their code
+  and were not shown red.
+- e2e, Chromium light, pinned build:
+  `personal-workbench-suite-drafts.spec.ts` (new: a draft in `.workbench/`
+  with `project.json` byte-identical until Save, Discard, and a start dialog
+  planning the draft) and the specs sharing the ground: every
+  `evaluation*` and `personal-workbench-*` spec, `system-one-decision-suites`,
+  `system-one-prompt-evaluations`, `saved-prompt-experiment-review`,
+  `structured-output-checks`, `experiment-concurrency`,
+  `project-replacement-guard` and `run-deep-links`: 177 tests, 175 passing
+  after the fixes below. Four specs
+  asserted that a suite edit reaches `project.json` or an export without a
+  save; they now save first through a `saveSuite` helper. One gained an
+  assertion that the run used the draft while `project.json` still held none
+  of its cases.
+- `run-deep-links.spec.ts` 288 and 368 fail on HEAD too: 288 four times in five
+  on both, 368 as recorded for the in-memory label.
+
+Not run: the dark project, the rest of the suite, and the desktop host.

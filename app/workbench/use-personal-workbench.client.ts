@@ -17,7 +17,8 @@ import type {
   WorkbenchRecordV1,
   WorkbenchScratchV1,
 } from "../../packages/core/src/personal-workbench.ts";
-import type { ConversationId, DecisionRequestId } from "../../packages/core/src/run-kernel/types.ts";
+import type { ConversationId, DecisionRequestId, EvaluationSuiteId } from "../../packages/core/src/run-kernel/types.ts";
+import type { EvaluationSuite } from "../../packages/core/src/evaluation-suites.ts";
 import type { MigrationSnapshot } from "../../packages/core/src/migration-journal.ts";
 import type { WorkbenchStorage, WorkbenchStoreOutcome } from "../../packages/core/src/workbench-store.ts";
 import type { ProjectSession, SharedWriteOutcome } from "../use-project-workspace.client.ts";
@@ -168,6 +169,10 @@ export interface PersonalWorkbenchHandle {
    * deterministic, since the workspace may apply it twice.
    */
   writeLaunchDefaults(update: (project: ProjectFile) => ProjectFile): Promise<SharedWriteOutcome>;
+  /** See `PersonalWorkbenchController.updateSuiteDraft` (slice 2c, C1). */
+  updateSuiteDraft(base: EvaluationSuite, edited: EvaluationSuite): void;
+  /** See `PersonalWorkbenchController.publishSuiteDraft` (C4). */
+  publishSuiteDraft(suiteId: EvaluationSuiteId, options?: { overwrite?: boolean }): Promise<PublishOutcome>;
 }
 
 const OFF: PersonalWorkbenchStatus = { kind: "off" };
@@ -417,6 +422,15 @@ export function usePersonalWorkbench(input: {
     },
     writeLaunchDefaults(update) {
       return writeSharedRef.current(update);
+    },
+    updateSuiteDraft(base, edited) {
+      controllerRef.current?.updateSuiteDraft(base, edited);
+    },
+    async publishSuiteDraft(suiteId, options) {
+      const current = controllerRef.current;
+      const shared = sharedRef.current;
+      if (!current || !shared) return { kind: "blocked", message: "Open a project before saving a suite." };
+      return current.publishSuiteDraft(suiteId, shared, (update) => writeSharedRef.current(update), options);
     },
   };
 }

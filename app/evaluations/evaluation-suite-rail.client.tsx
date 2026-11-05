@@ -14,8 +14,10 @@ import styles from "./evaluation-surface.module.css";
  * the suite header beside its name; only creation belongs here, because it acts
  * on the list. Both kinds share the list, each labelled (D51).
  */
-export function EvaluationSuiteRail({ suites, selectedId, onSelect, onCreate, onCreateDecision }: {
+export function EvaluationSuiteRail({ suites, selectedId, onSelect, onCreate, onCreateDecision, draftSuiteIds }: {
   suites: readonly EvaluationSuite[];
+  /** Suites with unsaved changes on this device (slice 2c-1). */
+  draftSuiteIds?: ReadonlySet<EvaluationSuite["id"]>;
   selectedId?: EvaluationSuite["id"];
   onSelect(id: EvaluationSuite["id"]): void;
   onCreate(): void;
@@ -44,7 +46,7 @@ export function EvaluationSuiteRail({ suites, selectedId, onSelect, onCreate, on
                   onClick={() => onSelect(suite.id)}
                 >
                   <strong>{suite.name}</strong>
-                  <span>{isDecisionEvaluationSuite(suite) ? "Decision" : "Chat"} · {suite.cases.length} {suite.cases.length === 1 ? "case" : "cases"}</span>
+                  <span>{isDecisionEvaluationSuite(suite) ? "Decision" : "Chat"} · {suite.cases.length} {suite.cases.length === 1 ? "case" : "cases"}{draftSuiteIds?.has(suite.id) ? " · Unsaved changes" : ""}</span>
                 </button>
               </li>
             ))}

@@ -105,6 +105,7 @@ import { useEvaluationSuiteAuthoring } from "./evaluations/use-evaluation-suite-
 import { useEvaluationReassessment } from "./evaluations/use-evaluation-reassessment.client";
 import { useEvaluationExecutionSession } from "./evaluations/use-evaluation-execution-session.client";
 import { useEvaluationWorkspace } from "./evaluations/use-evaluation-workspace.client";
+import { useSuiteDrafts } from "./evaluations/use-suite-drafts.client";
 import { useDecisionSuiteSettings } from "./evaluations/use-decision-suite-settings.client";
 import { useEvaluationCaseSource } from "./evaluations/use-evaluation-case-source.client";
 import { EvaluationStartDialog } from "./evaluations/evaluation-start-dialog.client";
@@ -730,9 +731,17 @@ function HomeContent() {
       });
     },
   });
-  const evaluationAuthoring = useEvaluationSuiteAuthoring({
-    project: projectFile,
+  // Suite owners read the user's suite drafts and write through them (2c-1).
+  const suiteDrafts = useSuiteDrafts({
+    shared: projectFile,
+    personal: personalWorkbench,
     adoptProjectMutation: project.adoptProjectMutation,
+    requestConfirmation: setConfirmation,
+    onError(message) { project.setError(message, { clearKind: true }); },
+  });
+  const evaluationAuthoring = useEvaluationSuiteAuthoring({
+    project: suiteDrafts.project,
+    adoptProjectMutation: suiteDrafts.adoptProjectMutation,
     requestConfirmation: setConfirmation,
     onNotify({ templateName, messageCount, variableCount }) {
       toasts.publish({
@@ -752,7 +761,7 @@ function HomeContent() {
   // profile Compose targets unless it is already mapped (D44, D51).
   function createDecisionSuite(source: DecisionSuiteSource): boolean {
     const created = evaluationAuthoring.createDecisionSuite({
-      project: source.project,
+      project: suiteDrafts.overlay(source.project),
       decisionRequestRevisionId: source.decisionRequestRevisionId,
       model: source.model,
       connection: { endpoint: source.profile.endpoint },
@@ -764,13 +773,14 @@ function HomeContent() {
     return true;
   }
   const decisionSuiteSettings = useDecisionSuiteSettings({
-    project: projectFile,
+    project: suiteDrafts.project,
     ...(evaluationAuthoring.suiteId ? { suiteId: evaluationAuthoring.suiteId } : {}),
-    adoptProjectMutation: project.adoptProjectMutation,
+    adoptProjectMutation: suiteDrafts.adoptProjectMutation,
   });
   const evaluationWorkspace = useEvaluationWorkspace({
     authoring: evaluationAuthoring,
-    project: projectFile,
+    // A run uses the suite's draft (C3).
+    project: suiteDrafts.project,
     workspace: projectWorkspace,
     profiles,
     mappedProfileIds,
@@ -795,12 +805,14 @@ function HomeContent() {
       setMode("runs");
     },
   });
+  const suiteDraftState = suiteDrafts.stateFor(evaluationAuthoring.suiteId);
   const evaluationCaseSource = useEvaluationCaseSource({
     workspace: projectWorkspace,
-    project: projectFile,
+    // A promoted case lands in the suite's draft (C2-a).
+    project: suiteDrafts.project,
     ...(evaluationAuthoring.suiteId ? { suiteId: evaluationAuthoring.suiteId } : {}),
     ...(evaluationAuthoring.focusedCaseId ? { focusedCaseId: evaluationAuthoring.focusedCaseId } : {}),
-    adoptProjectMutation: project.adoptProjectMutation,
+    adoptProjectMutation: suiteDrafts.adoptProjectMutation,
     publishToast: toasts.publish,
     onPromoted(suiteId, caseId) {
       evaluationAuthoring.selectSuite(suiteId);
@@ -1838,6 +1850,8 @@ function HomeContent() {
           {...(evaluationCaseSource.source ? { caseSource: evaluationCaseSource.source } : {})}
           onOpenSourceTrace={evaluationCaseSource.openSource}
           {...(decisionSuiteSettings ? { decisionSettings: decisionSuiteSettings } : {})}
+          {...(suiteDraftState ? { draft: suiteDraftState } : {})}
+          draftSuiteIds={suiteDrafts.draftSuiteIds}
           onCreateDecision={{
             create() {
               const source = decision.suiteSource.take();

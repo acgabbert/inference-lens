@@ -272,6 +272,17 @@ export async function openToolLibrary(
   return page.getByRole("dialog", { name: "Local tool library" });
 }
 
+/**
+ * Saves the selected suite's draft (shared assets 2c-1): suite edits stay on
+ * this device until then, so a spec that reads project.json or an export
+ * after editing a suite saves it first, as a user would.
+ */
+export async function saveSuite(page: Page): Promise<void> {
+  const header = page.locator(".evaluation-editor header");
+  await header.getByRole("button", { name: "Save suite" }).click();
+  await expect(header).not.toContainText("Unsaved changes");
+}
+
 export function primaryAction(page: Page, mode: "compose" | "evaluations"): Locator {
   return page.getByRole("button", {
     name: mode === "compose" ? /^Run current conversation/ : /^Start evaluation…/,

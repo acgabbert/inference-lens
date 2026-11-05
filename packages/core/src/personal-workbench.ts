@@ -2,6 +2,7 @@ import { z } from "zod";
 import { isSensitiveTemplateVariableName, projectContentSchemas, projectFieldOrder, sensitiveFieldPaths } from "./project.ts";
 import type { ProjectConversationItem } from "./project.ts";
 import type { DecisionInput } from "./decision.ts";
+import type { ChatEvaluationSuite, EvaluationSuite } from "./evaluation-suites.ts";
 import { discoverDecisionVariables } from "./decision-variables.ts";
 import type { ProjectId } from "./run-kernel/types.ts";
 import { stableJsonValue } from "./stable-json.ts";
@@ -11,7 +12,7 @@ export const WORKBENCH_GITIGNORE_CONTENTS = "*\n";
 
 const { entityId, chatPromptRevision, chatPromptDraft, decisionPromptRevision,
   decisionPromptDraft, inferenceOptions, executionTarget, conversationRevision,
-  conversationItem, decisionRequestRevision, decisionInput, variableName } = projectContentSchemas;
+  conversationItem, decisionRequestRevision, decisionInput, variableName, evaluationSuite } = projectContentSchemas;
 const envelope = {
   schemaVersion: z.literal(WORKBENCH_SCHEMA_VERSION),
   projectId: entityId("project"),
@@ -144,10 +145,50 @@ const decisionRequestDraftSchema = z.object({
   publishing: draftPublicationIntent("decision-revision", decisionRequestContent).optional(),
 }).strict();
 
-const draftSchema = z.union([chatPromptDraftSchema, decisionPromptDraftSchema, chatRequestDraftSchema, decisionRequestDraftSchema])
+/**
+ * Slice 2c (C1, C4). A suite has no revisions, so its base is the shared
+ * suite the draft started from, and a save replaces the suite in place. The
+ * intent freezes the content being saved; the suite keeps the asset's ID.
+ */
+const suiteDraftSchema = z.object({
+  ...draftEnvelope,
+  asset: z.object({ kind: z.literal("suite"), id: entityId("evaluation-suite") }).strict(),
+  base: z.object({ snapshot: evaluationSuite }).strict(),
+  edited: evaluationSuite,
+  publishing: z.object({ content: evaluationSuite }).strict().optional(),
+}).strict();
+
+function checkSuite(suite: EvaluationSuite, id: string, path: Path, context: Issues): void {
+  if (suite.id !== id) {
+    context.addIssue({ code: "custom", path: [...path, "id"], message: "The suite belongs to a different suite than the draft." });
+  }
+  // As selections: no recoverable provider option may name a secret.
+  const options: Array<[unknown, Path]> = [];
+  if (suite.input.kind === "conversation-revision") {
+    const chat = suite as ChatEvaluationSuite;
+    options.push([chat.execution.options?.providerOptions, [...path, "execution", "options", "providerOptions"]]);
+    chat.variants.forEach((variant, index) =>
+      options.push([variant.overrides.options?.providerOptions, [...path, "variants", index, "overrides", "options", "providerOptions"]]));
+  }
+  for (const [value, at] of options) {
+    for (const secret of sensitiveFieldPaths(value, at)) {
+      context.addIssue({ code: "custom", path: secret, message: "Secret-bearing fields are not recoverable suite settings." });
+    }
+  }
+}
+
+const draftSchema = z.union([chatPromptDraftSchema, decisionPromptDraftSchema, chatRequestDraftSchema, decisionRequestDraftSchema, suiteDraftSchema])
   .superRefine((draft, context) => {
-    checkBase(draft, context);
-    checkPublishingParent(draft, context);
+    if (draft.asset.kind === "suite") {
+      const suite = draft as z.infer<typeof suiteDraftSchema>;
+      checkSuite(suite.base.snapshot, suite.asset.id, ["base", "snapshot"], context);
+      checkSuite(suite.edited, suite.asset.id, ["edited"], context);
+      if (suite.publishing) checkSuite(suite.publishing.content, suite.asset.id, ["publishing", "content"], context);
+      return;
+    }
+    const revisioned = draft as Exclude<typeof draft, z.infer<typeof suiteDraftSchema>>;
+    checkBase(revisioned, context);
+    checkPublishingParent(revisioned, context);
     switch (draft.asset.kind) {
       case "chat-prompt":
       case "decision-prompt": {
@@ -293,7 +334,10 @@ const workbenchFieldOrder = new Map([
 export type WorkbenchPromptDraftV1 = z.infer<typeof chatPromptDraftSchema> | z.infer<typeof decisionPromptDraftSchema>;
 export type WorkbenchChatRequestDraftV1 = z.infer<typeof chatRequestDraftSchema>;
 export type WorkbenchDecisionRequestDraftV1 = z.infer<typeof decisionRequestDraftSchema>;
-export type WorkbenchDraftV1 = WorkbenchPromptDraftV1 | WorkbenchChatRequestDraftV1 | WorkbenchDecisionRequestDraftV1;
+export type WorkbenchSuiteDraftV1 = z.infer<typeof suiteDraftSchema>;
+/** Drafts whose base is a saved revision: every arm but a suite's. */
+export type WorkbenchRevisionDraftV1 = WorkbenchPromptDraftV1 | WorkbenchChatRequestDraftV1 | WorkbenchDecisionRequestDraftV1;
+export type WorkbenchDraftV1 = WorkbenchRevisionDraftV1 | WorkbenchSuiteDraftV1;
 export type WorkbenchScratchV1 = z.infer<typeof scratchSchema>;
 export type WorkbenchSelectionsV1 = z.infer<typeof selectionsSchema>;
 export type WorkbenchRecordV1 = WorkbenchDraftV1 | WorkbenchSelectionsV1 | WorkbenchScratchV1;
@@ -305,6 +349,10 @@ export type LocalDecisionInput = NonNullable<WorkbenchSelectionsV1["decision"]>[
 /** Draft arms are distinguished by `asset.kind`, which TypeScript does not narrow on. */
 export function isPromptDraft(record: WorkbenchRecordV1): record is WorkbenchPromptDraftV1 {
   return record.kind === "draft" && (record.asset.kind === "chat-prompt" || record.asset.kind === "decision-prompt");
+}
+
+export function isSuiteDraft(record: WorkbenchRecordV1): record is WorkbenchSuiteDraftV1 {
+  return record.kind === "draft" && record.asset.kind === "suite";
 }
 
 export class WorkbenchValidationError extends Error {

@@ -3,7 +3,7 @@ import { expect, test, type Page } from "./support/test";
 import { createDecisionPromptTemplate } from "../../packages/core/src/decision-template";
 import { updateDecisionRequestDraft } from "../../packages/core/src/decision-request";
 import { createProjectFile, type ProjectFile, serializeProjectFile } from "../../packages/core/src/project";
-import { SYSTEM_ONE_FIXTURE_ORIGIN, openMode, primaryAction, seedProfiles, stubProjectDirectory, waitForHydration } from "./support";
+import { SYSTEM_ONE_FIXTURE_ORIGIN, openMode, primaryAction, saveSuite, seedProfiles, stubProjectDirectory, waitForHydration } from "./support";
 import { expectModalContract } from "./support/modal";
 
 const capture = JSON.parse(readFileSync(new URL("../fixtures/system-one/llamacpp-all-types.json", import.meta.url), "utf8")).request;
@@ -86,6 +86,10 @@ test("library evaluation preserves Compose and historical results through review
   const results = page.getByRole("region", { name: "Evaluation results" });
   await expect(results).toContainText("1 / 1 passed");
   await expect(results).toContainText("intent: billing");
+  // The run used the suite's draft (C3); its case reaches project.json on Save (C1).
+  await expect.poll(async () => (await saved(page)).evaluationSuites[0]?.cases.length).toBe(0);
+  await openMode(page, "Evaluations");
+  await saveSuite(page);
   await expect.poll(async () => (await saved(page)).evaluationSuites[0]?.cases.length).toBe(1);
   const project = await saved(page);
   expect(project.defaults).toEqual(original.defaults);

@@ -957,21 +957,6 @@ const decisionRequestRevisionSchema = z.discriminatedUnion("kind", [
     overrides: z.record(z.string().regex(variableName), z.string()) }).strict(),
 ]);
 
-export const projectContentSchemas = {
-  entityId,
-  chatPromptRevision: promptTemplateRevisionSchema,
-  chatPromptDraft: promptTemplateDraftSchema,
-  decisionPromptRevision: decisionPromptTemplateRevisionSchema,
-  decisionPromptDraft: decisionPromptTemplateDraftSchema,
-  inferenceOptions: inferenceOptionsSchema,
-  executionTarget: executionTargetSchema,
-  conversationRevision: projectConversationRevisionSchema,
-  conversationItem: projectConversationItemSchema,
-  decisionRequestRevision: decisionRequestRevisionSchema,
-  decisionInput: decisionInputSchema,
-  variableName,
-};
-
 const evaluationInputBindingSchema: z.ZodType<EvaluationInputBinding> = z
   .object({
     id: entityId("evaluation-input"),
@@ -1111,6 +1096,22 @@ const evaluationSuiteSchema = z.unknown().transform((value, context): Evaluation
   parsed.error.issues.forEach(({ path, message }) => context.addIssue({ code: "custom", path, message }));
   return z.NEVER;
 });
+
+export const projectContentSchemas = {
+  entityId,
+  chatPromptRevision: promptTemplateRevisionSchema,
+  chatPromptDraft: promptTemplateDraftSchema,
+  decisionPromptRevision: decisionPromptTemplateRevisionSchema,
+  decisionPromptDraft: decisionPromptTemplateDraftSchema,
+  inferenceOptions: inferenceOptionsSchema,
+  executionTarget: executionTargetSchema,
+  conversationRevision: projectConversationRevisionSchema,
+  conversationItem: projectConversationItemSchema,
+  decisionRequestRevision: decisionRequestRevisionSchema,
+  decisionInput: decisionInputSchema,
+  variableName,
+  evaluationSuite: evaluationSuiteSchema,
+};
 
 const sourceRootRequirementSchema: z.ZodType<SourceRootRequirement> = z
   .object({ id: entityId("source-root"), name: sourceRootNameSchema })

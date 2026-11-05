@@ -13,6 +13,8 @@ import type { EvaluationSuiteHistoryHandle } from "../evaluations/evaluation-sui
 import type { EvaluationSuiteAuthoringHandle } from "../evaluations/use-evaluation-suite-authoring.client";
 import type { DecisionSuiteSettingsHandle } from "../evaluations/use-decision-suite-settings.client";
 import type { EvaluationCaseSource } from "../../packages/core/src/evaluation-case-sources";
+import type { EvaluationSuiteId } from "../../packages/core/src/run-kernel";
+import type { SuiteDraftState } from "../evaluations/use-suite-drafts.client";
 import { PaneEmptyState } from "../pane-empty-state.client";
 import styles from "./evaluations-mode.module.css";
 
@@ -60,6 +62,9 @@ interface EvaluationsModeProps {
   decisionSettings?: DecisionSuiteSettingsHandle;
   /** Creates a decision suite from Decision Compose's active request. */
   onCreateDecision?: { create(): void; disabledReason?: string };
+  /** The selected suite's unsaved changes, and which suites have any (slice 2c-1). */
+  draft?: SuiteDraftState;
+  draftSuiteIds?: ReadonlySet<EvaluationSuiteId>;
 }
 
 /**
@@ -83,6 +88,8 @@ export function EvaluationsMode({
   onOpenSourceTrace,
   decisionSettings,
   onCreateDecision,
+  draft,
+  draftSuiteIds,
 }: EvaluationsModeProps) {
   const project = authoring.project;
   const constrainedPreview = useSyncExternalStore(
@@ -113,6 +120,7 @@ export function EvaluationsMode({
         {...(authoring.suiteId ? { selectedId: authoring.suiteId } : {})}
         onSelect={authoring.selectSuite}
         onCreate={authoring.createSuite}
+        {...(draftSuiteIds ? { draftSuiteIds } : {})}
         {...(onCreateDecision ? { onCreateDecision } : {})}
       />
       {/* The editor labels its own region; wrapping it only supplies scroll. */}
@@ -127,6 +135,7 @@ export function EvaluationsMode({
           {...(caseSource ? { caseSource } : {})}
           {...(onOpenSourceTrace ? { onOpenSourceTrace } : {})}
           {...(decisionSettings ? { decisionSettings } : {})}
+          {...(draft ? { draft } : {})}
         />
       </div>
       {previewOpen ? (

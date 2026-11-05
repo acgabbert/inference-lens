@@ -124,7 +124,7 @@ test("publication writes the intent first, then the shared revision, then delete
   const outcome = await instance.publishPromptDraft(asset, shared, async (update) => {
     // Step 1 landed before the shared write was attempted.
     const onDisk = parseWorkbenchRecordJson(storage.files.get("drafts/draft_test-1.json")!, projectId);
-    if (onDisk.kind === "draft" && onDisk.publishing) intentSeen.push(onDisk.publishing.revisionId);
+    if (onDisk.kind === "draft" && onDisk.publishing && "revisionId" in onDisk.publishing) intentSeen.push(onDisk.publishing.revisionId);
     return writer.write(update);
   });
   assert.equal(outcome.kind, "published");
@@ -154,7 +154,7 @@ test("edits made while the shared write is in flight stay as a draft on the publ
   assert.equal(draft.publishing, undefined);
   await instance.flush();
   const stored = parseWorkbenchRecordJson(storage.files.get("drafts/draft_test-1.json")!, projectId);
-  assert.ok(stored.kind === "draft" && stored.base.revisionId === outcome.revisionId && !stored.publishing);
+  assert.ok(stored.kind === "draft" && "revisionId" in stored.base && stored.base.revisionId === outcome.revisionId && !stored.publishing);
 });
 
 test("a refused shared write keeps the draft and drops the intent", async () => {
