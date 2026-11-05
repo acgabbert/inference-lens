@@ -36,13 +36,13 @@ approved October 30; exact owner interfaces come first in that slice.
 | Legacy defaults | Copy existing selections/settings into personal state; retain all legacy defaults in shared definitions. Migration preview does **not** offer demotion in this slice. | Offer selective demotion: needs optional-default semantics and a policy for a clone with no launch request/target. Design separately. |
 | Changing launch defaults | Only an explicit "Use as project launch default" action writes `defaults`, with a preview; branching, selecting and running never do. See [launch defaults](#changing-authored-launch-defaults). | No writer: defaults freeze at migration. Implicit writer: reintroduces the churn Level 2 removes. |
 | Local data | Typed asset drafts, scratch requests, selections and execution overrides; never a second complete project. Propose workbench schema v1. | A whole-project shadow is simpler initially but creates competing definitions and ambiguous publication. |
-| Delivery order | Slice 2b: template drafts (both kinds), selections/execution overrides, scratch and draft requests (both kinds), migration. Later slices: suite/tool/mock drafts, import staging, invalid-buffer recovery, personal backup. See [delivery order](#delivery-order). | All arms at once: one schema review, but the largest slice in the plan and most of it unrelated to what migration moves. |
+| Delivery order | Slice 2b: template drafts (both kinds), selections/execution overrides, scratch and draft requests (both kinds), migration. Next: suite/tool/mock drafts. Import staging, invalid-buffer recovery and personal backup are parked (November 5). See [delivery order](#delivery-order). | All arms at once: one schema review, but the largest slice in the plan and most of it unrelated to what migration moves. |
 | Recovery granularity | One record per draft/scratch request plus a selections record; protect the directory before writing any content. | One state file gives simpler writes but unrelated drafts conflict and one invalid file blocks all recovery. |
 | Workbench write safety | Best-effort detection: expected-content check before each write, read-back after it, and same-host coordination where the host offers it. No cross-host atomicity claim. See [concurrent writes](#layout-identity-and-concurrent-writes). | Write-once generations with parent pointers: closes the race, but adds head resolution, cleanup and a record format no other store uses; browsers offer no exclusive create to do better. |
 | Publication recovery | Record publication intent (intended revision ID and frozen content) in the draft record itself; no separate operation journal for ordinary saves. Migration keeps its journal. | A journal per publication: more general, but a second record to keep consistent with the draft it describes. |
-| Incomplete editors | Slice 2b recovers valid editor content, as v15 drafts do today. A later slice recovers typed editor buffers, including invalid decision JSON. | Buffers in 2b: protects more unfinished work, but needs per-editor buffer arms before the core separation ships. |
+| Incomplete editors | Slice 2b recovers valid editor content, as v15 drafts do today. Typed editor-buffer recovery, including invalid decision JSON, is parked with 2d. | Buffers in 2b: protects more unfinished work, but needs per-editor buffer arms before the core separation ships. |
 | Conflict recovery | Retain both sides, stop automatic writes to the affected record, and require explicit reconciliation; keep source snapshots for comparisons. | Automatic merge/rebase introduces new semantics, especially for ordered decision input. |
-| Personal backup | Later slice: separate versioned backup of personal records and required local dependencies; preview restore, never overwrite automatically. Evidence remains a separate export. | Full-folder archive carries evidence too, but obscures what is portable and greatly increases scope. |
+| Personal backup | Parked (2e; not a Level 3 prerequisite): separate versioned backup of personal records and required local dependencies; preview restore, never overwrite automatically. Evidence remains a separate export. | Full-folder archive carries evidence too, but obscures what is portable and greatly increases scope. |
 
 The first core-slice approval accepts v19 and v1 for the bounded contracts
 described below. The later recovery-store approval accepts the existing-record
@@ -494,7 +494,7 @@ candidate, extracted personal records and preview diagnostics.
 Existing v10–v15 JSON remains importable through the strict one-version chain;
 older unsupported formats stay unsupported. JSON imports have session-only
 recovery until a folder is chosen. Default export is v19 shared definitions;
-personal backup is explicitly selected. Do not silently down-export v15 by
+personal backup is deferred with 2e and would require explicit selection. Do not silently down-export v15 by
 reintroducing personal drafts. An old build must reject v19, not open it as an
 editable empty project. No-folder export wording must state that unsaved drafts
 are excluded, and offer personal backup before replacement/closing once
@@ -524,9 +524,10 @@ Slice 2b covers exactly that; later Level 2 slices add the rest of the arms.
 | Slice | Delivers | Record arms |
 | --- | --- | --- |
 | 2b | v19 codec and migration; personal selections and execution overrides; "Use as project launch default"; chat and decision template drafts; scratch requests and drafts of saved requests (both kinds), so running and branching stop writing shared definitions; publication intent | chat prompt, decision prompt, chat request, inline decision request, template-use decision request, selections |
-| 2c | Suite drafts and explicit suite save; tool and mock drafts, local mock activation; import staging | suite, tool, mock, import staging |
-| 2d | Typed editor buffers for invalid or incomplete input (decision JSON, checks, tool schemas) | buffer arms per editor |
-| 2e | Personal backup v1 and restore preview | backup envelope |
+| 2c | Suite drafts and explicit suite save; tool and mock drafts, local mock activation | suite, tool, mock |
+| 2d (parked) | Typed editor buffers for invalid or incomplete input (decision JSON, checks, tool schemas) | buffer arms per editor |
+| 2e (parked) | Personal backup v1 and restore preview | backup envelope |
+| Import staging (parked) | Staged imports not yet saved as assets | import staging |
 
 Until 2c, suite, tool and mock editors keep their current save behavior, and
 the migration preview must not claim they are separated. Until 2d, recovery
@@ -534,6 +535,24 @@ covers valid editor content only, as v15 drafts do today. Until 2e, no-folder
 and close/replace wording offers shared export only and says drafts are
 excluded. Each later slice adds arms to the workbench v1 codec only if it can do
 so without changing an existing arm; otherwise it versions the codec.
+
+### Level 2 scope trimmed (November 5, 2026)
+
+The user approved trimming the rest of Level 2. The project has a handful of
+users, so effort goes to what changes shared files, then to Level 3.
+
+- **2c is trimmed.** It keeps suite, tool and mock drafts with explicit saves.
+  Import staging leaves 2c.
+- **2d, 2e and import staging are parked.** They are not scheduled and are not
+  prerequisites for Level 3. The interim behavior above stays: recovery covers
+  valid editor content only, and no-folder and close/replace wording offers
+  shared export only and explicitly excludes drafts. Picking one up again needs
+  its own approval. These deferrals do not remove existing Level 2 write safety.
+- **Level 3 is bounded separately.** The [approved delivery scope](SHARED_ASSETS_PERSONAL_WORKBENCH_PLAN.md#delivery-scope-approved-november-5-2026)
+  defers 3c, uses source-preserving conversion into a new folder, and requires
+  detectable incomplete saves with a documented recovery path rather than
+  automatic repair. Detailed contracts and a version distinct from reserved
+  Project v20 remain design work.
 
 ## Review and verification handoff
 

@@ -19,8 +19,9 @@ implemented, with no application caller. The 2b
 [integration decisions](SHARED_ASSETS_LEVEL_TWO_DESIGN.md#integration-decisions-approved-october-30-2026)
 were approved October 30, 2026, and the owner interfaces October 31. The
 integration slice was delivered November 5: the app writes v19, every session
-is personal, and the CLI reads v19. Personal backup (2e) remains open. Level 3
-remains proposed. The product direction is agreed:
+is personal, and the CLI reads v19. A trimmed 2c remains; 2d, 2e and import
+staging are [parked](SHARED_ASSETS_LEVEL_TWO_DESIGN.md#level-2-scope-trimmed-november-5-2026). Level 3
+delivery scope is approved below; its detailed contracts remain open. The product direction is agreed:
 Inference Lens is a personal workbench for potentially shared assets. Approved
 choices are distinguished from the remaining schema and recovery mechanics that
 still need design review.
@@ -293,7 +294,7 @@ versioned schema transition; this agreement does not change Project v14 in place
    values left in the shared document become authored launch defaults; the
    migration examples must show this, and the preview should state whether it
    offers to demote them. Shared definitions are the default export; personal
-   backup is a separate explicit operation. Preserve untouched migration sources and keep
+   backup is a separate explicit operation deferred with 2e, not a delivery prerequisite. Preserve untouched migration sources and keep
    failed or interrupted writes recoverable.
 
 ### Next design deliverable: slice 2a
@@ -342,7 +343,7 @@ direction does not yet specify these contracts; settle each during the review:
   only after that write is confirmed, and recognize a published-but-not-cleared
   draft on restart. This applies to every revision save, not only migration.
 - [x] Migration write ordering and restart recovery
-- [ ] Personal backup representation and restore behavior
+- [ ] Personal backup representation and restore behavior (2e parked; not a Level 3 prerequisite)
 - [x] Old-reader/writer, existing JSON, and CLI compatibility
 
 When implementation starts, move the Level 1 Git staging fixture in
@@ -402,9 +403,9 @@ status; automatic local persistence must not imply an access-control guarantee.
 - Migration must be restartable, detect partial writes, and avoid leaving the
   only copy of a draft in an ignored file that was never successfully written.
   Any backup containing legacy personal content is local and excluded by default.
-- Export shared assets without personal state by default. Provide personal backup
-  as a separate explicit operation; define its exact representation and restore
-  behavior during contract review. Until a new portable format is approved,
+- Export shared assets without personal state by default. Personal backup and
+  restore are parked with 2e, not required for Level 3. If resumed, define them
+  as a separate explicit operation during contract review. Until a new portable format is approved,
   retain a documented compatibility path for existing JSON.
 - CLI evaluation must work from shared assets alone, without a personal workbench.
   Update or version any command that formerly relied on mutable workbench defaults.
@@ -435,6 +436,35 @@ status; automatic local persistence must not imply an access-control guarantee.
 **Size:** Larger. Bundle format, reference resolution, multi-file writes, migration,
 and cross-host loader changes. Build on level 2 rather than mixing personal state
 into each asset file.
+
+### Delivery scope approved November 5, 2026
+
+The user approved a smaller first delivery for the current small user base.
+These scope decisions supersede broader proposals below; detailed types, file
+layout and persistence contracts still require design review before implementation.
+
+- **Defer 3c.** Start with Git-based sharing and actionable dependency errors.
+  A polished selection/export preview and reconciliation UI are follow-ups, not
+  delivery gates. Retain core dependency validation, stable IDs and revision pins;
+  document how to verify a shared set without private files satisfying its dependencies.
+- **Convert into a new folder.** Preserve the original monolithic project and
+  its personal state unchanged. An incomplete conversion is reported as incomplete
+  and can be discarded and retried; do not require an in-place upgrade, rollback
+  system or automatic migration repair. Before implementation, settle how personal
+  records are carried or explicitly left in the original folder without silent loss.
+- **Bound write recovery.** Detect incomplete writes, retain recoverable content,
+  and never report a partial save as complete. Define a documented manual recovery
+  path for interrupted ordinary multi-file saves; automatic repair and a comprehensive
+  recovery interface are deferred. New-folder conversion alone does not protect
+  subsequent edits to the converted project.
+- **Keep the essential guarantees.** Personal content stays excluded from sharing;
+  shared writes require explicit actions; dependency and pin integrity, old-writer
+  rejection, expected-content checks and truthful save status remain required.
+  Preserve existing Level 2 safeguards; removing implemented protection is not
+  part of this scope reduction.
+- **Reserve the format during design.** Project v20 is already reserved for
+  final-output tools. Choose a distinct version and define sequencing with that
+  feature before implementing Level 3; this decision does not allocate a number.
 
 ### Proposed layout and representation
 
@@ -484,9 +514,10 @@ File boundaries enable Git selection, but selections must form a usable set:
 - Provenance needed by an asset must travel with it or be an explicit dependency;
   private staging receipts must not become a hidden shared dependency.
 
-Define a core dependency graph and a closure operation. Recommend a selection
-preview/export that includes required definitions, preserves pinned revisions,
-and explains why each dependency is included. Do not automatically include
+Define a core dependency graph and a closure operation. The deferred 3c selection
+preview/export would include required definitions, preserve pinned revisions,
+and explain why each dependency is included. Initially expose actionable dependency
+errors and document Git-based sharing with the required closure. Do not automatically include
 referencing consumers: sharing a template should not pull in every conversation
 or suite that uses it. Do not flatten pins or silently substitute a newer revision.
 
@@ -516,7 +547,8 @@ prompt files tracked from another repository.
   and provider adapters do not become asset-file concerns.
 - Check the expected contents of each file being replaced. Changes to a different
   asset should not block an independent save; changes to the same asset require
-  explicit reconciliation. Preserve unaffected local drafts during reload.
+  explicit reconciliation; a clear conflict error and documented manual resolution
+  suffice initially. Preserve unaffected local drafts during reload.
 - Saving a suite, request, or imported asset may write several dependent files.
   Specify write ordering, recoverability, and detection of incomplete writes for
   browser, native, and Node hosts; do not assume transactional directory renames
@@ -524,8 +556,9 @@ prompt files tracked from another repository.
 - Keep unsupported versions, unresolved references, duplicate IDs, and Git conflict
   markers explicit. Valid independent assets should remain inspectable where
   possible; incomplete assets must not run with guessed dependencies.
-- Provide a lossless migration from supported monolithic projects with source
-  preservation and a documented export/import route. Decide old-writer behavior;
+- Provide a lossless conversion from supported monolithic projects into a new
+  folder, preserving the source and documenting retry and personal-state handling.
+  In-place migration and automatic rollback are not required. Decide old-writer behavior;
   older apps must not mistake a thin manifest for a complete editable old project.
 - Preserve IDs and revision pins so existing traces and experiment plans remain
   inspectable. Keep historical evidence self-contained, without requiring a
@@ -540,9 +573,9 @@ prompt files tracked from another repository.
   policy keep excluding every new asset file after migration. A teammate's
   clone would then lack assets the author sees locally, or appear complete only
   because ignored files exist in the author's checkout. Define how migration
-  handles the existing policy: one option is to recognize the exact Level 1
-  bytes and offer to replace them, while leaving customized rules untouched and
-  reporting which new asset paths they would exclude.
+  handles that policy in the new destination without modifying the source:
+  recognize the exact Level 1 policy, define the destination policy explicitly,
+  and report customized rules that would exclude required new asset paths.
 
 ### Acceptance criteria
 
@@ -555,7 +588,8 @@ prompt files tracked from another repository.
 - Concurrent edits to the same asset retain both sides' work for reconciliation.
   The application never guesses which revision should become current.
 - Browser, native, and CLI read the same asset graph; interrupted multi-file saves
-  and migrations are detectable and recoverable.
+  are detected and have a documented recovery path. Failed conversions leave the
+  source intact and can be discarded and retried in a new folder.
 
 ## External prompt sources
 
@@ -1328,12 +1362,12 @@ unresolved persistence, compatibility, or dependency policy during coding.
 | 2b, core foundation | Isolated v19/workbench v1 codecs and pure migration plan; app remains v15 (implemented October 26) | Core codecs; no workspace integration |
 | 2b, recovery-store foundation | Protected storage for existing prompt-draft and selections records (implemented October 26); app remains v15 | Core typed store; opt-in browser/native workspace adapters |
 | 2b, integration | Recovery store, migration, prompt/request drafts and scratch inputs, selections, explicit publication and launch defaults (delivered November 5) | Workspace adapters; personal-workbench, prompt, request, decision and execution-setting owners; compatible app/CLI loaders |
-| 2c | Suite/tool/mock drafts and import staging; explicit saves | Evaluation, tool and import feature owners |
-| 2d | Invalid or incomplete typed editor-buffer recovery | Editor owners and workbench codecs |
-| 2e | Personal backup and restore preview | Core backup codec and workspace persistence |
+| 2c | Suite/tool/mock drafts; explicit saves (trimmed November 5: import staging parked) | Evaluation and tool feature owners |
+| 2d (parked) | Invalid or incomplete typed editor-buffer recovery | Editor owners and workbench codecs |
+| 2e (parked) | Personal backup and restore preview | Core backup codec and workspace persistence |
 | 3a | Approved asset format, references, dependency graph and sharing policy | Core asset model and validated graph loader |
-| 3b | Cross-host file adapters, lossless migration and recoverable writes | Browser/native/Node storage owners |
-| 3c | Selection preview/export, dependency explanations and conflict UX | Asset selection/export owner composed into the UI |
+| 3b | Cross-host file adapters, source-preserving new-folder conversion and bounded write recovery | Browser/native/Node storage owners |
+| 3c (deferred) | Selection preview/export and polished dependency/conflict UX; core validation and actionable errors remain in 3a–3b | Asset selection/export owner composed into the UI |
 
 Design the whole level before splitting implementation into mergeable slices.
 Use compatibility adapters or feature gating where needed so intermediate slices
@@ -1385,8 +1419,9 @@ and diff check, not a browser run.
 ## Remaining decisions for the design review
 
 Level 1's presets and Level 2's choices recorded above are resolved, and 2b is
-delivered, and so is the in-memory v19 label. The next review covers slice 2c;
-Level 3 decisions remain deferred.
+delivered, and so is the in-memory v19 label. The next review covers trimmed
+slice 2c; 2d, 2e and import staging are parked. Level 3 delivery scope is
+approved in the Level 3 section; detailed format and persistence contracts remain open.
 
 1. Approve the field-by-field classification and migration examples for prompts,
    chat requests, decision requests, and evaluation suites, preserving legacy
@@ -1394,13 +1429,14 @@ Level 3 decisions remain deferred.
    Done: approved with the core slice and delivered in 2b.
 2. Settle the Level 2 contracts in the slice 2a checklist above. The
    [integration decisions](SHARED_ASSETS_LEVEL_TWO_DESIGN.md#integration-decisions-approved-october-30-2026)
-   (October 30) and owner interfaces (October 31) settle all but personal backup (2e).
+   (October 30) and owner interfaces (October 31) settle all but personal backup (2e), now parked.
 3. Choose Level 3 asset file granularity and discovery rules, reference/provenance closure,
    and how team sharing policy and personal asset exclusions interact.
-4. Approve Level 3 format transitions and recovery for interrupted multi-file
-   operations, plus old-reader/writer and export compatibility. Include how
-   bundles created with the Level 1 definitions policy come to share new asset
-   files.
+4. Specify Level 3 new-folder conversion, personal-state handling and the bounded
+   recovery path for interrupted multi-file saves, plus old-reader/writer and
+   export compatibility. Allocate a version distinct from final-output tools'
+   reserved Project v20. Include how the destination policy shares new assets
+   without rewriting the source bundle's Level 1 definitions policy.
 5. Specify the bounded [external prompt source review details](#accepted-review-recommendations-october-30-2026)
    before their affected slices. E1 → E2 → E3 is approved, with E2's mapping
    continuity designed alongside E1. E1–E3 are approved and delivered under
