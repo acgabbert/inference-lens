@@ -468,7 +468,8 @@ test("changing the composer's protocol leaves an evaluation's protocol alone", a
 
   const settings = await openInferenceSettings(page);
   const protocol = settings.getByLabel("Protocol");
-  await expect(settings).toContainText("Project default. Evaluations set their own protocol");
+  // A project session keeps the protocol as a personal override (T2).
+  await expect(settings).toContainText("Yours on this device. Evaluations set their own protocol");
   await protocol.selectOption("openai-responses");
   await expect(protocol).toHaveValue("openai-responses");
 

@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { expect, test, type Page } from "./support/test";
-import { createProjectFile, createPromptTemplate, parseProjectJson, setPromptTemplateRecommendedTarget } from "../../packages/core/src/project";
+import { createProjectFile, createPromptTemplate, setPromptTemplateRecommendedTarget } from "../../packages/core/src/project";
+import { parseSharedProjectJson, sharedProjectAsActive } from "../../packages/core/src/shared-project";
 import { BUFFERED_FIXTURE_ENDPOINT, importProject, openMode, PROJECT_PROFILE_MAP_STORAGE_KEY, seedProfile, waitForHydration } from "./support";
 
 const PROJECT_NAME = "Prompt model recommendations";
@@ -139,7 +140,8 @@ test("export keeps the recommendation and pin while dismissals reset in a new pa
   const downloading = page.waitForEvent("download");
   await page.getByRole("button", { name: "Export JSON copy…" }).click();
   const download = await downloading;
-  const exported = parseProjectJson(await readFile((await download.path())!, "utf8"));
+  // Exports are v19 shared definitions.
+  const exported = sharedProjectAsActive(parseSharedProjectJson(await readFile((await download.path())!, "utf8")));
   expect(exported.promptTemplates).toEqual(fixture().promptTemplates);
   expect(exported.defaults.target.model).toBe("buffered-test-model");
   expect(exported.conversationRevisions.find(({ id }) => id === exported.defaults.conversationRevisionId)!.items.some((item) => item.kind === "template-use")).toBe(true);
