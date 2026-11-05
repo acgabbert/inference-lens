@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import { detachDecisionRequestTemplate, updateDecisionRequestTemplateRevision } from "../packages/core/src/decision-request.ts";
-import { parseProjectFile } from "../packages/core/src/project.ts";
 import type { ProjectDecisionRequestRevision, ProjectFile } from "../packages/core/src/project.ts";
 import { planSharedProjectMigration } from "../packages/core/src/shared-project-migration.ts";
 import type { WorkbenchDecisionRequestContent, WorkbenchScratchV1 } from "../packages/core/src/personal-workbench.ts";
@@ -17,7 +16,7 @@ import {
 } from "../app/decisions/local-decision-request.ts";
 
 const plan = planSharedProjectMigration(readFileSync(new URL("../docs/examples/shared-assets-level-two/project-v15.json", import.meta.url)));
-const shared: ProjectFile = parseProjectFile({ ...plan.shared, schemaVersion: 18 });
+const shared: ProjectFile = plan.shared;
 const projectId = shared.projectId;
 const inline = shared.decisionRequestRevisions.find(({ id }) => id === "decision-revision_inline") as Extract<ProjectDecisionRequestRevision, { kind: "inline" }>;
 const use = shared.decisionRequestRevisions.find(({ id }) => id === "decision-revision_use") as Extract<ProjectDecisionRequestRevision, { kind: "template-use" }>;

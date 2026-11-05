@@ -9,6 +9,7 @@ import type { Page } from "./support/test";
 import { expect, test } from "./support/test";
 import { createProjectFile, createPromptTemplate, serializeProjectFile } from "../../packages/core/src/project";
 import type { ProjectFile } from "../../packages/core/src/project";
+import { serializeLegacyProjectFile } from "../legacy-project-helpers";
 import {
   BUFFERED_FIXTURE_ENDPOINT,
   closeProjectMenu,
@@ -142,7 +143,7 @@ test("a pre-v19 folder's session draft stops an open, with no save that would lo
   await seedProfile(page);
   await stubProjectDirectory(page, {
     name: "legacy-original.inference-lens",
-    files: { "project.json": serializeProjectFile(original) },
+    files: { "project.json": serializeLegacyProjectFile(original) },
   });
   await page.goto("/");
   await waitForHydration(page);

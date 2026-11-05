@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { parseProjectFile } from "../packages/core/src/project.ts";
 import type { ChatPromptTemplate, ProjectFile, PromptTemplateMessages } from "../packages/core/src/project.ts";
 import { planSharedProjectMigration } from "../packages/core/src/shared-project-migration.ts";
 import { parseWorkbenchRecordJson, serializeWorkbenchRecord } from "../packages/core/src/personal-workbench.ts";
@@ -12,7 +11,7 @@ import { PersonalWorkbenchController } from "../app/workbench/personal-workbench
 import type { SharedWriteOutcome } from "../app/use-project-workspace.client.ts";
 
 const plan = planSharedProjectMigration(readFileSync(new URL("../docs/examples/shared-assets-level-two/project-v15.json", import.meta.url)));
-const shared: ProjectFile = parseProjectFile({ ...plan.shared, schemaVersion: 18 });
+const shared: ProjectFile = plan.shared;
 const projectId = shared.projectId;
 const seed = plan.drafts.find((draft) => draft.asset.kind === "chat-prompt")! as WorkbenchPromptDraftV1 & { asset: { kind: "chat-prompt" } };
 const template = shared.promptTemplates.find(({ id }) => id === seed.asset.id) as ChatPromptTemplate;

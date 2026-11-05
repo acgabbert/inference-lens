@@ -1,7 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { expect, test, type Page } from "./support/test";
-import { createProjectFile, createPromptTemplate, setPromptTemplateRecommendedTarget } from "../../packages/core/src/project";
-import { parseSharedProjectJson, sharedProjectAsActive } from "../../packages/core/src/shared-project";
+import { createProjectFile, createPromptTemplate, parseProjectJson, setPromptTemplateRecommendedTarget } from "../../packages/core/src/project";
 import { BUFFERED_FIXTURE_ENDPOINT, importProject, openMode, PROJECT_PROFILE_MAP_STORAGE_KEY, seedProfile, waitForHydration } from "./support";
 
 const PROJECT_NAME = "Prompt model recommendations";
@@ -144,7 +143,7 @@ test("export keeps the recommendation and a saved pin while dismissals reset in 
   await page.getByRole("button", { name: "Export JSON copy…" }).click();
   const download = await downloading;
   // Exports are v19 shared definitions.
-  const exported = sharedProjectAsActive(parseSharedProjectJson(await readFile((await download.path())!, "utf8")));
+  const exported = parseProjectJson(await readFile((await download.path())!, "utf8"));
   expect(exported.promptTemplates).toEqual(fixture().promptTemplates);
   expect(exported.defaults.target.model).toBe("buffered-test-model");
   // Save appends a child revision; the launch default stays where it was.

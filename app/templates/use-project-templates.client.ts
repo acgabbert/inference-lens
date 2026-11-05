@@ -16,7 +16,6 @@ import {
   restorePromptTemplate,
   setPromptTemplateRecommendedTarget,
   updateProjectDraft,
-  updatePromptTemplateDraft,
   updatePromptTemplateUseRevision,
   updatePromptTemplateUseValues,
 } from "../../packages/core/src/project";
@@ -38,7 +37,12 @@ import {
 } from "../../packages/core/src/external-prompt-project";
 import type { ExternalPromptCandidate } from "../../packages/core/src/external-prompt-import";
 import { importFilePromptCandidates } from "../../packages/core/src/file-prompt-import";
-import { applyFilePromptUpdate, planFilePromptUpdate, type FilePromptUpdatePlan } from "../../packages/core/src/file-prompt-update";
+import {
+  applyFilePromptUpdate,
+  planFilePromptUpdate,
+  type FilePromptPersonalUses,
+  type FilePromptUpdatePlan,
+} from "../../packages/core/src/file-prompt-update";
 import { linkFilePrompt, unlinkFilePrompt } from "../../packages/core/src/source-roots";
 import { createEntityId } from "../../packages/core/src/run-kernel";
 import type {
@@ -53,8 +57,9 @@ import type {
   ToolId,
 } from "../../packages/core/src/run-kernel";
 import type { DecisionInput } from "../../packages/core/src/decision";
-import { createDecisionPromptTemplate, appendDecisionPromptTemplateRevision, updateDecisionPromptTemplateDraft } from "../../packages/core/src/decision-template";
+import { createDecisionPromptTemplate, appendDecisionPromptTemplateRevision } from "../../packages/core/src/decision-template";
 import { materializeSessionDecisionTemplate } from "./decision-session-template";
+import type { PromptTemplateView } from "./prompt-template-view";
 import {
   useDecisionTemplateEditorMemory,
   type DecisionTemplateEditorMemoryStore,
@@ -89,10 +94,10 @@ export interface ProjectTemplatesImportNotice {
 export interface UseProjectTemplatesInput {
   projectFile: ProjectFile | null;
   /**
-   * In a `personal` session, prompt drafts live here instead of in
-   * `template.draft`, and Save publishes through it (2b step 2).
+   * Prompt drafts live here, never in the shared document, and Save
+   * publishes through it (2b step 2).
    */
-  personal: Pick<PersonalWorkbenchHandle, "enabled" | "draftFor" | "updateDraft" | "publish">;
+  personal: Pick<PersonalWorkbenchHandle, "enabled" | "draftFor" | "updateDraft" | "publish" | "unsavedDrafts" | "draftById" | "scratches">;
   /**
    * In a `personal` session, the request the composer edits: template-use and
    * message edits become its draft or scratch, never a direct shared write
@@ -133,7 +138,8 @@ export interface UseProjectTemplatesInput {
 
 export interface ProjectTemplatesHandle {
   modelWarnings: PromptModelWarnings;
-  libraryTemplates: PromptTemplate[];
+  /** The project's prompts and this session's, each with the user's draft when there is one. */
+  libraryTemplates: PromptTemplateView[];
   decisionEditorMemory: DecisionTemplateEditorMemoryStore;
   createDecisionTemplate(name: string, decision: DecisionInput, defaults?: Record<string, string>): PromptTemplateId;
   /** Stages Compose content as a session-only prompt, even in an open project. */
@@ -219,7 +225,7 @@ export interface ProjectTemplatesHandle {
 
 export function useProjectTemplates(input: UseProjectTemplatesInput): ProjectTemplatesHandle {
   const [templateRunOverrides, setTemplateRunOverrides] = useState<TemplateRunOverrides>({});
-  const [sessionTemplates, setSessionTemplates] = useState<PromptTemplate[]>([]);
+  const [sessionTemplates, setSessionTemplates] = useState<PromptTemplateView[]>([]);
   const decisionEditorMemory = useDecisionTemplateEditorMemory();
   const executedRevisionIdsRef = useRef(new Set<ConversationRevisionId>());
   useEffect(() => {
@@ -301,12 +307,12 @@ export function useProjectTemplates(input: UseProjectTemplatesInput): ProjectTem
   function promptAsset(template: Pick<PromptTemplate, "id" | "kind">): PromptAssetRef {
     return { kind: template.kind === "chat" ? "chat-prompt" : "decision-prompt", id: template.id };
   }
-  /** The editors read `template.draft`; a personal session supplies it from its record. */
-  function withPersonalDraft(template: PromptTemplate): PromptTemplate {
+  /** The editors read a prompt's draft from its view, built here from the personal record. */
+  function withPersonalDraft(template: PromptTemplate): PromptTemplateView {
     if (!input.personal.enabled) return template;
     const record = input.personal.draftFor(promptAsset(template));
     if (!record || !isPromptDraft(record)) return template;
-    return { ...template, draft: { sourceRevisionId: record.base.revisionId, ...structuredClone(record.edited) } } as PromptTemplate;
+    return { ...template, draft: { sourceRevisionId: record.base.revisionId, ...structuredClone(record.edited) } } as PromptTemplateView;
   }
   /** Records a personal prompt draft against a saved revision of the open project. */
   function updatePersonalDraft(
@@ -508,19 +514,9 @@ export function useProjectTemplates(input: UseProjectTemplatesInput): ProjectTem
       ));
       return;
     }
-    if (input.personal.enabled) {
-      updatePersonalDraft(templateId, sourceRevisionId, {
-        decision, variableDefaults: { ...defaults }, ...(revisionName ? { revisionName } : {}),
-      });
-      return;
-    }
-    adoptAuthoredProject(updateDecisionPromptTemplateDraft(input.ensureProjectDocument(), {
-      templateId,
-      sourceRevisionId,
-      decision,
-      variableDefaults: defaults,
-      revisionName,
-    }));
+    updatePersonalDraft(templateId, sourceRevisionId, {
+      decision, variableDefaults: { ...defaults }, ...(revisionName ? { revisionName } : {}),
+    });
   }
   async function saveDecisionTemplateForUse(
     templateId: PromptTemplateId,
@@ -612,19 +608,9 @@ export function useProjectTemplates(input: UseProjectTemplatesInput): ProjectTem
       ));
       return;
     }
-    if (input.personal.enabled) {
-      updatePersonalDraft(templateId, sourceRevisionId, {
-        messages, variableDefaults: { ...defaults }, ...(revisionName ? { revisionName } : {}),
-      });
-      return;
-    }
-    adoptAuthoredProject(updatePromptTemplateDraft(input.ensureProjectDocument(), {
-      templateId,
-      sourceRevisionId,
-      revisionName,
-      messages,
-      variableDefaults: defaults,
-    }));
+    updatePersonalDraft(templateId, sourceRevisionId, {
+      messages, variableDefaults: { ...defaults }, ...(revisionName ? { revisionName } : {}),
+    });
   }
   function updateProjectTemplateRecommendedTarget(templateId: PromptTemplateId, recommendedTarget?: PromptTemplateRecommendedTarget): void {
     if (sessionTemplateIds.has(templateId)) {
@@ -1001,13 +987,34 @@ export function useProjectTemplates(input: UseProjectTemplatesInput): ProjectTem
     input.adoptProjectMutation(imported.project);
     return imported.templateIds;
   }
+  /**
+   * Names a pull must not reuse that only personal work holds: the prompt's
+   * draft, and every chat request draft and scratch. Uses of other prompts
+   * are filtered out by the plan.
+   */
+  function personalFileUses(templateId: PromptTemplateId): FilePromptPersonalUses {
+    const promptDraft = input.personal.draftFor({ kind: "chat-prompt", id: templateId });
+    const requestItems = [
+      ...input.personal.unsavedDrafts.flatMap(({ asset, draftId }) => {
+        const draft = asset.kind === "chat-request" ? input.personal.draftById(draftId) : undefined;
+        return draft && "items" in draft.edited ? [draft.edited.items] : [];
+      }),
+      ...input.personal.scratches.flatMap(({ request }) => request.kind === "chat" ? [request.items] : []),
+    ];
+    return {
+      ...(promptDraft && "messages" in promptDraft.edited ? { promptDraft: { messages: promptDraft.edited.messages } } : {}),
+      requestItems,
+    };
+  }
   function planFileUpdate(templateId: PromptTemplateId, candidate: ExternalPromptCandidate): FilePromptUpdatePlan {
     // Only saved project prompts carry file receipts; never materialize one to preview.
     if (!input.projectFile) throw new Error("Open a project to update a prompt from a file.");
-    return planFilePromptUpdate(input.ensureProjectDocument(), templateId, candidate);
+    return planFilePromptUpdate(input.ensureProjectDocument(), templateId, candidate, personalFileUses(templateId));
   }
   async function updateFilePrompt(templateId: PromptTemplateId, candidate: ExternalPromptCandidate): Promise<ChatPromptTemplateRevision> {
-    const updated = await applyFilePromptUpdate(input.ensureProjectDocument(), templateId, candidate);
+    const updated = await applyFilePromptUpdate(input.ensureProjectDocument(), templateId, candidate, {
+      personal: personalFileUses(templateId),
+    });
     // Pinned uses do not move, so the request draft is unchanged.
     input.adoptProjectMutation(updated.project);
     const template = updated.project.promptTemplates.find(({ id }) => id === templateId);

@@ -16,7 +16,7 @@ import {
   serializeExperimentResult,
   type ExperimentResult,
 } from "../../packages/core/src/experiment";
-import { createProjectFile, parseProjectFile } from "../../packages/core/src/project";
+import { createProjectFile, parseProjectFile, serializeProjectFile } from "../../packages/core/src/project";
 import type { EvaluationVariantId } from "../../packages/core/src/run-kernel";
 import { serializeDecisionRunTrace } from "../../packages/core/src/run-trace";
 import { decisionAnswers, decisionProject, decisionRuntimeTarget, finishedDecisionRun } from "../fixtures/decision-evaluation";
@@ -28,7 +28,6 @@ import {
   openMode,
   primaryAction,
   seedProfiles,
-  serializeFolderProject,
   stubProjectDirectory,
   waitForHydration,
 } from "./support";
@@ -59,7 +58,7 @@ function projectWithRequest(): string {
     idSuffix: "decision-suites",
     createdAt: "2026-10-24T12:00:00.000Z",
   });
-  return serializeFolderProject(updateDecisionRequestDraft(project, {
+  return serializeProjectFile(updateDecisionRequestDraft(project, {
     decision: {
       state: { ticket: "{{ticket}}", plan: captured.state.plan },
       questions: captured.questions as never,
@@ -268,7 +267,7 @@ function decisionHistoryFolder(): Record<string, string> {
     return files;
   };
   return {
-    "project.json": serializeFolderProject(project),
+    "project.json": serializeProjectFile(project),
     ...execution("local-decision", "2026-10-24T13:00:00.000Z", "base", "refund"),
     ...execution("other-decision", "2026-10-24T14:00:00.000Z", "cand", "billing"),
   };
@@ -336,7 +335,7 @@ test("a v15 template-backed suite resolves its pin on screen and sends an explic
     input: { kind: "decision-request-revision", decisionRequestRevisionId: "decision-revision_pin" },
     cases: suite.cases.map((evaluationCase) => ({ ...evaluationCase, values: { "evaluation-input_ticket": "" } })),
   })) });
-  await openFolder(page, serializeFolderProject(project));
+  await openFolder(page, serializeProjectFile(project));
   await page.locator(".target-menu summary").click();
   await page.getByRole("button", { name: /manage connections/i }).click();
   await page.getByRole("combobox", { name: "Profile for Default connection" }).selectOption("decisions");

@@ -1,10 +1,9 @@
 import { expect, test } from "./support/test";
-import { createProjectFile } from "../../packages/core/src/project";
+import { createProjectFile, serializeProjectFile } from "../../packages/core/src/project";
 import {
   BUFFERED_FIXTURE_ENDPOINT,
   PROJECT_REQUIREMENT_PROFILE_MAP_STORAGE_KEY,
   seedProfile, stubProjectDirectory, waitForHydration,
-  serializeFolderProject,
 } from "./support";
 import { expectModalContract } from "./support/modal";
 
@@ -83,7 +82,7 @@ test("a definitions-only clone opens without evidence and running leaves its man
       messages: [{ role: "user", content: "Run from shared definitions." }],
     },
   });
-  const manifest = serializeFolderProject(project);
+  const manifest = serializeProjectFile(project);
   await seedProfile(page, { instanceId: "definitions-clone-profile" });
   await page.addInitScript(({ key, projectId, requirementId }) => {
     localStorage.setItem(key, JSON.stringify({

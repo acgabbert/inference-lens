@@ -24,10 +24,10 @@ import type {
 } from "../app/project-directory.client.ts";
 import {
   createProjectFile,
+  parseProjectJson,
   serializeProjectFile,
 } from "../packages/core/src/project.ts";
 import { createResolvedRunInput } from "../packages/core/src/run-kernel/run-execution.ts";
-import { parseSharedProjectJson } from "../packages/core/src/shared-project.ts";
 import { WORKBENCH_GITIGNORE_CONTENTS } from "../packages/core/src/personal-workbench.ts";
 import { openWorkbenchStore } from "../packages/core/src/workbench-store.ts";
 import { coordinateProjectWrites } from "../app/workbench-directory.client.ts";
@@ -232,7 +232,7 @@ test("browser creation writes Git protection before authored project data", asyn
   const manifest = (bundle as MemoryDirectory).entries.get("project.json");
   assert.ok(manifest instanceof MemoryFile);
   // A new folder is v19 from its first write.
-  const shared = parseSharedProjectJson(manifest.contents);
+  const shared = parseProjectJson(manifest.contents);
   assert.equal(shared.schemaVersion, 19);
   assert.equal(shared.name, "Prompt Lab");
 });

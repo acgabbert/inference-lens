@@ -16,6 +16,7 @@ import type {
   SourceRootRequirement,
 } from "../../packages/core/src/project";
 import { isSensitiveTemplateVariableName } from "../../packages/core/src/project";
+import type { ChatPromptTemplateView } from "./prompt-template-view";
 import type {
   PromptTemplateId,
   PromptTemplateRevisionId,
@@ -66,7 +67,7 @@ export interface ChatPromptTemplateEditorProps {
   externalImports?: ExternalImportReceipt[];
   /** The Recovery notice for this prompt (2b step 6b-2, X3), composed by the route. */
   recoveryNotice?: ReactNode;
-  template: ChatPromptTemplate;
+  template: ChatPromptTemplateView;
   /** The whole library, for duplicate-name warnings. */
   templates: readonly PromptTemplate[];
   connectionRequirements: ConnectionRequirement[];
@@ -189,7 +190,7 @@ export function ChatPromptTemplateEditor({
   onUnlinkFile,
 }: ChatPromptTemplateEditorProps) {
   // The shell mounts an editor per prompt; the guards below predate that.
-  const selected: ChatPromptTemplate | undefined = template;
+  const selected: ChatPromptTemplateView | undefined = template;
   const libraryView = template.archivedAt ? "archived" : "active";
   const targetedRevision = navigationTarget?.templateId === template.id && navigationTarget.revisionId
     ? template.revisions.find(({ id }) => id === navigationTarget.revisionId)

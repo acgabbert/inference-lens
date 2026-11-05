@@ -8,12 +8,12 @@ import { diffDecisionPromptTemplateRevisions } from "../../packages/core/src/dec
 import { isSensitiveTemplateVariableName } from "../../packages/core/src/project";
 import type {
   ConnectionRequirement,
-  DecisionPromptTemplate,
   DecisionPromptTemplateRevision,
   PromptTemplate,
   PromptTemplateRecommendedTarget,
 } from "../../packages/core/src/project";
 import type { PromptTemplateId, PromptTemplateRevisionId } from "../../packages/core/src/run-kernel";
+import type { DecisionPromptTemplateView } from "./prompt-template-view";
 import { DecisionInputEditor } from "../decisions/decision-composer.client";
 import { decisionDraftFromInput, validateDecisionDraft } from "../decisions/decision-draft";
 import { useDecisionDraft, type DecisionDraftSnapshot } from "../decisions/use-decision-draft.client";
@@ -38,7 +38,7 @@ type SaveDecisionTemplate = (
 interface Props extends DecisionPromptEvaluationActions {
   /** The Recovery notice for this prompt (2b step 6b-2, X3), composed by the route. */
   recoveryNotice?: ReactNode;
-  template: DecisionPromptTemplate;
+  template: DecisionPromptTemplateView;
   /** The whole library, for duplicate-name warnings. */
   templates: readonly PromptTemplate[];
   memory: DecisionTemplateEditorMemoryStore;

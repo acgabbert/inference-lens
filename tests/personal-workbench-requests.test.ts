@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import { isDeepStrictEqual } from "node:util";
-import { parseProjectFile } from "../packages/core/src/project.ts";
 import type { ProjectConversationItem, ProjectFile } from "../packages/core/src/project.ts";
 import { planSharedProjectMigration } from "../packages/core/src/shared-project-migration.ts";
 import { parseWorkbenchRecord, parseWorkbenchRecordJson, serializeWorkbenchRecord } from "../packages/core/src/personal-workbench.ts";
@@ -14,7 +13,7 @@ import type { SharedWriteOutcome } from "../app/use-project-workspace.client.ts"
 import type { ConversationId, MessageId } from "../packages/core/src/run-kernel/types.ts";
 
 const plan = planSharedProjectMigration(readFileSync(new URL("../docs/examples/shared-assets-level-two/project-v15.json", import.meta.url)));
-const shared: ProjectFile = parseProjectFile({ ...plan.shared, schemaVersion: 18 });
+const shared: ProjectFile = plan.shared;
 const projectId = shared.projectId;
 const launch = shared.conversationRevisions.find(({ id }) => id === shared.defaults.conversationRevisionId)!;
 const conversationId = launch.conversationId;

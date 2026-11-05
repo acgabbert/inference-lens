@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { parseProjectFile, ProjectValidationError } from "../packages/core/src/project.ts";
+import { ProjectValidationError } from "../packages/core/src/project.ts";
 import type { ProjectFile } from "../packages/core/src/project.ts";
 import { setProjectDefaultEnvironment, setProjectEnvironment } from "../packages/core/src/environment.ts";
 import { planSharedProjectMigration } from "../packages/core/src/shared-project-migration.ts";
@@ -15,7 +15,7 @@ import {
 } from "../packages/core/src/workbench-local-input.ts";
 
 const plan = planSharedProjectMigration(readFileSync(new URL("../docs/examples/shared-assets-level-two/project-v15.json", import.meta.url)));
-const project: ProjectFile = parseProjectFile({ ...plan.shared, schemaVersion: 18 });
+const project: ProjectFile = plan.shared;
 const projectId = project.projectId;
 const chatParent = project.conversationRevisions.find(({ id }) => id === "revision_chat-1")!;
 const chatChild = project.conversationRevisions.find(({ id }) => id === "revision_chat-2")!;

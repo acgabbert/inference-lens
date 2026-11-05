@@ -2,10 +2,10 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import { createHash } from "node:crypto";
-import { createProjectFile, createPromptTemplate, updatePromptTemplateDraft, parseProjectJson, PROJECT_SCHEMA_VERSION } from "../packages/core/src/project.ts";
+import { createProjectFile, createPromptTemplate, parseLegacyProjectJson, parseProjectJson, PROJECT_SCHEMA_VERSION, serializeProjectFile } from "../packages/core/src/project.ts";
 import { resolveProviderCapabilities } from "../packages/core/src/types.ts";
 import { planSharedProjectMigration } from "../packages/core/src/shared-project-migration.ts";
-import { serializeSharedProjectFile } from "../packages/core/src/shared-project.ts";
+import { withLegacyPromptDraft } from "./legacy-project-helpers.ts";
 import { legacyContent } from "./project-kind-helpers.ts";
 import { prepareSharedProjectMigration, stageSharedProjectMigration, inspectSharedProjectMigration, parseMigrationJournal, serializeMigrationJournal } from "../packages/core/src/migration-journal.ts";
 import type { MigrationStorage, MigrationPayload, MigrationSnapshot } from "../packages/core/src/migration-journal.ts";
@@ -110,7 +110,7 @@ test("raw BOM, CRLF, Unicode and JSON order survive preparation byte-for-byte", 
   assert.deepEqual(prepared.files[0].bytes, before);
   assert.notEqual(prepared.operationId, (await prepareSharedProjectMigration(source())).operationId);
   const plan = planSharedProjectMigration(before);
-  assert.equal(new TextDecoder().decode(prepared.files[2].bytes), serializeSharedProjectFile(plan.shared));
+  assert.equal(new TextDecoder().decode(prepared.files[2].bytes), serializeProjectFile(plan.shared));
   const journal = parseMigrationJournal(JSON.parse(new TextDecoder().decode(prepared.files[1].bytes)), prepared.projectId);
   assert.equal(serializeMigrationJournal(journal), new TextDecoder().decode(prepared.files[1].bytes));
   assert.deepEqual(journal.candidates.map(item => item.kind), ["selections", "draft", "draft"]);
@@ -125,7 +125,7 @@ function legacyProject() {
     provider: "openai-compatible", endpoint: "https://example.com/v1", model: "example", messages: [{ role: "user", content: "Hello" }], capabilities: resolveProviderCapabilities("openai-compatible"),
   } });
   project = createPromptTemplate(project, { name: "Prompt", idSuffix: "legacy", revisionIdSuffix: "legacy", messages: [{ role: "user", content: "{{topic}}" }] });
-  return updatePromptTemplateDraft(project, { templateId: "template_legacy", sourceRevisionId: "template-revision_legacy", messages: [{ role: "user", content: "Explain {{topic}}" }], variableDefaults: { topic: "" } });
+  return withLegacyPromptDraft(project, "template_legacy", { sourceRevisionId: "template-revision_legacy", messages: [{ role: "user", content: "Explain {{topic}}" }], variableDefaults: { topic: "" } });
 }
 for (const version of [10, 11, 12, 13, 14, 15, 16, 17, 18] as const) {
   test(`preparation and verified restart preserve legacy v${version}`, async () => {
@@ -145,9 +145,9 @@ for (const version of [10, 11, 12, 13, 14, 15, 16, 17, 18] as const) {
     assert.deepEqual(prepared.files[0].bytes, bytes);
     assert.equal(JSON.parse(new TextDecoder().decode(prepared.files[1].bytes)).sourceVersion, version);
     assert.equal((await inspectSharedProjectMigration({ manifest: bytes, files: prepared.files }, prepared.projectId, prepared.operationId)).kind, "ready");
-    assert.equal(PROJECT_SCHEMA_VERSION, 18);
-    assert.ok(parseProjectJson(new TextDecoder().decode(bytes)).promptTemplates[0].draft);
-    assert.throws(() => parseProjectJson(new TextDecoder().decode(prepared.files[2].bytes)), /schema v19 is not supported/);
+    assert.equal(PROJECT_SCHEMA_VERSION, 19);
+    assert.ok(parseLegacyProjectJson(new TextDecoder().decode(bytes)).promptTemplates[0].draft);
+    assert.equal(parseProjectJson(new TextDecoder().decode(prepared.files[2].bytes)).schemaVersion, 19);
   });
 }
 test("compact migration identities use UTF-16 code units and remain stable for long or unusual IDs", async () => {

@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { parseProjectJson, PROJECT_SCHEMA_VERSION, ProjectValidationError, createProjectFile, createPromptTemplate, updatePromptTemplateDraft } from "../packages/core/src/project.ts";
+import { parseLegacyProjectJson, parseProjectFile, parseProjectJson, PROJECT_SCHEMA_VERSION, ProjectValidationError, createProjectFile, createPromptTemplate, serializeProjectFile } from "../packages/core/src/project.ts";
 import { planSharedProjectMigration } from "../packages/core/src/shared-project-migration.ts";
-import { parseSharedProjectFile, parseSharedProjectJson, serializeSharedProjectFile } from "../packages/core/src/shared-project.ts";
+import { withLegacyPromptDraft } from "./legacy-project-helpers.ts";
 import { parseWorkbenchRecord, parseWorkbenchRecordJson, serializeWorkbenchRecord, WorkbenchValidationError } from "../packages/core/src/personal-workbench.ts";
 import type { WorkbenchRecordV1 } from "../packages/core/src/personal-workbench.ts";
 import { resolveProviderCapabilities } from "../packages/core/src/types.ts";
@@ -33,30 +33,31 @@ test("migration extracts both prompt kinds with edited values and exact base sna
   assert.deepEqual(plan.selections, expected["selections.json"]);
 });
 
-test("the active application codec stays v18 and preserves legacy drafts", () => {
-  assert.equal(PROJECT_SCHEMA_VERSION, 18);
-  const legacy = parseProjectJson(example("project-v15.json").toString());
+test("the active codec is v19, and only the legacy parser reads a legacy document's drafts", () => {
+  assert.equal(PROJECT_SCHEMA_VERSION, 19);
+  const legacy = parseLegacyProjectJson(example("project-v15.json").toString());
   assert.equal(legacy.promptTemplates.filter(template => template.draft).length, 2);
-  assert.throws(() => parseProjectJson(example("project-v19.proposed.json").toString()), /schema v19 is not supported/);
+  assert.throws(() => parseProjectJson(example("project-v15.json").toString()), /schema v15 is an older format/);
+  assert.throws(() => parseLegacyProjectJson(example("project-v19.proposed.json").toString()), /current format, not a legacy one/);
 });
 
 test("v19 codec accepts the shared example with deterministic serialization", () => {
-  const parsed = parseSharedProjectJson(example("project-v19.proposed.json").toString());
-  const serialized = serializeSharedProjectFile(parsed);
-  assert.deepEqual(parseSharedProjectJson(serialized), parsed);
-  assert.equal(serializeSharedProjectFile(parseSharedProjectJson(serialized)), serialized);
+  const parsed = parseProjectJson(example("project-v19.proposed.json").toString());
+  const serialized = serializeProjectFile(parsed);
+  assert.deepEqual(parseProjectJson(serialized), parsed);
+  assert.equal(serializeProjectFile(parseProjectJson(serialized)), serialized);
   assert.ok(serialized.endsWith("\n"));
-  assert.throws(() => parseSharedProjectJson(example("project-v15.json").toString()), /schemaVersion/);
-  assert.throws(() => parseSharedProjectJson("{"), /not valid JSON/);
+  assert.throws(() => parseProjectJson(example("project-v15.json").toString()), /schemaVersion/);
+  assert.throws(() => parseProjectJson("{"), /not valid JSON/);
 });
 
 test("v19 rejects personal fields for both prompt kinds, even undefined ones", () => {
-  const before = parseProjectJson(example("project-v15.json").toString());
+  const before = parseLegacyProjectJson(example("project-v15.json").toString());
   for (const template of before.promptTemplates) {
     for (const draft of [template.draft, undefined, null]) {
       const value = JSON.parse(example("project-v19.proposed.json").toString());
       value.promptTemplates.find((item: { id: string }) => item.id === template.id).draft = draft;
-      assert.throws(() => parseSharedProjectFile(value), /Personal prompt drafts/);
+      assert.throws(() => parseProjectFile(value), /Personal prompt drafts/);
     }
   }
 });
@@ -65,19 +66,19 @@ test("v19 preserves strict nested validation, references and uniqueness rules", 
   const shared = () => JSON.parse(example("project-v19.proposed.json").toString());
   const unexpected = shared();
   unexpected.workbench = {};
-  assert.throws(() => parseSharedProjectFile(unexpected), /workbench/);
+  assert.throws(() => parseProjectFile(unexpected), /workbench/);
   const nested = shared();
   nested.promptTemplates[0].revisions[0].localEdits = {};
-  assert.throws(() => parseSharedProjectFile(nested), /localEdits/);
+  assert.throws(() => parseProjectFile(nested), /localEdits/);
   const pin = shared();
   pin.defaults.conversationRevisionId = "revision_missing";
-  assert.throws(() => parseSharedProjectFile(pin), /Default conversation revision does not exist/);
+  assert.throws(() => parseProjectFile(pin), /Default conversation revision does not exist/);
   const duplicate = shared();
   duplicate.promptTemplates.push(duplicate.promptTemplates[0]);
-  assert.throws(() => parseSharedProjectFile(duplicate), /Duplicate identifier/);
+  assert.throws(() => parseProjectFile(duplicate), /Duplicate identifier/);
   const decisionPin = shared();
   decisionPin.evaluationSuites.find((suite: { input: { kind: string } }) => suite.input.kind === "decision-request-revision").input.decisionRequestRevisionId = "decision-revision_missing";
-  assert.throws(() => parseSharedProjectFile(decisionPin), /decisionRequestRevisionId/);
+  assert.throws(() => parseProjectFile(decisionPin), /decisionRequestRevisionId/);
 });
 
 test("v19 rejects known secret fields nested in provider-option arrays that v15 still accepts", () => {
@@ -86,11 +87,11 @@ test("v19 rejects known secret fields nested in provider-option arrays that v15 
   legacy.defaults.options.providerOptions = nestedSecret;
   legacy.tools[0].providerOptions = nestedSecret;
   // Opening an existing v15 folder keeps working; only the new format tightens.
-  assert.doesNotThrow(() => parseProjectJson(JSON.stringify(legacy)));
+  assert.doesNotThrow(() => parseLegacyProjectJson(JSON.stringify(legacy)));
   const shared = JSON.parse(example("project-v19.proposed.json").toString());
   shared.defaults.options.providerOptions = nestedSecret;
   shared.tools[0].providerOptions = nestedSecret;
-  assert.throws(() => parseSharedProjectFile(shared), (error: unknown) => {
+  assert.throws(() => parseProjectFile(shared), (error: unknown) => {
     assert.ok(error instanceof ProjectValidationError);
     assert.deepEqual(error.issues.map(issue => issue.path.join(".")).sort(), [
       "defaults.options.providerOptions.extra.0.api_key",
@@ -119,7 +120,7 @@ test("workbench codecs round-trip the proposed individual records", () => {
   }
   // Nested saved content serializes in the same key order as project.json.
   const draft = JSON.parse(serializeWorkbenchRecord(records["drafts/draft_template_chat.json"] as WorkbenchRecordV1));
-  const shared = JSON.parse(serializeSharedProjectFile(parseSharedProjectJson(example("project-v19.proposed.json").toString())));
+  const shared = JSON.parse(serializeProjectFile(parseProjectJson(example("project-v19.proposed.json").toString())));
   const savedRevision = shared.promptTemplates.find((template: { id: string }) => template.id === "template_chat").revisions[0];
   assert.deepEqual(Object.keys(draft.base.snapshot), Object.keys(savedRevision));
   assert.throws(() => parseWorkbenchRecord({ records }), WorkbenchValidationError);
@@ -182,11 +183,11 @@ function legacyChatProject() {
     request: { provider: "openai-compatible", endpoint: "https://example.com/v1", model: "example", messages: [{ role: "user", content: "Hello" }], capabilities: resolveProviderCapabilities("openai-compatible") },
   });
   project = createPromptTemplate(project, { name: "Prompt", idSuffix: "legacy", revisionIdSuffix: "legacy", messages: [{ role: "user", content: "{{topic}}" }] });
-  project = updatePromptTemplateDraft(project, { templateId: "template_legacy", sourceRevisionId: "template-revision_legacy", messages: [{ role: "user", content: "Explain {{topic}}" }], variableDefaults: { topic: "" } });
+  const legacy = withLegacyPromptDraft(project, "template_legacy", { sourceRevisionId: "template-revision_legacy", messages: [{ role: "user", content: "Explain {{topic}}" }], variableDefaults: { topic: "" } });
   // The editor command trims empty names; the legacy codec accepts a saved
   // empty string. Exercise those source bytes, not the editor normalization.
-  project.promptTemplates[0]!.draft!.revisionName = "";
-  return project;
+  legacy.promptTemplates[0]!.draft!.revisionName = "";
+  return legacy;
 }
 
 for (const sourceVersion of [10, 11, 12, 13, 14, 15] as const) {
@@ -257,10 +258,12 @@ test("migration does not drop invalid legacy drafts or accept future/unsupported
   const value = JSON.parse(example("project-v15.json").toString());
   value.promptTemplates[0].draft.sourceRevisionId = "template-revision_missing";
   assert.throws(() => planSharedProjectMigration(Buffer.from(JSON.stringify(value))), /source revision/);
-  for (const schemaVersion of [9, 19, 20]) {
+  for (const schemaVersion of [9, 20]) {
     value.schemaVersion = schemaVersion;
     assert.throws(() => planSharedProjectMigration(Buffer.from(JSON.stringify(value))), /not supported/);
   }
+  value.schemaVersion = 19;
+  assert.throws(() => planSharedProjectMigration(Buffer.from(JSON.stringify(value))), /current format, not a legacy one/);
   assert.throws(() => planSharedProjectMigration(Buffer.from("{")), /not valid JSON/);
 });
 
@@ -297,7 +300,7 @@ test("migration without explicit drafts retains every saved revision and produce
 });
 
 test("shared and personal codecs preserve authored decision/question/choice and tool-schema ordering", () => {
-  const source = parseProjectJson(example("project-v15.json").toString());
+  const source = parseLegacyProjectJson(example("project-v15.json").toString());
   const decision: DecisionInput = {
     state: { zeta: "{{ticket}}", alpha: "{{region}}" },
     questions: {
@@ -314,7 +317,7 @@ test("shared and personal codecs preserve authored decision/question/choice and 
   for (const suite of source.evaluationSuites) if (suite.input.kind === "decision-request-revision") for (const item of suite.cases) item.checks = [];
   source.tools[0]!.inputSchema = { type: "object", properties: { zeta: { type: "string" }, alpha: { type: "string" } } };
   const plan = planSharedProjectMigration(Buffer.from(JSON.stringify(source)));
-  const shared = parseSharedProjectJson(serializeSharedProjectFile(plan.shared));
+  const shared = parseProjectJson(serializeProjectFile(plan.shared));
   const saved = shared.promptTemplates.find(template => template.kind === "decision")!;
   assert.equal(saved.kind, "decision");
   assert.equal(JSON.stringify(saved.revisions[0]!.decision), JSON.stringify(decision));

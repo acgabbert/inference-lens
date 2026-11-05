@@ -24,7 +24,7 @@ import {
 
 const plan = planSharedProjectMigration(readFileSync(new URL("../docs/examples/shared-assets-level-two/project-v15.json", import.meta.url)));
 // I1: owners keep ProjectFile; a personal session's document carries no template draft.
-const project: ProjectFile = parseProjectFile({ ...plan.shared, schemaVersion: 18 });
+const project: ProjectFile = plan.shared;
 const projectId = project.projectId;
 const createdAt = "2026-10-31T13:00:00.000Z";
 const chatPromptDraft = plan.drafts.find(draft => draft.asset.kind === "chat-prompt")!;
@@ -92,7 +92,7 @@ test("a prompt draft publishes as the template's new current revision and freeze
     messages: [{ role: "user", content: "Explain {{topic}} with examples." }],
     variableDefaults: { topic: "draft-only topic" },
   });
-  assert.equal(template.draft, undefined);
+  assert.equal("draft" in template, false);
   // Pins, launch defaults and other assets stay put.
   assert.deepEqual(result.project.defaults, project.defaults);
   assert.deepEqual(result.project.conversationRevisions, project.conversationRevisions);

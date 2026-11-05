@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { parseProjectFile } from "../packages/core/src/project.ts";
 import type { ProjectFile } from "../packages/core/src/project.ts";
 import { planSharedProjectMigration } from "../packages/core/src/shared-project-migration.ts";
 import type {
@@ -15,7 +14,7 @@ import { chatRequestMenu, selectedChatRecord } from "../app/request/local-chat-r
 import { decisionRequestMenu, selectedDecisionRecord } from "../app/decisions/local-decision-request.ts";
 
 const plan = planSharedProjectMigration(readFileSync(new URL("../docs/examples/shared-assets-level-two/project-v15.json", import.meta.url)));
-const shared: ProjectFile = parseProjectFile({ ...plan.shared, schemaVersion: 18 });
+const shared: ProjectFile = plan.shared;
 const projectId = shared.projectId;
 const [first, second] = shared.conversationRevisions;
 

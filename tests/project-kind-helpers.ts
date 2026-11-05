@@ -11,7 +11,7 @@ export function chatTemplate(template: PromptTemplate | undefined) {
 }
 
 /** A historical fixture must omit the discriminators introduced in schema v15. */
-export function legacyContent(project: import("../packages/core/src/project.ts").ProjectFile) {
+export function legacyContent(project: import("../packages/core/src/project.ts").ProjectFile | import("../packages/core/src/project.ts").ProjectFileV18) {
   const omitKind = (entry: object) => Object.fromEntries(Object.entries(entry).filter(([key]) => key !== "kind"));
   return { ...project,
     promptTemplates: project.promptTemplates.map(omitKind),
