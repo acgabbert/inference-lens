@@ -10,6 +10,7 @@ import {
   type ChatPromptTemplate,
   type ChatPromptTemplateRevision,
   type ExternalImportReceipt,
+  type ProjectConversationItem,
   type ProjectFile,
   type PromptTemplateMessages,
 } from "./project.ts";
@@ -111,11 +112,24 @@ function locallyReintroduced(
   return false;
 }
 
+/**
+ * Personal work that uses the prompt. The shared document holds neither
+ * prompt drafts nor request drafts and scratch, so a caller with a personal
+ * workbench passes them in to keep their names reserved.
+ */
+export interface FilePromptPersonalUses {
+  /** The prompt's own draft. */
+  promptDraft?: { messages: PromptTemplateMessages };
+  /** The items of each request draft or scratch; uses of other prompts are ignored. */
+  requestItems?: readonly (readonly ProjectConversationItem[])[];
+}
+
 /** Pure preview of a pull into an existing file-tracked prompt. */
 export function planFilePromptUpdate(
   project: ProjectFile,
   templateId: PromptTemplateId,
   candidate: ExternalPromptCandidate,
+  personal: FilePromptPersonalUses = {},
 ): FilePromptUpdatePlan {
   if (candidate.source.adapter !== "file" || candidate.authored.length !== 1) {
     throw new Error("Update from file requires one whole-file prompt.");
@@ -144,9 +158,10 @@ export function planFilePromptUpdate(
   // receipt. Every name still in use anywhere for this prompt stays reserved.
   const reserved = new Set(expressionsByName.keys());
   for (const revision of template.revisions) variableNames(revision.messages).forEach((name) => reserved.add(name));
-  if (template.draft) variableNames(template.draft.messages).forEach((name) => reserved.add(name));
-  for (const revision of project.conversationRevisions) {
-    for (const item of revision.items) {
+  if (personal.promptDraft) variableNames(personal.promptDraft.messages).forEach((name) => reserved.add(name));
+  const requests = [...project.conversationRevisions.map(({ items }) => items), ...(personal.requestItems ?? [])];
+  for (const items of requests) {
+    for (const item of items) {
       if (item.kind === "template-use" && item.use.templateId === templateId) {
         Object.keys(item.use.values).forEach((name) => reserved.add(name));
       }
@@ -208,18 +223,19 @@ export function planFilePromptUpdate(
 }
 
 /**
- * Appends the pulled revision with its receipt and makes it current. The
- * template's draft keeps its source revision and edits, and pinned uses stay
- * where they are.
+ * Appends the pulled revision with its receipt and makes it current. Pinned
+ * uses stay where they are; a personal draft keeps its source revision. Pass
+ * the same personal uses as the preview, so the names match it.
  */
 export async function applyFilePromptUpdate(
   projectValue: ProjectFile,
   templateId: PromptTemplateId,
   candidate: ExternalPromptCandidate,
-  options: { importedAt?: string; importerVersion?: number } = {},
+  options: { importedAt?: string; importerVersion?: number; personal?: FilePromptPersonalUses } = {},
 ): Promise<{ project: ProjectFile; revisionId: PromptTemplateRevisionId }> {
   const project = parseProjectFile(projectValue);
-  const plan = planFilePromptUpdate(project, templateId, candidate);
+  const { personal, ...receiptOptions } = options;
+  const plan = planFilePromptUpdate(project, templateId, candidate, personal);
   if (plan.blocked) throw new Error(plan.blocked);
   if (!plan.wouldChange) throw new Error("The current revision already matches this file.");
   const { revision, receipt } = await externalPromptRevisionAddition(
@@ -227,11 +243,11 @@ export async function applyFilePromptUpdate(
     templateId,
     candidate,
     plan.projection,
-    { ...options, variableDefaults: plan.variableDefaults },
+    { ...receiptOptions, variableDefaults: plan.variableDefaults },
   );
   const next = parseProjectFile({
     ...project,
-    // Not appendPromptTemplateRevision: that clears the draft.
+    // Not appendPromptTemplateRevision: the revision carries its import.
     promptTemplates: project.promptTemplates.map((template) =>
       template.id === templateId && template.kind === "chat"
         ? { ...template, currentRevisionId: revision.id, revisions: [...template.revisions, revision] }

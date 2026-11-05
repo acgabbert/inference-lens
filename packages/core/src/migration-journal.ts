@@ -1,7 +1,6 @@
 import { z } from "zod";
-import { projectContentSchemas } from "./project.ts";
+import { projectContentSchemas, serializeProjectFile } from "./project.ts";
 import { planSharedProjectMigration } from "./shared-project-migration.ts";
-import { serializeSharedProjectFile } from "./shared-project.ts";
 import { parseWorkbenchRecord, serializeWorkbenchRecord, WorkbenchValidationError } from "./personal-workbench.ts";
 import { stableJsonValue } from "./stable-json.ts";
 import type { ProjectId } from "./run-kernel/types.ts";
@@ -141,7 +140,7 @@ export async function prepareSharedProjectMigration(source: Uint8Array): Promise
   const sourceHash = await sha256(plan.sourceBytes);
   const operationId = `migration_${sourceHash}`;
   const root = `migrations/${operationId}/`;
-  const sharedBytes = encode(serializeSharedProjectFile(plan.shared));
+  const sharedBytes = encode(serializeProjectFile(plan.shared));
   const payloads: MigrationPayload[] = [{ path: "candidates/selections.json", bytes: encode(serializeWorkbenchRecord(plan.selections)) }];
   const candidateDescriptors: MigrationJournalV1["candidates"] = [{
     kind: "selections", path: "candidates/selections.json", sha256: await sha256(payloads[0].bytes), byteLength: payloads[0].bytes.length,

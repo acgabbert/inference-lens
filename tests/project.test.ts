@@ -1,4 +1,5 @@
 import { inlineRevision, chatTemplate, legacyContent } from "./project-kind-helpers.ts";
+import { openLegacyProject, withLegacyPromptDraft } from "./legacy-project-helpers.ts";
 import assert from "node:assert/strict";
 import type { DecisionInput } from "../packages/core/src/decision.ts";
 import { updateDecisionRequestDraft } from "../packages/core/src/decision-request.ts";
@@ -36,7 +37,6 @@ import {
   serializeProjectFile,
   setPromptTemplateCurrentRevision,
   setPromptTemplateRecommendedTarget,
-  updatePromptTemplateDraft,
   updateConnectionRequirementEndpoint,
   updateProjectDraft,
   updatePromptTemplateUseRevision,
@@ -157,8 +157,8 @@ test("creates a strict, portable Project v18 document", () => {
   assert.equal(projectDirectoryName("   "), "Untitled.inference-lens");
   assert.equal(projectExportFileName("Prompt Lab"), "Prompt Lab.project.json");
   assert.equal(projectExportFileName("CON"), "CON-project.project.json");
-  assert.equal(PROJECT_SCHEMA_VERSION, 18);
-  assert.equal(project.schemaVersion, 18);
+  assert.equal(PROJECT_SCHEMA_VERSION, 19);
+  assert.equal(project.schemaVersion, 19);
   assert.equal(project.projectId, "project_example");
   const draft = projectDraft(project);
   assert.deepEqual(projectDraft(project), {
@@ -182,7 +182,7 @@ test("creates a strict, portable Project v18 document", () => {
   });
   assert.deepEqual(project.externalImports, []);
   assert.deepEqual(project.evaluationSuites, []);
-  assert.equal(JSON.parse(serializeProjectFile(project)).schemaVersion, 18);
+  assert.equal(JSON.parse(serializeProjectFile(project)).schemaVersion, 19);
 });
 
 test("resolves native formatting-whitespace tokens without rewriting authored project JSON", () => {
@@ -329,7 +329,7 @@ test("rejects pre-v10 project artifacts with an actionable version error", () =>
       (error: unknown) => {
         const message = (error as Error).message;
         assert.match(message, new RegExp(`schema v${schemaVersion} is not supported`));
-        assert.match(message, /opens schema v10, v11, v12, v13, v14, v15, v16, v17, and v18/);
+        assert.match(message, /opens schema v10, v11, v12, v13, v14, v15, v16, v17, v18, and v19, and upgrades v10–v18 to v19/);
         assert.match(message, /earlier Inference Lens release/);
         assert.doesNotMatch(message, /v10-compatible/);
         return true;
@@ -340,16 +340,16 @@ test("rejects pre-v10 project artifacts with an actionable version error", () =>
 
 test("a project from a newer schema asks for an updated build, not an older release", () => {
   const current = createProjectFile({
-    name: "Version 18",
+    name: "Version 19",
     request,
-    idSuffix: "version-18",
+    idSuffix: "version-19",
     createdAt: "2026-08-01T12:00:00.000Z",
   });
   assert.throws(
-    () => parseProjectFile({ ...current, schemaVersion: 19 }),
+    () => parseProjectFile({ ...current, schemaVersion: 20 }),
     (error: unknown) => {
       const message = (error as Error).message;
-      assert.match(message, /schema v19 is not supported/);
+      assert.match(message, /schema v20 is not supported/);
       assert.match(message, /newer Inference Lens/);
       assert.doesNotMatch(message, /earlier Inference Lens release/);
       return true;
@@ -383,8 +383,8 @@ test("a v10 project moves its connection's protocol onto every execution target"
       execution: { ...suite.execution, target: withoutProtocol(suite.execution.target) },
     })),
   };
-  const opened = parseProjectFile(v10);
-  assert.equal(opened.schemaVersion, 18);
+  const opened = openLegacyProject(v10);
+  assert.equal(opened.schemaVersion, 19);
   assert.deepEqual(opened, current);
   assert.equal(opened.defaults.target.protocol, "openai-compatible-chat-completions");
   assert.equal(
@@ -395,15 +395,14 @@ test("a v10 project moves its connection's protocol onto every execution target"
 });
 
 test("every supported starting version follows the full migration chain without changing chat data", () => {
-  let current = projectWithEvaluationSuite();
-  current = updatePromptTemplateDraft(current, {
-    templateId: "template_evaluation-question",
+  const shared = archivePromptTemplate(projectWithEvaluationSuite(), "template_evaluation-question", "2026-10-25T12:00:00.000Z");
+  // A legacy document may carry a draft; opening it lifts the draft out.
+  const current = withLegacyPromptDraft(shared, "template_evaluation-question", {
     sourceRevisionId: "template-revision_evaluation-question-1",
     messages: [{ role: "user", content: "Draft {{topic}}" }],
     variableDefaults: { topic: "" },
   });
-  current = archivePromptTemplate(current, "template_evaluation-question", "2026-10-25T12:00:00.000Z");
-  const serialized = serializeProjectFile(current);
+  const serialized = serializeProjectFile(shared);
   for (const schemaVersion of [10, 11, 12, 13, 14, 15]) {
     const legacy: Record<string, unknown> = { ...(schemaVersion < 15 ? legacyContent(structuredClone(current)) : structuredClone(current)), schemaVersion };
     if (schemaVersion < 13) {
@@ -424,11 +423,11 @@ test("every supported starting version follows the full migration chain without 
       });
     }
     const before = structuredClone(legacy);
-    const opened = parseProjectFile(legacy);
+    const opened = openLegacyProject(legacy);
     assert.deepEqual(legacy, before, `v${schemaVersion} migration must not mutate its input`);
-    assert.deepEqual(opened, current, `v${schemaVersion} must preserve the project`);
+    assert.deepEqual(opened, shared, `v${schemaVersion} must preserve the project`);
     assert.equal(serializeProjectFile(opened), serialized, `v${schemaVersion} must write the same bytes`);
-    assert.deepEqual(parseProjectJson(serializeProjectFile(opened)), current);
+    assert.deepEqual(parseProjectJson(serializeProjectFile(opened)), shared);
   }
 });
 
@@ -445,7 +444,7 @@ test("v13 and v14 starting points keep ordered decision content and still reject
   });
   const serialized = serializeProjectFile(current);
   for (const schemaVersion of [13, 14]) {
-    const opened = parseProjectFile({ ...legacyContent(structuredClone(current)), schemaVersion });
+    const opened = openLegacyProject({ ...legacyContent(structuredClone(current)), schemaVersion });
     assert.deepEqual(opened, current, `v${schemaVersion} must preserve the project`);
     assert.equal(serializeProjectFile(opened), serialized, `v${schemaVersion} must write the same bytes`);
     const revision = inlineRevision(opened.decisionRequestRevisions[0]!);
@@ -457,7 +456,7 @@ test("v13 and v14 starting points keep ordered decision content and still reject
     const dangling = structuredClone(current);
     inlineRevision(dangling.decisionRequestRevisions[0]!).decisionRequestId = "decision-request_missing";
     assert.throws(
-      () => parseProjectFile({ ...legacyContent(dangling), schemaVersion }),
+      () => openLegacyProject({ ...legacyContent(dangling), schemaVersion }),
       (error: unknown) => error instanceof ProjectValidationError
         && error.issues.some(({ path }) => path.includes("decisionRequestRevisions")),
       `v${schemaVersion} must reject a revision naming a missing request`,
@@ -1208,7 +1207,7 @@ test("creates immutable template revisions, finds uses, and rejects unsafe remov
   );
 });
 
-test("persists a mutable prompt draft separately from named immutable revisions", () => {
+test("a named revision is a new checkpoint that leaves earlier revisions as they were", () => {
   const project = createPromptTemplate(
     createProjectFile({
       name: "Prompt drafts",
@@ -1226,29 +1225,17 @@ test("persists a mutable prompt draft separately from named immutable revisions"
     },
   );
 
-  const drafted = updatePromptTemplateDraft(project, {
+  // Working copies are personal (.workbench/); the shared document has no draft field.
+  assert.equal("draft" in chatTemplate(project.promptTemplates[0]), false);
+  const checkpoint = appendPromptTemplateRevision(project, {
     templateId: "template_question-draft",
-    sourceRevisionId: "template-revision_question-draft-1",
     messages: [{ role: "user", content: "Explain {{topic}} clearly." }],
     variableDefaults: { topic: "autosave" },
-  });
-  const parsedDraft = parseProjectJson(serializeProjectFile(drafted));
-  assert.deepEqual(chatTemplate(parsedDraft.promptTemplates[0]).draft, {
-    sourceRevisionId: "template-revision_question-draft-1",
-    messages: [{ role: "user", content: "Explain {{topic}} clearly." }],
-    variableDefaults: { topic: "autosave" },
-  });
-  assert.equal(chatTemplate(parsedDraft.promptTemplates[0]).revisions.length, 1);
-
-  const checkpoint = appendPromptTemplateRevision(drafted, {
-    templateId: "template_question-draft",
-    messages: chatTemplate(drafted.promptTemplates[0]).draft!.messages,
-    variableDefaults: chatTemplate(drafted.promptTemplates[0]).draft!.variableDefaults,
     name: "Clarify the request",
     idSuffix: "question-draft-2",
     createdAt: "2026-08-11T12:02:00.000Z",
   });
-  assert.equal(chatTemplate(checkpoint.promptTemplates[0]).draft, undefined);
+  assert.equal("draft" in chatTemplate(checkpoint.promptTemplates[0]), false);
   assert.equal(chatTemplate(checkpoint.promptTemplates[0]).revisions.at(-1)?.name, "Clarify the request");
   assert.equal(
     chatTemplate(checkpoint.promptTemplates[0]).revisions[0]?.messages[0]?.content,

@@ -13,7 +13,7 @@ import {
 } from "../app/request/chat-execution.ts";
 
 const plan = planSharedProjectMigration(readFileSync(new URL("../docs/examples/shared-assets-level-two/project-v15.json", import.meta.url)));
-const base: ProjectFile = parseProjectFile({ ...plan.shared, schemaVersion: 18 });
+const base: ProjectFile = plan.shared;
 const environment = (id: string, name: string) => ({ id: id as EnvironmentId, name, entries: [] });
 const shared: ProjectFile = parseProjectFile({
   ...base,

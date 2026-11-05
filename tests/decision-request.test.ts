@@ -21,6 +21,7 @@ import {
 } from "../packages/core/src/project.ts";
 import type { ProjectFile } from "../packages/core/src/project.ts";
 import { resolveProviderCapabilities } from "../packages/core/src/types.ts";
+import { openLegacyProject } from "./legacy-project-helpers.ts";
 
 function activeDecisionRequestRevision(project: ProjectFile) {
   const revision = activeRevision(project);
@@ -56,7 +57,7 @@ test("a v12 document opens as the current schema with no decision requests", () 
   const v12 = { ...project(), schemaVersion: 12 } as Record<string, unknown>;
   delete v12.decisionRequests;
   delete v12.decisionRequestRevisions;
-  const opened = parseProjectFile(v12);
+  const opened = openLegacyProject(v12);
   assert.equal(opened.schemaVersion, PROJECT_SCHEMA_VERSION);
   assert.deepEqual(opened.decisionRequests, []);
   assert.deepEqual(opened.decisionRequestRevisions, []);
@@ -65,7 +66,7 @@ test("a v12 document opens as the current schema with no decision requests", () 
 
 test("a v12 document that already names decision requests is refused", () => {
   const v12 = { ...updateDecisionRequestDraft(project(), { decision: ordered, values: {}, branch: false, ...at }), schemaVersion: 12 };
-  assert.throws(() => parseProjectFile(v12), /Invalid Inference Lens project/);
+  assert.throws(() => openLegacyProject(v12), /Invalid Inference Lens project. decisionRequest/);
 });
 
 test("the first decision edit creates a request and points the project at it", () => {

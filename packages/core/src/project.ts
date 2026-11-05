@@ -127,9 +127,19 @@ export function projectGitignoreContents(policy: ProjectGitPolicy): string | nul
   }
 }
 
-export const PROJECT_SCHEMA_VERSION = 18;
-/** Older versions this build opens through the explicit one-version migration chain. */
-const OPENABLE_PROJECT_SCHEMA_VERSIONS: readonly number[] = [10, 11, 12, 13, 14, 15, 16, 17];
+/**
+ * The shared document: what the app writes, what owners hold in memory, and
+ * what the CLI reads (docs/SHARED_ASSETS_LEVEL_TWO_DESIGN.md, "In-memory v19
+ * label"). It carries no prompt draft; drafts are personal (`.workbench/`).
+ */
+export const PROJECT_SCHEMA_VERSION = 19;
+/**
+ * Older versions this build opens, only through the migration plan
+ * (`planSharedProjectMigration`), which lifts their prompt drafts out.
+ */
+export const LEGACY_PROJECT_SCHEMA_VERSIONS = [10, 11, 12, 13, 14, 15, 16, 17, 18] as const;
+export type LegacyProjectSchemaVersion = typeof LEGACY_PROJECT_SCHEMA_VERSIONS[number];
+const LEGACY_SCHEMA_VERSIONS: readonly number[] = LEGACY_PROJECT_SCHEMA_VERSIONS;
 
 /**
  * Turns the portable project display name into one safe, visible directory
@@ -235,8 +245,9 @@ interface PromptTemplateRevisionMetadata {
 }
 
 /**
- * Mutable prompt authoring state. Revisions remain immutable pins; this draft
- * is the portable working copy that project auto-save may update continuously.
+ * Mutable prompt authoring state. Revisions remain immutable pins; a draft is
+ * the working copy. Since v19 it is personal: the workbench keeps it, and only
+ * a legacy (v10–v18) document carries one on its template.
  */
 interface PromptTemplateDraftMetadata {
   sourceRevisionId: PromptTemplateRevisionId;
@@ -284,15 +295,17 @@ export interface PromptTemplateFileSource {
 export interface ChatPromptTemplate extends PromptTemplateMetadata {
   kind: "chat";
   revisions: ChatPromptTemplateRevision[];
-  draft?: ChatPromptTemplateDraft;
   fileSource?: PromptTemplateFileSource;
 }
 export interface DecisionPromptTemplate extends PromptTemplateMetadata {
   kind: "decision";
   revisions: DecisionPromptTemplateRevision[];
-  draft?: DecisionPromptTemplateDraft;
 }
 export type PromptTemplate = ChatPromptTemplate | DecisionPromptTemplate;
+/** A template as a v10–v18 document saved it, with its draft inline. */
+export type LegacyPromptTemplate =
+  | (ChatPromptTemplate & { draft?: ChatPromptTemplateDraft })
+  | (DecisionPromptTemplate & { draft?: DecisionPromptTemplateDraft });
 export type PromptTemplateRevision = ChatPromptTemplateRevision | DecisionPromptTemplateRevision;
 export type PromptTemplateDraft = ChatPromptTemplateDraft | DecisionPromptTemplateDraft;
 
@@ -441,7 +454,7 @@ export interface ProjectFileV15 {
   conversationRevisions: ProjectConversationRevision[];
   tools: ToolDefinition[];
   toolMocks: ToolMock[];
-  promptTemplates: PromptTemplate[];
+  promptTemplates: LegacyPromptTemplate[];
   externalImports: ExternalImportReceipt[];
   evaluationSuites: EvaluationSuite[];
   decisionRequests: ProjectDecisionRequest[];
@@ -475,7 +488,16 @@ export interface ProjectFileV18 extends Omit<ProjectFileV17, "schemaVersion"> {
   sourceRoots: SourceRootRequirement[];
 }
 
-export type ProjectFile = ProjectFileV18;
+/**
+ * v19 is the shared document (docs/SHARED_ASSETS_LEVEL_TWO_DESIGN.md): v18's
+ * content without prompt drafts, which move to the personal workbench.
+ */
+export interface ProjectFileV19 extends Omit<ProjectFileV18, "schemaVersion" | "promptTemplates"> {
+  schemaVersion: 19;
+  promptTemplates: PromptTemplate[];
+}
+
+export type ProjectFile = ProjectFileV19;
 
 const entityId = <Kind extends Parameters<typeof createEntityId>[0]>(
   kind: Kind,
@@ -754,10 +776,17 @@ const promptTemplateMetadataSchema = {
   currentRevisionId: entityId("template-revision"), archivedAt: z.iso.datetime({ offset: true }).optional(),
   recommendedTarget: promptTemplateRecommendedTargetSchema.optional(),
 };
+const promptTemplateFileSourceSchema = z.object({ sourceRootId: entityId("source-root"), path: sourceFilePathSchema }).strict();
 const promptTemplateSchema: z.ZodType<PromptTemplate> = z.discriminatedUnion("kind", [
   z.object({ ...promptTemplateMetadataSchema, kind: z.literal("chat"),
+    revisions: z.array(promptTemplateRevisionSchema).min(1), fileSource: promptTemplateFileSourceSchema.optional() }).strict(),
+  z.object({ ...promptTemplateMetadataSchema, kind: z.literal("decision"),
+    revisions: z.array(decisionPromptTemplateRevisionSchema).min(1) }).strict(),
+]);
+const legacyPromptTemplateSchema: z.ZodType<LegacyPromptTemplate> = z.discriminatedUnion("kind", [
+  z.object({ ...promptTemplateMetadataSchema, kind: z.literal("chat"),
     draft: promptTemplateDraftSchema.optional(), revisions: z.array(promptTemplateRevisionSchema).min(1),
-    fileSource: z.object({ sourceRootId: entityId("source-root"), path: sourceFilePathSchema }).strict().optional() }).strict(),
+    fileSource: promptTemplateFileSourceSchema.optional() }).strict(),
   z.object({ ...promptTemplateMetadataSchema, kind: z.literal("decision"),
     draft: decisionPromptTemplateDraftSchema.optional(), revisions: z.array(decisionPromptTemplateRevisionSchema).min(1) }).strict(),
 ]);
@@ -1087,9 +1116,8 @@ const sourceRootRequirementSchema: z.ZodType<SourceRootRequirement> = z
   .object({ id: entityId("source-root"), name: sourceRootNameSchema })
   .strict();
 
-const projectFileV18Schema: z.ZodType<ProjectFileV18> = z
-  .object({
-    schemaVersion: z.literal(PROJECT_SCHEMA_VERSION),
+/** v18 and v19 differ only in their version and whether a template may hold a draft. */
+const projectFileFields = {
     projectId: entityId("project"),
     name: z.string().trim().min(1),
     connectionRequirements: z.array(connectionRequirementSchema).min(1),
@@ -1097,7 +1125,6 @@ const projectFileV18Schema: z.ZodType<ProjectFileV18> = z
     conversationRevisions: z.array(projectConversationRevisionSchema).min(1),
     tools: z.array(toolDefinitionSchema),
     toolMocks: z.array(toolMockSchema),
-    promptTemplates: z.array(promptTemplateSchema),
     externalImports: z.array(externalImportReceiptSchema),
     evaluationSuites: z.array(evaluationSuiteSchema),
     decisionRequests: z.array(decisionRequestSchema),
@@ -1105,19 +1132,28 @@ const projectFileV18Schema: z.ZodType<ProjectFileV18> = z
     environments: z.array(projectEnvironmentSchema),
     sourceRoots: z.array(sourceRootRequirementSchema),
     defaults: projectDefaultsSchema,
-  })
+};
+const refineProjectFile = (project: ProjectFileV18 | ProjectFileV19, context: z.RefinementCtx) => {
+  validateProjectReferences(project, context);
+  validateEnvironments(project, context);
+  validateSourceRoots(project, context);
+};
+
+const projectFileV19Schema: z.ZodType<ProjectFileV19> = z
+  .object({ schemaVersion: z.literal(PROJECT_SCHEMA_VERSION), ...projectFileFields, promptTemplates: z.array(promptTemplateSchema) })
   .strict()
-  .superRefine((project, context) => {
-    validateProjectReferences(project, context);
-    validateEnvironments(project, context);
-    validateSourceRoots(project, context);
-  });
+  .superRefine(refineProjectFile);
+
+const legacyProjectFileV18Schema: z.ZodType<ProjectFileV18> = z
+  .object({ schemaVersion: z.literal(18), ...projectFileFields, promptTemplates: z.array(legacyPromptTemplateSchema) })
+  .strict()
+  .superRefine(refineProjectFile);
 
 /**
  * A link names a declared root, belongs to a prompt that a file import
  * tracks, and is the only link to its file, so a pull has one destination.
  */
-function validateSourceRoots(project: ProjectFileV18, context: z.RefinementCtx): void {
+function validateSourceRoots(project: ProjectFileV18 | ProjectFileV19, context: z.RefinementCtx): void {
   addDuplicateIssues(project.sourceRoots.map(({ id }) => id), ["sourceRoots"], context);
   addDuplicateIssues(project.sourceRoots.map(({ name }) => name), ["sourceRoots"], context);
   const rootIds = new Set(project.sourceRoots.map(({ id }) => id));
@@ -1146,7 +1182,7 @@ function validateSourceRoots(project: ProjectFileV18, context: z.RefinementCtx):
  * Environment content rules, then every selection of one. A suite or variant
  * that names a missing environment would silently render without it.
  */
-function validateEnvironments(project: ProjectFileV18, context: z.RefinementCtx): void {
+function validateEnvironments(project: ProjectFileV18 | ProjectFileV19, context: z.RefinementCtx): void {
   for (const { path, message } of environmentIssues(project.environments)) {
     context.addIssue({ code: "custom", path: ["environments", ...path], message });
   }
@@ -1350,14 +1386,15 @@ function validateSharedProjectReferences(
       "Current template revision does not belong to this template.",
       context,
     );
-    if (template.draft) {
+    const draft = (template as LegacyPromptTemplate).draft;
+    if (draft) {
       requireReference(
-        localRevisionIds.has(template.draft.sourceRevisionId),
+        localRevisionIds.has(draft.sourceRevisionId),
         ["promptTemplates", templateIndex, "draft", "sourceRevisionId"],
         "Prompt draft source revision does not belong to this template.",
         context,
       );
-      Object.keys(template.draft.variableDefaults).forEach((name) => {
+      Object.keys(draft.variableDefaults).forEach((name) => {
         if (sensitiveFieldNames.has(normalizedFieldName(name))) {
           context.addIssue({
             code: "custom",
@@ -1376,7 +1413,7 @@ function validateSharedProjectReferences(
         }
       };
       template.revisions.forEach((revision, index) => validateDefaults(revision, ["promptTemplates", templateIndex, "revisions", index]));
-      if (template.draft) validateDefaults(template.draft, ["promptTemplates", templateIndex, "draft"]);
+      if (draft) validateDefaults(draft as DecisionPromptTemplateDraft, ["promptTemplates", templateIndex, "draft"]);
     }
     template.revisions.forEach((revision, revisionIndex) => {
       Object.keys(revision.variableDefaults).forEach((name) => {
@@ -1414,7 +1451,7 @@ function validateSharedProjectReferences(
 }
 
 function validateProjectReferences(
-  project: ProjectFileV18,
+  project: ProjectFileV18 | ProjectFileV19,
   context: z.RefinementCtx,
 ): void {
   validateSharedProjectReferences(
@@ -1655,7 +1692,7 @@ function validateProjectReferences(
  * one, because values are portable project data (D40).
  */
 function validateDecisionRequests(
-  project: ProjectFileV18,
+  project: ProjectFileV18 | ProjectFileV19,
   context: z.RefinementCtx,
 ): void {
   addDuplicateIssues(project.decisionRequests.map(({ id }) => id), ["decisionRequests"], context);
@@ -1733,7 +1770,7 @@ function checkSuiteKindIssue(
 }
 
 function validateEvaluationSuites(
-  project: ProjectFileV18,
+  project: ProjectFileV18 | ProjectFileV19,
   templates: ReadonlyMap<PromptTemplateId, PromptTemplate>,
   context: z.RefinementCtx,
 ): void {
@@ -1939,12 +1976,13 @@ export class ProjectValidationError extends Error {
 }
 
 function unsupportedSchemaMessage(version: unknown): string {
-  const versions = [...OPENABLE_PROJECT_SCHEMA_VERSIONS, PROJECT_SCHEMA_VERSION]
+  const versions = [...LEGACY_SCHEMA_VERSIONS, PROJECT_SCHEMA_VERSION]
     .map((openableVersion) => `v${openableVersion}`);
   const openable = versions.length > 2
     ? `${versions.slice(0, -1).join(", ")}, and ${versions.at(-1)}`
     : versions.join(" and ");
-  const prefix = `Project schema v${String(version)} is not supported: this build opens schema ${openable}.`;
+  const legacy = `v${LEGACY_SCHEMA_VERSIONS[0]}–v${LEGACY_SCHEMA_VERSIONS.at(-1)}`;
+  const prefix = `Project schema v${String(version)} is not supported: this build opens schema ${openable}, and upgrades ${legacy} to v${PROJECT_SCHEMA_VERSION}.`;
   return typeof version === "number" && version > PROJECT_SCHEMA_VERSION
     ? `${prefix} It was saved by a newer Inference Lens; update this build to open it.`
     : `${prefix} Open it with an earlier Inference Lens release that supports it and export it again.`;
@@ -2175,25 +2213,90 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-export function parseProjectFile(value: unknown): ProjectFile {
-  if (typeof value === "object" && value !== null && "schemaVersion" in value && value.schemaVersion !== PROJECT_SCHEMA_VERSION) {
-    if (!OPENABLE_PROJECT_SCHEMA_VERSIONS.includes(value.schemaVersion as number)) {
-      throw new ProjectValidationError([{
-        code: "custom",
-        path: ["schemaVersion"],
-        message: unsupportedSchemaMessage(value.schemaVersion),
-      }]);
-    }
-    if (value.schemaVersion === 10) value = migrateV10Project(value);
-    if ((value as { schemaVersion: unknown }).schemaVersion === 11) value = migrateV11Project(value as object);
-    if ((value as { schemaVersion: unknown }).schemaVersion === 12) value = migrateV12Project(value as object);
-    if ((value as { schemaVersion: unknown }).schemaVersion === 13) value = migrateV13Project(value as object);
+/**
+ * A v10–v18 document as it was saved, drafts included. Only the migration plan
+ * reads this, so no caller can open an old file and drop its drafts unseen.
+ *
+ * @internal
+ */
+export function parseLegacyProjectFile(value: unknown): ProjectFileV18 {
+  const version = isRecord(value) ? value.schemaVersion : undefined;
+  if (isRecord(value) && "schemaVersion" in value && !LEGACY_SCHEMA_VERSIONS.includes(version as number)) {
+    throw new ProjectValidationError([{
+      code: "custom",
+      path: ["schemaVersion"],
+      message: version === PROJECT_SCHEMA_VERSION
+        ? `Project schema v${PROJECT_SCHEMA_VERSION} is the current format, not a legacy one.`
+        : unsupportedSchemaMessage(version),
+    }]);
   }
+  if (isRecord(value) && value.schemaVersion === 10) value = migrateV10Project(value);
+  if (isRecord(value) && value.schemaVersion === 11) value = migrateV11Project(value);
+  if (isRecord(value) && value.schemaVersion === 12) value = migrateV12Project(value);
+  if (isRecord(value) && value.schemaVersion === 13) value = migrateV13Project(value);
   if (isRecord(value) && value.schemaVersion === 14) value = migrateV14Project(value);
   if (isRecord(value) && value.schemaVersion === 15) value = migrateV15Project(value);
   if (isRecord(value) && value.schemaVersion === 16) value = migrateV16Project(value);
   if (isRecord(value) && value.schemaVersion === 17) value = migrateV17Project(value);
-  const parsed = projectFileV18Schema.safeParse(value);
+  const parsed = legacyProjectFileV18Schema.safeParse(value);
+  if (!parsed.success) throw new ProjectValidationError(parsed.error.issues);
+  return parsed.data;
+}
+
+/**
+ * Fields v18 accepted that v19 refuses, reported by name rather than as an
+ * unrecognized key or a passing value.
+ */
+function sharedOnlyIssues(value: Record<string, unknown>): z.core.$ZodIssue[] {
+  const issues: z.core.$ZodIssue[] = [];
+  if (Array.isArray(value.promptTemplates)) {
+    value.promptTemplates.forEach((template: unknown, index) => {
+      if (isRecord(template) && "draft" in template) {
+        issues.push({
+          code: "custom", path: ["promptTemplates", index, "draft"],
+          message: "Personal prompt drafts are not shared Project v19 fields.",
+        });
+      }
+    });
+  }
+  // v18 checks these provider options but stops at arrays; v19 does not.
+  const defaults = isRecord(value.defaults) ? value.defaults : undefined;
+  const options = isRecord(defaults?.options) ? defaults.options : undefined;
+  const providerOptions: Array<[unknown, Array<string | number>]> = [
+    [options?.providerOptions, ["defaults", "options", "providerOptions"]],
+  ];
+  if (Array.isArray(value.tools)) {
+    value.tools.forEach((tool: unknown, index) =>
+      providerOptions.push([isRecord(tool) ? tool.providerOptions : undefined, ["tools", index, "providerOptions"]]));
+  }
+  for (const [entry, path] of providerOptions) {
+    for (const secretPath of sensitiveFieldPaths(entry, path)) {
+      issues.push({ code: "custom", path: secretPath, message: "Secret-bearing fields are not portable project data." });
+    }
+  }
+  return issues;
+}
+
+/**
+ * The shared document, v19 only. An older document opens through
+ * `planSharedProjectMigration`, which keeps its prompt drafts.
+ */
+export function parseProjectFile(value: unknown): ProjectFile {
+  if (isRecord(value) && "schemaVersion" in value && value.schemaVersion !== PROJECT_SCHEMA_VERSION) {
+    const version = value.schemaVersion;
+    throw new ProjectValidationError([{
+      code: "custom",
+      path: ["schemaVersion"],
+      message: LEGACY_SCHEMA_VERSIONS.includes(version as number)
+        ? `Project schema v${String(version)} is an older format. Inference Lens upgrades it to v${PROJECT_SCHEMA_VERSION} when it opens the project, moving its prompt drafts to the personal workbench.`
+        : unsupportedSchemaMessage(version),
+    }]);
+  }
+  if (isRecord(value)) {
+    const issues = sharedOnlyIssues(value);
+    if (issues.length) throw new ProjectValidationError(issues);
+  }
+  const parsed = projectFileV19Schema.safeParse(value);
   if (!parsed.success) throw new ProjectValidationError(parsed.error.issues);
   return parsed.data;
 }
@@ -2321,10 +2424,9 @@ export function sameConversationMessages(
   );
 }
 
-export function parseProjectJson(text: string): ProjectFile {
-  let value: unknown;
+function parseJsonDocument(text: string): unknown {
   try {
-    value = JSON.parse(text);
+    return JSON.parse(text);
   } catch {
     throw new ProjectValidationError([
       {
@@ -2334,7 +2436,25 @@ export function parseProjectJson(text: string): ProjectFile {
       },
     ]);
   }
-  return parseProjectFile(value);
+}
+
+export function parseProjectJson(text: string): ProjectFile {
+  return parseProjectFile(parseJsonDocument(text));
+}
+
+/** @internal See `parseLegacyProjectFile`. */
+export function parseLegacyProjectJson(text: string): ProjectFileV18 {
+  return parseLegacyProjectFile(parseJsonDocument(text));
+}
+
+/** The `schemaVersion` a document declares, before any codec reads it. */
+export function declaredProjectSchemaVersion(text: string): unknown {
+  try {
+    const value: unknown = JSON.parse(text);
+    return value !== null && typeof value === "object" && "schemaVersion" in value ? value.schemaVersion : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 export interface ProjectDraft {
@@ -3698,65 +3818,7 @@ export function appendPromptTemplateRevision(
   promptTemplates[templateIndex] = {
     ...template,
     currentRevisionId: revision.id,
-    draft: undefined,
     revisions: [...template.revisions, revision],
-  };
-  return parseProjectFile({ ...project, promptTemplates });
-}
-
-export interface UpdatePromptTemplateDraftOptions {
-  templateId: PromptTemplateId;
-  sourceRevisionId: PromptTemplateRevisionId;
-  revisionName?: string;
-  messages: PromptTemplateMessages;
-  variableDefaults?: Record<string, string>;
-}
-
-/** Persists a working copy without changing any immutable revision or pin. */
-export function updatePromptTemplateDraft(
-  project: ProjectFile,
-  {
-    templateId,
-    sourceRevisionId,
-    revisionName,
-    messages,
-    variableDefaults = {},
-  }: UpdatePromptTemplateDraftOptions,
-): ProjectFile {
-  const templateIndex = project.promptTemplates.findIndex(({ id }) => id === templateId);
-  if (templateIndex < 0) {
-    throw new ProjectValidationError([{
-      code: "custom",
-      path: ["promptTemplates", templateId],
-      message: "Template does not exist.",
-    }]);
-  }
-  const template = project.promptTemplates[templateIndex]!;
-  if (template.kind !== "chat") throw new ProjectValidationError([{ code: "custom", path: ["promptTemplates", templateId], message: "This operation requires a chat template." }]);
-  const source = template.revisions.find(({ id }) => id === sourceRevisionId);
-  if (!source) {
-    throw new ProjectValidationError([{
-      code: "custom",
-      path: ["promptTemplates", templateId, "draft", "sourceRevisionId"],
-      message: "Prompt draft source revision does not exist.",
-    }]);
-  }
-  const matchesSource =
-    JSON.stringify(stableJsonValue(source.messages)) === JSON.stringify(stableJsonValue(messages)) &&
-    JSON.stringify(stableJsonValue(source.variableDefaults)) === JSON.stringify(stableJsonValue(variableDefaults));
-  const promptTemplates = [...project.promptTemplates];
-  promptTemplates[templateIndex] = {
-    ...template,
-    ...(matchesSource && !revisionName
-      ? { draft: undefined }
-      : {
-          draft: {
-            sourceRevisionId,
-            ...(revisionName ? { revisionName } : {}),
-            messages: structuredClone(messages),
-            variableDefaults: { ...variableDefaults },
-          },
-        }),
   };
   return parseProjectFile({ ...project, promptTemplates });
 }

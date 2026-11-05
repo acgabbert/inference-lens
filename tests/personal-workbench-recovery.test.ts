@@ -20,7 +20,7 @@ import type { SharedWriteOutcome } from "../app/use-project-workspace.client.ts"
 
 const source = new Uint8Array(readFileSync(new URL("../docs/examples/shared-assets-level-two/project-v15.json", import.meta.url)));
 const plan = planSharedProjectMigration(source);
-const shared: ProjectFile = parseProjectFile({ ...plan.shared, schemaVersion: 18 });
+const shared: ProjectFile = plan.shared;
 const projectId = shared.projectId;
 const encode = (text: string) => new TextEncoder().encode(text);
 const decode = (bytes: Uint8Array) => new TextDecoder().decode(bytes);

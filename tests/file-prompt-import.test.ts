@@ -4,7 +4,8 @@ import { createExternalPromptCandidate } from "../packages/core/src/external-pro
 import { projectExternalPromptTemplate } from "../packages/core/src/external-prompt-project.ts";
 import { renderTemplateMessages } from "../packages/core/src/template-engine.ts";
 import { copyFilePromptAsN8nText, createFilePromptCandidate, decodePromptFile, importFilePromptCandidates, priorFilePromptImports } from "../packages/core/src/file-prompt-import.ts";
-import { createProjectFile, parseProjectFile, parseProjectJson, PROJECT_SCHEMA_VERSION, ProjectValidationError, serializeProjectFile, updatePromptTemplateDraft } from "../packages/core/src/project.ts";
+import { openLegacyProject } from "./legacy-project-helpers.ts";
+import { createProjectFile, parseProjectJson, PROJECT_SCHEMA_VERSION, ProjectValidationError, serializeProjectFile } from "../packages/core/src/project.ts";
 
 function projectFixture() {
   return createProjectFile({ name: "File fixture", request: {
@@ -39,19 +40,17 @@ test("file expressions project without execution evidence, deduplicate identitie
   });
 });
 
-test("batch import retains drafts and repeated filenames produce independent identities", async () => {
+test("batch import retains existing prompts and repeated filenames produce independent identities", async () => {
   const candidate = await createFilePromptCandidate({ filename: "same.txt", text: "{{ $json.topic }}", role: "assistant", plainText: false });
   const first = await importFilePromptCandidates(projectFixture(), [candidate]);
-  const template = first.project.promptTemplates[0];
-  if (template.kind !== "chat") throw new Error("Expected chat template");
-  const withDraft = updatePromptTemplateDraft(first.project, { templateId: template.id, sourceRevisionId: template.currentRevisionId, messages: [{ role: "user", content: "Keep this draft" }], variableDefaults: {} });
-  const snapshot = serializeProjectFile(withDraft);
-  const batch = await importFilePromptCandidates(withDraft, [candidate, candidate]);
+  const existing = first.project;
+  const snapshot = serializeProjectFile(existing);
+  const batch = await importFilePromptCandidates(existing, [candidate, candidate]);
   assert.equal(new Set(batch.project.promptTemplates.map(({ id }) => id)).size, 3);
-  assert.deepEqual(batch.project.promptTemplates[0], withDraft.promptTemplates[0]);
-  assert.equal(serializeProjectFile(withDraft), snapshot);
-  await assert.rejects(() => importFilePromptCandidates(withDraft, [candidate, { ...candidate, sourceDigest: "0".repeat(64) }]), /digest/);
-  assert.equal(serializeProjectFile(withDraft), snapshot);
+  assert.deepEqual(batch.project.promptTemplates[0], existing.promptTemplates[0]);
+  assert.equal(serializeProjectFile(existing), snapshot);
+  await assert.rejects(() => importFilePromptCandidates(existing, [candidate, { ...candidate, sourceDigest: "0".repeat(64) }]), /digest/);
+  assert.equal(serializeProjectFile(existing), snapshot);
 });
 
 test("plain text round-trips through project serialization, rendering and n8n copy", async () => {
@@ -125,15 +124,15 @@ test("copy refuses edited expression-mode text that n8n would read as different 
 });
 
 test("file imports need Project v17: v16 opens as current, and a v16 file receipt is rejected rather than reinterpreted", async () => {
-  assert.equal(PROJECT_SCHEMA_VERSION, 18);
-  assert.equal(projectFixture().schemaVersion, 18);
+  assert.equal(PROJECT_SCHEMA_VERSION, 19);
+  assert.equal(projectFixture().schemaVersion, 19);
   const v16: Record<string, unknown> = { ...projectFixture(), schemaVersion: 16 };
   delete v16.sourceRoots;
-  assert.equal(parseProjectFile(v16).schemaVersion, 18);
+  assert.equal(openLegacyProject(v16).schemaVersion, 19);
 
   const candidate = await createFilePromptCandidate({ filename: "literal.txt", text: "Keep {{x}}", role: "user", plainText: true });
   const { project } = await importFilePromptCandidates(projectFixture(), [candidate]);
-  assert.throws(() => parseProjectFile({ ...project, schemaVersion: 16 }), (error: unknown) => {
+  assert.throws(() => openLegacyProject({ ...project, schemaVersion: 16 }), (error: unknown) => {
     assert.ok(error instanceof ProjectValidationError);
     assert.deepEqual(error.issues.map(({ path, message }) => ({ path: path.join("."), message })), [{
       path: "externalImports.0.source.adapter",

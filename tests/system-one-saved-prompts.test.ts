@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createProjectFile, parseProjectFile, parseProjectJson, serializeProjectFile, PROJECT_SCHEMA_VERSION } from "../packages/core/src/project.ts";
+import { openLegacyProject } from "./legacy-project-helpers.ts";
 import { resolveProjectDecisionRequestRevision, prepareDecisionRequestRun } from "../packages/core/src/decision-request.ts";
 import type { DecisionInput } from "../packages/core/src/decision.ts";
 import { resolveProviderCapabilities } from "../packages/core/src/types.ts";
@@ -20,7 +21,7 @@ function base() {
   } });
 }
 function document() {
-  return { ...base(), schemaVersion: 15,
+  return { ...base(),
     promptTemplates: [{ kind: "decision", id: "template_decision", name: "Triage", currentRevisionId: "template-revision_old",
       revisions: [{ id: "template-revision_old", createdAt, decision, variableDefaults: { ticket: "default", team: "ops" } }] }],
     decisionRequests: [{ id: "decision-request_use", name: "Use" }],
@@ -29,9 +30,9 @@ function document() {
   };
 }
 
-test("a v15 document opens as v18 and round-trips decision template pins with ordered authored content", () => {
-  const opened = parseProjectFile(document());
-  assert.equal(opened.schemaVersion, 18);
+test("a v15 document opens as v19 and round-trips decision template pins with ordered authored content", () => {
+  const opened = openLegacyProject({ ...document(), schemaVersion: 15 });
+  assert.equal(opened.schemaVersion, 19);
   assert.deepEqual(parseProjectJson(serializeProjectFile(opened)), opened);
   const resolved = resolveProjectDecisionRequestRevision(opened, "decision-revision_use")!;
   assert.deepEqual(resolved.decision, decision);
@@ -52,11 +53,14 @@ test("v14 migration adds chat and inline discriminators without changing content
     decisionRequests: [{ id: "decision-request_inline", name: "Inline" }],
     decisionRequestRevisions: [{ id: "decision-revision_inline", decisionRequestId: "decision-request_inline", createdAt, decision, values: { ticket: "" } }],
   };
-  const opened = parseProjectFile(legacy);
-  assert.equal(opened.schemaVersion, 18);
-  assert.deepEqual(opened.promptTemplates[0], { ...legacy.promptTemplates[0], kind: "chat" });
+  const opened = openLegacyProject(legacy);
+  assert.equal(opened.schemaVersion, 19);
+  // The draft is lifted out to the personal workbench; the rest is unchanged.
+  const saved: Record<string, unknown> = { ...legacy.promptTemplates[0]!, kind: "chat" };
+  delete saved.draft;
+  assert.deepEqual(opened.promptTemplates[0], saved);
   assert.deepEqual(opened.decisionRequestRevisions[0], { ...legacy.decisionRequestRevisions[0], kind: "inline" });
-  assert.equal(PROJECT_SCHEMA_VERSION, 18);
+  assert.equal(PROJECT_SCHEMA_VERSION, 19);
 });
 
 test("decision request pins and transitive suites are reported as library usages", async () => {
@@ -78,7 +82,6 @@ test("strict schemas reject mixed content, missing pins, wrong kinds, and invali
   const invalid: unknown[] = [
     { ...valid, promptTemplates: [{ ...template, kind: "chat" }] },
     { ...valid, promptTemplates: [{ ...template, revisions: [{ ...revision, messages: [{ role: "user", content: "Hi" }] }] }] },
-    { ...valid, promptTemplates: [{ ...template, draft: { sourceRevisionId: revision.id, messages: [{ role: "user", content: "Hi" }], variableDefaults: {} } }] },
     { ...valid, decisionRequestRevisions: [{ ...use, templateId: "template_missing" }] },
     { ...valid, decisionRequestRevisions: [{ ...use, templateRevisionId: "template-revision_missing" }] },
     { ...valid, decisionRequestRevisions: [{ ...use, decision, values: {} }] },
@@ -87,6 +90,8 @@ test("strict schemas reject mixed content, missing pins, wrong kinds, and invali
     { ...valid, promptTemplates: [{ ...template, revisions: [{ ...revision, decision: { ...decision, state: "{{api_key}}" }, variableDefaults: { api_key: "secret" } }] }] },
   ];
   for (const value of invalid) assert.throws(() => parseProjectFile(value), /Invalid Inference Lens project/);
+  // A legacy document's decision draft is held to its template's kind too.
+  assert.throws(() => openLegacyProject({ ...valid, schemaVersion: 18, promptTemplates: [{ ...template, draft: { sourceRevisionId: revision.id, messages: [{ role: "user", content: "Hi" }], variableDefaults: {} } }] }), /Invalid Inference Lens project/);
   const wrongKind = { ...use, templateId: "template_chat", templateRevisionId: "template-revision_chat" };
   assert.throws(() => parseProjectFile({ ...valid, promptTemplates: [{ kind: "chat", id: "template_chat", name: "Chat", currentRevisionId: "template-revision_chat", revisions: [{ id: "template-revision_chat", createdAt, messages: [{ role: "user", content: "Hi" }], variableDefaults: {} }] }], decisionRequestRevisions: [wrongKind] }), /Decision request uses require a decision template/);
 });
@@ -112,8 +117,8 @@ test("a supplied empty decision case value overrides template defaults and reque
 
 // New lifecycle entry points cannot be exercised before they exist; the schema,
 // usage, and empty-case regressions above were run red against existing APIs.
-test("capture, draft, save, update, and detach preserve pins and absent assignments", async () => {
-  const { createDecisionPromptTemplate, appendDecisionPromptTemplateRevision, updateDecisionPromptTemplateDraft } = await import("../packages/core/src/decision-template.ts");
+test("capture, save, update, and detach preserve pins and absent assignments", async () => {
+  const { createDecisionPromptTemplate, appendDecisionPromptTemplateRevision } = await import("../packages/core/src/decision-template.ts");
   const { useDecisionPromptTemplateRevision, updateDecisionRequestTemplateRevision, detachDecisionRequestTemplate } = await import("../packages/core/src/decision-request.ts");
   const start = base();
   const before = serializeProjectFile(start);
@@ -124,10 +129,8 @@ test("capture, draft, save, update, and detach preserve pins and absent assignme
   assert.equal(used.defaults.decisionRequestRevisionId, "decision-revision_use");
   const useBefore = serializeProjectFile(used);
   const changed: DecisionInput = { state: "{{new_value}}", questions: { q: { type: "noul", instructions: "{{team}}" } } };
-  const drafted = updateDecisionPromptTemplateDraft(used, { templateId: "template_reusable", sourceRevisionId: "template-revision_first", decision: changed, variableDefaults: { team: "new default" }, revisionName: "Working" });
-  assert.deepEqual(resolveProjectDecisionRequestRevision(drafted, "decision-revision_use")!.decision, decision);
-  const revised = appendDecisionPromptTemplateRevision(drafted, { templateId: "template_reusable", decision: changed, variableDefaults: { team: "new default" }, idSuffix: "second", createdAt, name: "New questions" });
-  assert.equal(revised.promptTemplates[0]!.draft, undefined);
+  const revised = appendDecisionPromptTemplateRevision(used, { templateId: "template_reusable", decision: changed, variableDefaults: { team: "new default" }, idSuffix: "second", createdAt, name: "New questions" });
+  assert.equal("draft" in revised.promptTemplates[0]!, false);
   assert.deepEqual(resolveProjectDecisionRequestRevision(revised, "decision-revision_use")!.values, { team: "mine", ticket: "" });
   assert.equal(serializeProjectFile(used), useBefore);
   const updated = updateDecisionRequestTemplateRevision(revised, { decisionRequestRevisionId: "decision-revision_use", idSuffix: "updated", createdAt });
@@ -227,7 +230,7 @@ test("malformed decision template content reports project validation errors", ()
   for (const decision of [null, {}, { state: "x", questions: {} }, { state: "x", questions: { q: null } }]) {
     const template = valid.promptTemplates[0]!;
     assert.throws(() => parseProjectFile({ ...valid, promptTemplates: [{ ...template, revisions: [{ ...template.revisions[0], decision }] }] }), /Invalid Inference Lens project/);
-    assert.throws(() => parseProjectFile({ ...valid, promptTemplates: [{ ...template, draft: { sourceRevisionId: "template-revision_old", decision, variableDefaults: {} } }] }), /Invalid Inference Lens project/);
+    assert.throws(() => openLegacyProject({ ...valid, schemaVersion: 18, promptTemplates: [{ ...template, draft: { sourceRevisionId: "template-revision_old", decision, variableDefaults: {} } }] }), /Invalid Inference Lens project/);
   }
 });
 

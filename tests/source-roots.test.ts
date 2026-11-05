@@ -25,6 +25,7 @@ import {
   unlinkFilePrompt,
 } from "../packages/core/src/source-roots.ts";
 import type { PromptTemplateId } from "../packages/core/src/run-kernel/types.ts";
+import { openLegacyProject } from "./legacy-project-helpers.ts";
 
 function projectFixture(): ProjectFile {
   return createProjectFile({ name: "Source root fixture", request: {
@@ -56,22 +57,23 @@ function chat(project: ProjectFile, templateId: PromptTemplateId): ChatPromptTem
 }
 
 test("linked sources are Project v18: v17 opens with no roots, and a v17 document declaring a root or link is rejected", async () => {
-  assert.equal(PROJECT_SCHEMA_VERSION, 18);
+  assert.equal(PROJECT_SCHEMA_VERSION, 19);
   const fixture = projectFixture();
-  assert.equal(fixture.schemaVersion, 18);
+  assert.equal(fixture.schemaVersion, 19);
   assert.deepEqual(fixture.sourceRoots, []);
   const v17 = withoutSourceRoots(fixture, 17);
-  assert.deepEqual(parseProjectFile(v17), fixture);
+  // The plan reads bytes, as a folder holds them.
+  assert.deepEqual(openLegacyProject(v17), parseProjectJson(serializeProjectFile(fixture)));
 
   assert.throws(
-    () => parseProjectFile({ ...v17, sourceRoots: [{ id: "source-root_a", name: "prompts" }] }),
+    () => openLegacyProject({ ...v17, sourceRoots: [{ id: "source-root_a", name: "prompts" }] }),
     { message: /sourceRoots: Linked prompt sources require project schema v18; this document declares v17/ },
   );
   const { project, templateIds } = await imported("Hi");
   const linked = linkFilePrompt(project, templateIds[0]!, { rootName: "prompts", path: "agent.md" });
   const linkedV17 = withoutSourceRoots(linked, 17);
   assert.throws(
-    () => parseProjectFile(linkedV17),
+    () => openLegacyProject(linkedV17),
     { message: /promptTemplates\.0\.fileSource: Linked prompt sources require project schema v18/ },
   );
 });
