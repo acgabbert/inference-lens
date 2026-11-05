@@ -102,12 +102,6 @@ test("a composer edit is a request draft until Save appends a child revision", a
   const chip = localRequestChip(page, "Unsaved changes");
   await expect(chip).toContainText("stay on this device until you save them");
 
-  // R4: a repeated experiment needs a saved request until step 7.
-  await page.getByRole("tab", { name: /Tools/ }).click();
-  await expect(page.getByRole("button", { name: "Repeat…" })).toBeDisabled();
-  await expect(page.getByRole("button", { name: "Repeat…" })).toHaveAttribute("title", "Save this request to run a repeated experiment.");
-  await page.getByRole("tab", { name: /Messages/ }).click();
-
   await chip.getByRole("button", { name: "Save request" }).click();
   await expect.poll(async () => recordFiles(await folderFiles(page), "drafts").length).toBe(0);
   files = await folderFiles(page);
@@ -164,6 +158,80 @@ test("runs write nothing to project.json, and a branch is a local request saved 
   expect(child.items[0].message.content[0].text).toBe("What is 4 + 4?");
   expect(saved.defaults.conversationRevisionId).toBe(launchRevisionId);
   await expect(chip).toHaveCount(0);
+});
+
+/** Starts a two-repetition batch of the composer's request and waits for its result file. */
+async function repeatTwice(page: Page, input: string): Promise<Record<string, string>> {
+  await page.getByRole("tab", { name: /Tools/ }).click();
+  const repeat = page.getByRole("button", { name: "Repeat…" });
+  // Step 7 lifts R4: local input may run a repeated experiment.
+  await expect(repeat).not.toHaveAttribute("title", "Save this request to run a repeated experiment.");
+  await expect(repeat).toBeEnabled();
+  await repeat.click();
+  const dialog = page.getByRole("dialog", { name: "Run this frozen request repeatedly" });
+  // Y3: the confirmation says the input is unsaved.
+  await expect(dialog.locator(".repeat-experiment-details")).toContainText(`Input${input}`);
+  await dialog.getByLabel("Repetitions").fill("2");
+  await dialog.getByRole("button", { name: "Start 2 repetitions" }).click();
+  await expect.poll(async () => Object.keys(await folderFiles(page)).filter((path) => path.endsWith(".result.json")).length).toBe(1);
+  return folderFiles(page);
+}
+
+function batchPlan(files: Record<string, string>) {
+  const plans = Object.entries(files).filter(([path]) => path.endsWith(".plan.json"));
+  expect(plans).toHaveLength(1);
+  return JSON.parse(plans[0]![1]);
+}
+
+test("step 7: a repeated experiment runs a request draft under its run identity, writing nothing to project.json", async ({ page }) => {
+  const project = fixtureProject();
+  const manifest = serializeProjectManifest(project, "personal");
+  await openFolder(page, project, manifest);
+  await page.getByLabel("Message 1 content").fill("What is 5 + 5?");
+  await expect.poll(async () => recordFiles(await folderFiles(page), "drafts").length).toBe(1);
+
+  const files = await repeatTwice(page, `Unsaved draft of ${project.conversations[0]!.name}`);
+  const plan = batchPlan(files);
+  // Y1: the plan stays v7 and records I3's identity, not a saved revision.
+  expect(plan.schemaVersion).toBe(7);
+  expect(plan.commonInput.conversationId).toBe(project.conversations[0]!.id);
+  expect(project.conversationRevisions.map(({ id }) => id)).not.toContain(plan.commonInput.conversationRevisionId);
+  expect(plan.commonInput.messages[0].content[0].text).toBe("What is 5 + 5?");
+  expect(files["project.json"]).toBe(manifest);
+  // A draft has no branch point, so its cells record none.
+  const traces = Object.entries(files).filter(([path]) => path.startsWith("traces/")).map(([, text]) => JSON.parse(text));
+  expect(traces).toHaveLength(2);
+  expect(traces.map((trace) => trace.branchedFrom)).toEqual([undefined, undefined]);
+});
+
+test("step 7: every repetition of a scratch records where the scratch branched from", async ({ page }) => {
+  const project = fixtureProject();
+  const manifest = serializeProjectManifest(project, "personal");
+  await openFolder(page, project, manifest);
+  await primaryAction(page, "compose").click();
+  await expect(page.getByLabel("Run transcript")).toContainText("Buffered fixture response");
+  await page.getByLabel("Run transcript").getByRole("button", { name: "Edit from here" }).first().click();
+  await expect.poll(async () => recordFiles(await folderFiles(page), "scratch").length).toBe(1);
+  const scratch = JSON.parse(recordFiles(await folderFiles(page), "scratch")[0]![1]);
+
+  const files = await repeatTwice(page, "Unsaved request");
+  const plan = batchPlan(files);
+  expect(plan.commonInput.conversationId).toBe(scratch.localConversationId);
+  const cellRunIds = new Set(plan.cells.map(({ runId }: { runId: string }) => runId));
+  const cells = Object.entries(files)
+    .filter(([path]) => path.startsWith("traces/"))
+    .map(([, text]) => JSON.parse(text))
+    .filter((trace) => cellRunIds.has(trace.runId));
+  expect(cells).toHaveLength(2);
+  // Y2 (R3): each cell records the scratch's branch point.
+  for (const cell of cells) {
+    expect(cell.branchedFrom).toEqual({
+      runId: scratch.branchedFrom.runId,
+      messageId: scratch.branchedFrom.messageId,
+      parentConversationRevisionId: project.defaults.conversationRevisionId,
+    });
+  }
+  expect(files["project.json"]).toBe(manifest);
 });
 
 for (const action of ["saved", "discarded"] as const) {

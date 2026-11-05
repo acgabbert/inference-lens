@@ -9,6 +9,7 @@ import type { ConversationId, ConversationRevisionId, MessageId } from "../packa
 import {
   branchScratchParent,
   itemsAfterMutation,
+  localInputLabel,
   localRunInput,
   selectedChatRecord,
 } from "../app/request/local-chat-request.ts";
@@ -81,6 +82,17 @@ test("a draft runs under its saved request with a fresh revision; a scratch unde
   const savedRun = localRunInput(selectedChatRecord(shared, undefined, records), "fresh");
   assert.deepEqual(savedRun.identity, { conversationId: launch.conversationId, conversationRevisionId: launch.id });
   assert.equal(savedRun.local, false);
+});
+
+test("Y3: a repeated experiment names unsaved input, and nothing for a saved revision", () => {
+  const name = shared.conversations.find(({ id }) => id === launch.conversationId)!.name;
+  assert.equal(localInputLabel(shared, selectedChatRecord(shared, { kind: "draft", draftId: draft.draftId }, records)), `Unsaved draft of ${name}`);
+  assert.equal(localInputLabel(shared, selectedChatRecord(shared, { kind: "scratch", scratchId: scratch.scratchId }, records)), "Unsaved request");
+  assert.equal(localInputLabel(shared, selectedChatRecord(shared, undefined, records)), undefined);
+  // A draft whose request is gone from the project still says it is unsaved.
+  const orphan = { ...draft, asset: { kind: "chat-request" as const, id: "conversation_gone" as ConversationId } };
+  const orphanRecords = { ...records, draftById: (id: string) => (id === orphan.draftId ? orphan : undefined) };
+  assert.equal(localInputLabel(shared, selectedChatRecord(shared, { kind: "draft", draftId: draft.draftId }, orphanRecords)), "Unsaved draft");
 });
 
 test("R2: a branch's parent is the nearest saved ancestor the app knows", () => {

@@ -68,6 +68,7 @@ export function RepeatedExperimentDialog({
         : <>Results execute one at a time, in order.</>}</p>
       <dl className="confirmation-details repeat-experiment-details">
         <div><dt>Frozen request</dt><dd>{draft.requestSummary}</dd></div>
+        {draft.inputLabel ? <div><dt>Input</dt><dd>{draft.inputLabel}</dd></div> : null}
         <div><dt>Target</dt><dd>{draft.targetName}</dd></div>
         <div><dt>Endpoint</dt><dd><code>{draft.plan.commonInput.target.endpoint}</code></dd></div>
       </dl>

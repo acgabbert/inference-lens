@@ -67,8 +67,18 @@ export interface RepeatedExperimentDraft {
    * notice that `get_weather` is about to run a command.
    */
   toolBindings: RepeatedExperimentToolBinding[];
+  /** Names unsaved input in the confirmation (2b step 7, Y3); absent for a saved revision. */
+  inputLabel?: string;
+  /** Written on every cell's trace when the input is an unsaved branch (Y2, R3). */
+  branchedFrom?: RunTrace["branchedFrom"];
   /** Applies the ordinary-run preparation effects only after confirmation. */
   commitPreparation(): void;
+}
+
+/** What a repeated experiment's input is, when it is not a saved revision. */
+export interface RepeatedExperimentLocalInput {
+  inputLabel?: string;
+  branchedFrom?: RunTrace["branchedFrom"];
 }
 
 /**
@@ -174,7 +184,12 @@ export function useRepeatedExperimentSession(options: UseRepeatedExperimentSessi
     [bindingForTool],
   );
 
-  const begin = useCallback((input: ResolvedRunInput, targetName: string, commitPreparation: () => void) => {
+  const begin = useCallback((
+    input: ResolvedRunInput,
+    targetName: string,
+    commitPreparation: () => void,
+    local: RepeatedExperimentLocalInput = {},
+  ) => {
     const count = DEFAULT_REPETITION_COUNT;
     const plan = createRepeatedExperimentPlan(input, count, DEFAULT_EXPERIMENT_TURN_CEILING);
     setDraft({
@@ -188,6 +203,8 @@ export function useRepeatedExperimentSession(options: UseRepeatedExperimentSessi
       requestSummary: requestSummary(input),
       repetitionCount: count,
       toolBindings: listBindings(plan),
+      ...(local.inputLabel ? { inputLabel: local.inputLabel } : {}),
+      ...(local.branchedFrom ? { branchedFrom: local.branchedFrom } : {}),
       commitPreparation,
     });
   }, [listBindings]);
@@ -297,6 +314,7 @@ export function useRepeatedExperimentSession(options: UseRepeatedExperimentSessi
       // One connection, so one number is both limits.
       concurrency: { maxInFlight: limit, connectionLimit: limit },
       ...(pending.retryRateLimits ? { retryPolicy: rateLimitRetries() } : {}),
+      ...(pending.branchedFrom ? { branchedFrom: pending.branchedFrom } : {}),
       onProgress(progress) {
         setExecution((current) => {
           if (current?.plan.experimentId !== pending.plan.experimentId) return current;

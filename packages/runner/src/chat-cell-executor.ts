@@ -25,6 +25,12 @@ export interface ChatCellExecutorOptions {
   toolBindings: readonly ToolBinding[];
   verifyToolBindings?(bindings: readonly ToolBinding[]): Promise<void>;
   createExecutor(binding: ToolBinding): ToolExecutor;
+  /**
+   * Where the batch's input branched from, written on every cell's trace
+   * (2b step 7, Y2). Trace-only provenance: the plan and each cell's input are
+   * unchanged. Absent for a batch that did not start from a branch.
+   */
+  branchedFrom?: RunTrace["branchedFrom"];
 }
 
 function terminalStatus(state: RunState): TerminalRunStatus | undefined {
@@ -104,7 +110,8 @@ export class ChatCellExecutor implements CellExecutor<ResolvedRunInput, RunState
   }
 
   trace(state: RunState): RunTrace {
-    return createRunTrace(state);
+    const { branchedFrom } = this.options;
+    return createRunTrace(state, branchedFrom ? { branchedFrom } : {});
   }
 
   async execute(

@@ -114,6 +114,8 @@ export interface ChatExperimentControllerOptions
    * such route passes `createMockOnlyToolExecutor`.
    */
   createExecutor(binding: ToolBinding): ToolExecutor;
+  /** Written on every cell's trace; see `ChatCellExecutorOptions.branchedFrom`. */
+  branchedFrom?: RunTrace["branchedFrom"];
 }
 
 /** A decision evaluation (D49), run through the decision transport. Tools never apply. */
@@ -297,6 +299,7 @@ export class ExperimentController<State extends RunState | DecisionRun = RunStat
       toolBindings: chat.toolBindings ?? [],
       ...(chat.verifyToolBindings ? { verifyToolBindings: (bindings) => chat.verifyToolBindings!(bindings) } : {}),
       createExecutor: (binding) => chat.createExecutor(binding),
+      ...(chat.branchedFrom ? { branchedFrom: chat.branchedFrom } : {}),
     }) as unknown as CellExecutor<CellInput, State, TraceOf<State>>;
   }
 

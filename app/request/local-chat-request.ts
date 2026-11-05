@@ -111,6 +111,23 @@ export function itemsAfterMutation(
   return structuredClone(revision.items);
 }
 
+/**
+ * How a repeated experiment's confirmation names unsaved input (2b step 7,
+ * Y3). A saved revision needs no note, so it has none.
+ */
+export function localInputLabel(project: ProjectFile, record: SelectedChatRecord): string | undefined {
+  switch (record.kind) {
+    case "draft": {
+      const name = project.conversations.find(({ id }) => id === record.draft.asset.id)?.name;
+      return name ? `Unsaved draft of ${name}` : "Unsaved draft";
+    }
+    case "scratch":
+      return "Unsaved request";
+    default:
+      return undefined;
+  }
+}
+
 export interface LocalChatRunInput {
   items: ProjectConversationItem[];
   identity: RunConversationIdentity;
