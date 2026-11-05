@@ -2451,3 +2451,108 @@ also fails 3 times in 8 on the 8a commit, so it predates this step.
 Not run: the desktop host. The native checklist above stays open, and the next
 macOS release waits for it. Moving the in-memory label to v19 is the next
 format step.
+
+## In-memory v19 label (approved November 5, 2026)
+
+**Status: the user approved the recommended answer to each decision: L1-A,
+L2-A and L3-A. Implementation has not started.** Since 8b the app writes
+only v19, but owners still hold `ProjectFile`, which is `ProjectFileV18`: it
+says `schemaVersion: 18` and its templates may carry a `draft`. The manifest
+boundary relabels on every read and write (I1). This slice makes the
+in-memory document say what the app writes.
+
+### What the code does at `10512e7`
+
+- **One label, four dependants.** `PROJECT_SCHEMA_VERSION = 18`
+  ([project.ts](../packages/core/src/project.ts)) is the literal in the v18
+  schema, the end of the v10→v18 chain and the version `createProjectFile`
+  stamps. `parseSharedProjectFile` and `serializeSharedProjectFile` reuse the
+  v18 codec by relabeling to 18 and back. `sharedProjectAsActive` and
+  `serializeProjectManifest` relabel at the app boundary, and the CLI reads
+  v19 through `sharedProjectAsActive` and v10–v18 through `parseProjectJson`.
+- **The boundary is tight.** Only `app/workbench/project-manifest.ts` and
+  the CLI's `openNodeProjectFolder` convert. Runner, contracts and the native
+  host never read the label; the Rust tests use it only as opaque bytes.
+- **The in-memory type still allows a template draft.** Personal sessions
+  keep drafts in `.workbench/` and the templates owner overlays them as
+  `template.draft` for the editors (`withPersonalDraft`). The core draft
+  writers `updatePromptTemplateDraft` and
+  `updateDecisionPromptTemplateDraft` remain, called only from
+  `use-project-templates.client.ts` branches taken when
+  `personal.enabled` is false. Since `materializeProject` starts a session,
+  those branches appear unreachable, but nothing enforces it; a draft that
+  reached the document would fail at save, as I1 intended, not at compile
+  time.
+- **Defect: the unsupported-version message omits v19.** Opening a v20 or v9
+  document in the app or the CLI says "this build opens schema v10, v11, …,
+  and v18", because the message lists the v18 chain. Reproduced with
+  `readProjectManifest`.
+- **Likely defect: Update from file no longer reserves a draft's variable
+  names.** `planFilePromptUpdate` reserves names used by `template.draft` and
+  by template uses in shared conversation revisions. The app passes it the
+  shared document, which since 8b holds neither prompt drafts nor request
+  drafts and scratch, so names that exist only in personal work are not
+  reserved. Not yet shown by a test.
+- **Thirty e2e specs seed older-format folders by accident.** They write
+  `project.json` with `serializeProjectFile`, which writes v18, so they open
+  as legacy folders that refuse shared saves. 8b added
+  `serializeFolderProject` for v19, and some specs use it. Unit tests assert
+  `schemaVersion` 18 in about 25 files.
+
+### Decisions
+
+- **L1. What the in-memory document is.**
+  - *A. The v19 shape, with no `draft` (recommended).* `ProjectFile` becomes
+    the shared document: `schemaVersion: 19`, templates without `draft`.
+    The core draft writers and the unreachable legacy branches go. Editors
+    read drafts from a view type the templates owner builds from the
+    personal record, not from `ProjectFile`. A draft reaching the shared
+    document becomes a type error. This is the alternative I1 set aside only
+    because it meant rewriting helpers while the gate was on.
+  - *B. Relabel only.* `schemaVersion: 19` in memory, `draft?` stays on the
+    type, the boundary keeps rejecting drafts at save. Smallest change; the
+    invariant stays a runtime check.
+- **L2. How older documents open.**
+  - *A. Only through the migration plan (recommended).* `parseProjectFile`
+    and `parseProjectJson` validate the active v19 document only. The
+    v10→v18 chain becomes private input to `planSharedProjectMigration`,
+    which already returns shared definitions plus drafts. The CLI's legacy
+    path uses the plan and drops its drafts, as Z2-A says ("running no
+    template draft"). No caller can open an old file and lose drafts
+    without being told.
+  - *B. Keep the chain public.* `parseProjectFile` keeps accepting v10–v19
+    and upgrading in memory, stripping drafts silently. Fewer call-site
+    changes; reverses the rule in `parseSharedProjectFile`'s comment that
+    legacy input goes through the planner.
+- **L3. Test fixtures.**
+  - *A. Fixtures write v19 unless they mean otherwise (recommended).*
+    `serializeProjectFile` writes the active format, so the thirty specs
+    seed v19 folders like a current user's. Specs that test older folders
+    (upgrade, recovery, CLI legacy) use a named test-support writer for v18,
+    kept with the migration tests.
+  - *B. Keep `serializeProjectFile` as the v18 writer.* Rename it to say
+    legacy; the thirty specs keep opening legacy folders.
+
+### Taken with them
+
+- **The unsupported-version message lists v19** and, for a legacy version,
+  says the app upgrades it. Red first in `project.test.ts`.
+- **Update from file reserves personal names.** The templates owner passes
+  the names in the prompt's personal draft and in request drafts and scratch
+  that use it. Red first: a case where a draft-only name is reused.
+- **Formats stay as they are.** No on-disk format changes: v19 files, the
+  workbench v1 codec, RunTrace and ExperimentPlan are byte-identical before
+  and after. `PROJECT_FORMAT.md` drops "In memory the app still labels the
+  document v18".
+- **One pull request,** in commits: core type and parser, app owners, test
+  fixtures.
+
+### Verification planned
+
+`test:core`, typecheck, lint, the render and interaction tests, the CLI
+folder tests, and a byte comparison of `project.json` written before and
+after for a representative project. Since saving and opening are
+user-visible, the e2e specs that save, import, upgrade or recover
+(`personal-workbench-*`, `project-replacement-guard`,
+`project-tab-coordination`, `file-prompt-*`, `linked-prompt-sources`) run locally, and CI runs the
+rest. No desktop change.
