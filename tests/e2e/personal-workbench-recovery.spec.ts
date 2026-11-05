@@ -226,6 +226,33 @@ test("Use this one on a decision prompt shows the chosen draft, not the session'
 
   // The editor shows the draft Recovery activated, and a later edit builds on it.
   await expect(state).toHaveValue(competing);
+  // The remounted editor does not autosave the session's edit back over it.
+  await expect.poll(async () => filesUnder(await folderFiles(page), ".workbench/drafts/")
+    .map(([, contents]) => (JSON.parse(contents) as { edited: { decision: { state: string } } }).edited.decision.state)).toEqual([competing]);
+});
+
+test("settling an unrelated item keeps an open prompt editor's revision rename", async ({ page }) => {
+  const project = fixtureProject();
+  await openFolder(page, {
+    "project.json": serializeProjectManifest(project, "personal"),
+    ".workbench/.gitignore": "*\n",
+    ".workbench/drafts/draft_orphan.json": serializeWorkbenchRecord(orphanedRequestDraft(project)),
+  });
+  await expect(chip(page)).toHaveText("Recovery · 1");
+
+  await openMode(page, "Prompts");
+  const editor = page.locator(".template-editor");
+  await editor.getByRole("button", { name: "Rename revision" }).click();
+  await editor.getByLabel("New revision name").fill("Tightened triage");
+
+  await chip(page).click();
+  const item = drawer(page).getByRole("article");
+  await expect(item).toContainText("Base no longer exists");
+  await item.getByRole("button", { name: "Discard" }).click();
+  await page.getByRole("dialog", { name: /^Discard / }).getByRole("button", { name: "Discard" }).click();
+  await expect(drawer(page)).toContainText("Nothing needs recovery.");
+
+  await expect(editor.getByLabel("New revision name")).toHaveValue("Tightened triage");
 });
 
 test("an orphaned request draft is marked in the switcher and saved as a new request", async ({ page }) => {

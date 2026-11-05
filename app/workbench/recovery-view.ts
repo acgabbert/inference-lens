@@ -144,8 +144,9 @@ export interface RecoveryDiff {
   truncated: boolean;
 }
 
+/** A side with no record, such as a deleted copy, has no lines, so the other side reads as removed or added. */
 function formatted(record: unknown): string {
-  return JSON.stringify(stableJsonValue(record), null, 2);
+  return record === undefined ? "" : JSON.stringify(stableJsonValue(record), null, 2);
 }
 
 /** X2: stable-formatted JSON of both sides as a line diff, the current copy first. */

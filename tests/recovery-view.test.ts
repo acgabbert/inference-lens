@@ -102,6 +102,17 @@ test("X2: Compare is a line diff of stable JSON, current on the left", () => {
   assert.ok(alone.lines.every(({ kind }) => kind === "added"));
 });
 
+test("X2: a side with no record, such as this window's deletion, compares as a deletion", () => {
+  const diff = recoveryComparisonDiff({
+    incoming: { label: "This window: deleted", record: undefined },
+    current: { label: "On disk", record: { a: 1 } },
+  });
+  assert.equal(diff.left, "On disk");
+  assert.equal(diff.right, "This window: deleted");
+  assert.ok(diff.lines.length > 0);
+  assert.ok(diff.lines.every(({ kind }) => kind === "removed"));
+});
+
 test("X3: a composer's selected request names the same key its marks use", () => {
   assert.equal(recoveryMenuKey({ kind: "saved", revision: { conversationId: "conversation_main" } }), "request:conversation_main");
   assert.equal(recoveryMenuKey({ kind: "draft", draft: { asset: { id: "decision-request_a" } }, revision: { decisionRequestId: "decision-request_a" } }), "request:decision-request_a");

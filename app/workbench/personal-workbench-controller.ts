@@ -133,6 +133,7 @@ export interface MigrationBackupSummary {
 }
 
 export interface RecoveryComparison {
+  /** `record` is undefined when this side deleted it, such as this window's discarded draft. */
   incoming: { label: string; record: unknown };
   current?: { label: string; record: unknown };
 }
@@ -1115,7 +1116,9 @@ export class PersonalWorkbenchController {
         } catch {
           onDisk = undefined;
         }
-        return { incoming: { label: "This window", record: structuredClone(mine) }, ...(onDisk ? { current: { label: "On disk", record: onDisk } } : {}) };
+        // A deletion that met an edit on disk leaves nothing in memory: say so.
+        const label = mine ? "This window" : "This window: deleted";
+        return { incoming: { label, record: structuredClone(mine) }, ...(onDisk ? { current: { label: "On disk", record: onDisk } } : {}) };
       }
       default:
         return undefined;
