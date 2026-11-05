@@ -182,6 +182,7 @@
 
 
 /* Drift and problems only; a matching file needs no line. */
-.template-list-item .template-list-source {
+.template-list-item .template-list-source,
+.template-list-item .template-list-recovery {
   color: var(--warning-strong);
 }

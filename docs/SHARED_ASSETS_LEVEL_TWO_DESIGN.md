@@ -1885,3 +1885,98 @@ inventory is unavailable". The Rust tests
 `native_recovery_paths_live_beside_records_and_keep_migration_inventory_readable`
 and the two backup-removal tests failed against a stub. The link-refusal test
 passed against the stub as well, so it was never shown failing.
+
+### Step 6b-2 decisions (approved November 5, 2026)
+
+The user approved four answers about the drawer's surface, which D8, V4 and W4
+left open. All of them apply only with the gate on.
+
+- **X1. The chip sits in the topbar's header actions.** It reads
+  "Recovery · N" while N items are pending, and "Migration backup" when
+  nothing is pending but a backup can be removed or its removal finished. It
+  is hidden otherwise. Removing a backup therefore stays reachable after the
+  last item is settled.
+- **X2. Compare is a JSON line diff.** Each side is stable-formatted JSON,
+  shown as a line diff with the existing folded diff view. One code path
+  serves every item kind: drafts, selections, scratch and saved revisions.
+- **X3. Pane marks link to the drawer.** A marked prompt's row in the
+  Templates list carries a "Needs recovery" line, and a marked request's entry
+  in the request switcher reads "· needs recovery". The affected editor shows a
+  notice at the top of its scroll area with "Open Recovery", which opens the
+  drawer on that asset's items.
+- **X4. Discard confirms when it deletes the only copy.** It asks first for a
+  session copy held in memory, a replaced or stored competing draft, this
+  window's copy in a record conflict, an orphaned draft and a publication
+  conflict's edits. Discarding a migration candidate only records `discarded`,
+  and the backup keeps it, so it acts at once.
+
+### Step 6b-2 delivered (November 5, 2026)
+
+The Recovery chip, drawer and pane marks, behind the gate. With the gate off
+the personal workbench is off, so none of them renders.
+
+- **Owner.** [use-recovery.client.tsx](../app/workbench/use-recovery.client.tsx)
+  owns whether the drawer is open and on what, and builds the chip, the pane
+  marks and the in-pane notice. Reconciliation stays with the personal
+  workbench (6b-1). The page composes it: the topbar gets the chip, the
+  Prompts mode and both composers get the marks and the notice, and the page
+  renders the drawer.
+  [recovery-view.ts](../app/workbench/recovery-view.ts) holds the pure parts:
+  the X1 chip state, the keys the marks use, each item's subject, the X4
+  confirmation rule, the X2 diff and the W3 removal details.
+- **Drawer.** [recovery-drawer.client.tsx](../app/workbench/recovery-drawer.client.tsx)
+  lists each item with its subject, kind, message, path and V4 actions, then
+  the migration backups. Compare shows the two sides as a folded line diff;
+  long lines wrap, so the drawer content stays its one scroll area. Save as
+  new asks for a name inline. A backup reads "Remove migration backup…" once
+  removable, "Finish removing backup" after an interrupted removal, and otherwise says
+  what it waits for. An item with no action says how to clear it: fix or
+  remove the file, then reopen the project. It still counts on the chip (X1).
+  An open comparison reads both sides again whenever the workbench changes.
+- **Marks.** The Templates list row reads "Needs recovery". The request
+  switcher's entry, saved or local, reads "· needs recovery", in Chat and
+  Decision Compose. The prompt editor and both composers show a "Needs
+  recovery" notice among their notices, with "Open Recovery".
+
+Implementation choices inside the approved decisions:
+
+- **The prompt editor reloads after a Recovery action.** It holds its own
+  copy of the draft, read when it mounts, so "Use this one" left it showing the
+  replaced draft. The owner counts, per prompt, the settled actions that
+  changed its active copy, and the Templates pane keys the editor on that
+  count. Discarding the other copy, a replaced draft or a migration candidate,
+  and Retry, change no active copy, so they do not remount an open editor.
+  Keying on the draft's ID instead would remount the editor when a first edit
+  creates a draft. The same action also drops the decision prompt editor's
+  in-session memory for that prompt, which would otherwise restore the
+  replaced copy over the remounted one.
+- **The drawer starts over with each personal project**: its open state, its
+  focus and the per-prompt counts reset when the project changes.
+- **A focused drawer lists only that asset's items** and hides the backups.
+  "Show all" lifts the focus. When the asset's items are all settled and others
+  remain, it says so and offers "Show all".
+- **The chip is a header button** with the advisory tint, before the
+  connection menu.
+
+Not changed in 6b-2: nothing outside the gate. The prompt editors still
+reload by remounting rather than following their record, as the decision
+request editor does with `useDecisionRecordSync`. Moving them to a sync is a
+change to the editors' state ownership, left for a later step.
+
+Checks: `tests/recovery-view.test.ts` (five cases) was run against a stub
+first and failed on its assertions; a sixth case for `recoveryMenuKey` was
+written with the helper, so it was never shown failing. The gated
+`tests/e2e/personal-workbench-recovery.spec.ts` covers a competing prompt
+draft (mark, notice, Compare, "Use this one", the replaced copy and its
+confirmed Discard), an orphaned request draft (switcher mark, Save as new) and
+a selections candidate after an upgrade (Discard without confirmation, then
+"Remove migration backup"). All three failed first because no chip existed.
+With the drawer built, the first failed again with the editor still showing
+the replaced draft, which the remount key fixed.
+
+Review fixes: a fourth gated case covers "Use this one" on a decision prompt
+after an edit in the session. It was written after the fix. With the memory
+reset removed it failed on its assertion: the editor showed the session's edit
+instead of the chosen draft. The two `recovery-view` cases for
+`changesActiveCopy` and `recoveryGuidance` failed on their assertions against
+stubs first.

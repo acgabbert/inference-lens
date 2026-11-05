@@ -72,6 +72,8 @@ export interface PersonalWorkbenchHandle {
   /** False in a legacy session: every owner takes today's path. */
   enabled: boolean;
   status: PersonalWorkbenchStatus;
+  /** Counts the controller's changes, for a view that reads a record outside render, such as Compare. */
+  revision: number;
   /** One active draft per asset (D6). */
   draftFor(asset: WorkbenchAssetRef): WorkbenchDraftV1 | undefined;
   unsavedDrafts: UnsavedDraftSummary[];
@@ -162,7 +164,7 @@ export function usePersonalWorkbench(input: {
   writeShared(update: (current: ProjectFile) => ProjectFile): Promise<SharedWriteOutcome>;
 }): PersonalWorkbenchHandle {
   const [controller, setController] = useState<PersonalWorkbenchController | null>(null);
-  const [, setRevision] = useState(0);
+  const [revision, setRevision] = useState(0);
   const controllerRef = useRef<PersonalWorkbenchController | null>(null);
   const sharedRef = useRef(input.shared);
   const writeSharedRef = useRef(input.writeShared);
@@ -245,6 +247,7 @@ export function usePersonalWorkbench(input: {
   return {
     enabled: Boolean(personalSession),
     status: controller?.status ?? OFF,
+    revision,
     draftFor: (asset) => controller?.draftFor(asset),
     unsavedDrafts: controller?.unsavedDrafts ?? [],
     recovery: controller?.recovery ?? [],

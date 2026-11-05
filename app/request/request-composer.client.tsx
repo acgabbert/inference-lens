@@ -102,6 +102,8 @@ export interface RequestComposerProps {
   requestPreview?: RequestPreview;
   /** A personal session's unsaved request draft or scratch (2b step 3). */
   localRequest?: LocalRequestState;
+  /** The Recovery notice for the request being edited (2b step 6b-2, X3), composed by the route. */
+  recoveryNotice?: ReactNode;
   /** A personal session's request switcher (2b step 5, T1), composed by the route. */
   requestSwitcher?: ReactNode;
   /** Where a personal session differs from the launch default (T4). */
@@ -144,6 +146,7 @@ export function RequestComposer({
   localRequest,
   requestSwitcher,
   launchDefault,
+  recoveryNotice,
   personalSettings = false,
   environmentSelector,
   environment,
@@ -335,6 +338,7 @@ export function RequestComposer({
         </>}
         notices={<>
           <RunReadinessNotice {...(readiness ? { readiness } : {})} onAction={routeReadinessAction} />
+          {recoveryNotice}
           {localRequest && <LocalRequestNotice state={localRequest} />}
           {launchDefault && <LaunchDefaultNotice state={launchDefault} />}
           {pendingBranch && (

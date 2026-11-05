@@ -26,6 +26,7 @@ import {
   type PromptLibraryKind,
 } from "./templates/prompt-library";
 import { linkedPromptStatusLines } from "./templates/linked-prompt-source.client";
+import type { RecoveryHandle } from "./workbench/use-recovery.client";
 export { TemplateUseCard } from "./templates/chat-prompt-template-editor.client";
 export type { CompatibleEvaluationSuite } from "./templates/chat-prompt-template-editor.client";
 
@@ -38,7 +39,9 @@ type SaveDecisionTemplate = (
 ) => Promise<PromptTemplateRevisionId | undefined>;
 
 export interface ProjectTemplatesPaneProps
-  extends Omit<ChatPromptTemplateEditorProps, "template" | "templates"> {
+  extends Omit<ChatPromptTemplateEditorProps, "template" | "templates" | "recoveryNotice"> {
+  /** The Recovery marks and notice (2b step 6b-2, X3), keyed `prompt:<templateId>`. */
+  recovery?: Pick<RecoveryHandle, "marked" | "notice" | "generation">;
   templates: PromptTemplate[];
   usageCounts: ReadonlyMap<PromptTemplateId, number>;
   n8nImportDisabledReason?: string;
@@ -83,6 +86,9 @@ function describeEntry(template: PromptTemplate): string {
 /** Shared library navigation; each kind owns its authoring state and content. */
 export function ProjectTemplatesPane(props: ProjectTemplatesPaneProps) {
   const { templates, navigationTarget, onSelectionChange, sessionTemplateIds = new Set() } = props;
+  // The chat editor takes the pane's props; Recovery reaches it only as its notice.
+  const editorProps = { ...props };
+  delete editorProps.recovery;
   const target = templates.find(({ id }) => id === navigationTarget?.templateId);
   const [filters, setFilters] = useState<PromptLibraryFilters>({
     status: target?.archivedAt ? "archived" : "active",
@@ -252,6 +258,7 @@ export function ProjectTemplatesPane(props: ProjectTemplatesPaneProps) {
                 {describeEntry(template)} · {props.usageCounts.get(template.id) ?? 0} uses
               </span>
               {template.recommendedTarget && <span>Recommended model: {template.recommendedTarget.model}</span>}
+              {props.recovery?.marked.has(`prompt:${template.id}`) && <span className="template-list-recovery">Needs recovery</span>}
               {(() => {
                 const state = props.linkedSources?.stateFor(template.id);
                 // A quiet library: only drift and problems are worth a line.
@@ -266,19 +273,23 @@ export function ProjectTemplatesPane(props: ProjectTemplatesPaneProps) {
       </aside>
       {selected?.kind === "chat" ? (
         <ChatPromptTemplateEditor
-          {...props}
-          key={selected.id}
+          {...editorProps}
+          // A Recovery action may activate another draft; remount to read it.
+          key={`${selected.id}:${props.recovery?.generation(`prompt:${selected.id}`) ?? 0}`}
           template={selected}
           templates={templates}
+          recoveryNotice={props.recovery?.notice(`prompt:${selected.id}`)}
           focusRequested={false}
           onArchive={archive}
           onRestore={restore}
         />
       ) : selected?.kind === "decision" ? (
         <DecisionPromptTemplateEditor
-          key={selected.id}
+          // A Recovery action may activate another draft; remount to read it.
+          key={`${selected.id}:${props.recovery?.generation(`prompt:${selected.id}`) ?? 0}`}
           template={selected}
           templates={templates}
+          recoveryNotice={props.recovery?.notice(`prompt:${selected.id}`)}
           memory={memory}
           initialRevisionId={navigationTarget?.templateId === selected.id ? navigationTarget.revisionId : undefined}
           connectionRequirements={props.connectionRequirements}

@@ -31,6 +31,8 @@ import type { StoredInferenceProfile, StoredInferenceProfilePatch } from "../pro
 import type { TraceOrigin } from "../run/use-run-session.client";
 import { DECISION_READINESS_SUMMARY_ID, DecisionComposer } from "./decision-composer.client";
 import { RequestSwitcher } from "../workbench/request-switcher.client";
+import { recoveryMenuKey } from "../workbench/recovery-view";
+import type { RecoveryMarks } from "../workbench/use-recovery.client";
 import type { RequestMenuTarget } from "../workbench/request-menu.ts";
 import type { DecisionDraftProblem } from "./decision-draft";
 import { DecisionInspect } from "./decision-inspect.client";
@@ -77,6 +79,11 @@ export interface UseDecisionComposeOptions {
   onOpenConnections(): void;
   /** Invalid request replacement is an explicit user choice. */
   requestConfirmation(request: ConfirmationDialogRequest): void;
+  /**
+   * The Recovery marks and notice (2b step 6b-2, X3), composed by the route.
+   * `notice` takes the edited request's switcher key.
+   */
+  recovery?: RecoveryMarks;
   onCapture?(content: { decision: DecisionInput; values: Record<string, string> }): void;
   /** `requestRevisionId` is absent for a local request that has no saved revision. */
   onEditSource?(requestRevisionId: DecisionRequestRevisionId | undefined, templateId: PromptTemplateId, templateRevisionId: PromptTemplateRevisionId): void;
@@ -404,6 +411,7 @@ export function useDecisionCompose(options: UseDecisionComposeOptions): Decision
           {...(record ? { unsavedDetail: "Not saved until the request is valid. Your workbench keeps its last valid version." } : {})}
           draft={editorHandle}
           {...(localRequest ? { localRequest } : {})}
+          recoveryNotice={options.recovery?.notice(recoveryMenuKey(localRecord))}
           {...(record?.launchDefault ? { launchDefault: record.launchDefault } : {})}
           {...(record?.menu
             ? {
@@ -411,6 +419,7 @@ export function useDecisionCompose(options: UseDecisionComposeOptions): Decision
                   <RequestSwitcher
                     noun="decision request"
                     menu={record.menu}
+                    {...(options.recovery ? { marked: options.recovery.marked } : {})}
                     {...(session.executing ? { disabledReason: "Finish or stop the run before switching requests." } : {})}
                     onSelect={switchRequest}
                   />

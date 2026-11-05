@@ -13,6 +13,7 @@ import { decisionTemplateEvaluationSuites, previewDecisionTemplateEvaluationReta
 
 import type { PromptModelCatalog } from "../templates/recommended-model-editor.client";
 import { useLinkedPromptSources } from "../templates/use-linked-prompt-sources.client";
+import type { RecoveryHandle } from "../workbench/use-recovery.client";
 
 interface PromptsModeProps {
   modelCatalog?: PromptModelCatalog;
@@ -37,6 +38,8 @@ interface PromptsModeProps {
   onReturn(): void;
   onRevisionEvaluationStarted(): void;
   onEvaluationSuiteOpened(): void;
+  /** The Recovery marks and notice (2b step 6b-2, X3). */
+  recovery?: Pick<RecoveryHandle, "marked" | "notice" | "generation">;
 }
 
 function compatibleEvaluationSuitesByTemplate(
@@ -80,6 +83,7 @@ export function PromptsMode({
   onReturn,
   onRevisionEvaluationStarted,
   onEvaluationSuiteOpened,
+  recovery,
 }: PromptsModeProps) {
   const { target } = navigation;
   // Mounted only while the Prompts mode is open, so opening it reads linked files.
@@ -89,6 +93,7 @@ export function PromptsMode({
       <ProjectTemplatesPane
         key={`${project?.projectId ?? "unsaved-project"}:${target?.key ?? 0}`}
         modelCatalog={modelCatalog}
+        {...(recovery ? { recovery } : {})}
         templates={templates.libraryTemplates ?? project?.promptTemplates ?? []}
         sessionTemplateIds={templates.sessionTemplateIds ?? new Set<PromptTemplateId>()}
         connectionRequirements={project?.connectionRequirements ?? []}

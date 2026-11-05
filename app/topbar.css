@@ -77,3 +77,11 @@
   }
 }
 
+
+/* The personal workbench's Recovery chip (2b step 6b-2, X1): standing state, not a primary action. */
+.button.recovery-chip {
+  border-color: var(--warning-border);
+  background: var(--warning-surface);
+  color: var(--warning-strong);
+  white-space: nowrap;
+}

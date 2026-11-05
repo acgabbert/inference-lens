@@ -129,6 +129,8 @@ import { chooseAppBanner } from "./notifications/banner-priority.client";
 import { usePersonalWorkbench } from "./workbench/use-personal-workbench.client";
 import { useProjectMigration } from "./workbench/use-project-migration.client";
 import { projectUpgradeBanner } from "./workbench/project-upgrade-banner";
+import { useRecovery } from "./workbench/use-recovery.client";
+import { recoveryMenuKey } from "./workbench/recovery-view";
 import { ProjectUpgradeDialog } from "./workbench/project-upgrade-dialog.client";
 import { useChatRequestRecord } from "./request/use-chat-request-record.client";
 import { useChatExecution } from "./request/use-chat-execution.client";
@@ -350,6 +352,19 @@ function HomeContent() {
     shared: projectFile,
     writeShared: project.writeShared,
   });
+  // The Recovery chip, drawer and pane marks (D8, 2b step 6b-2). Both
+  // callbacks run after render, once the prompt library below exists.
+  const recovery = useRecovery({
+    personal: personalWorkbench,
+    project: projectFile,
+    promptName: (id) => projectTemplates.libraryTemplates.find((template) => template.id === id)?.name,
+    // The decision prompt editor remembers in-session edits above its mount;
+    // a copy Recovery replaced must not come back from there.
+    onActiveCopyChanged(key) {
+      if (key.startsWith("prompt:")) projectTemplates.decisionEditorMemory.delete(key.slice("prompt:".length) as PromptTemplateId);
+    },
+    requestConfirmation: setConfirmation,
+  });
   // Which request the composer edits in a personal session (I4).
   const chatRequest = useChatRequestRecord({
     personal: personalWorkbench,
@@ -562,6 +577,7 @@ function HomeContent() {
     onError(message) { project.setError(message, { clearKind: true }); },
     onOpenConnections() { setConnectionDrawerOpen(true); },
     requestConfirmation: setConfirmation,
+    recovery,
     onCapture({ decision: content, values }) {
       const id = projectTemplates.captureDecisionTemplate("Untitled decision prompt", content, values);
       promptNavigation.clearReturn();
@@ -1454,6 +1470,7 @@ function HomeContent() {
           }
         : {})}
       {...(requestPreview ? { requestPreview } : {})}
+      recoveryNotice={recovery.notice(recoveryMenuKey(chatRequest.record))}
       {...(chatExecution.enabled ? { personalSettings: true } : {})}
       {...(chatRequestMenu
         ? {
@@ -1461,6 +1478,7 @@ function HomeContent() {
               <RequestSwitcher
                 noun="request"
                 menu={chatRequestMenu}
+                marked={recovery.marked}
                 {...(isRequestActive ? { disabledReason: "Finish or stop the run before switching requests." } : {})}
                 onSelect={(target) => chatRequest.select(target)}
               />
@@ -1668,6 +1686,7 @@ function HomeContent() {
         {...(!isDesktopRuntime ? { onOpenRunLink: runLinks.showPaste } : {})}
         onStopExperiment={evaluationExecution.isRunning ? evaluationExecution.cancel : repeatedExperiment.cancel}
         onStartEvaluation={evaluationWorkspace.start}
+        {...(recovery.chip ? { recovery: recovery.chip } : {})}
       />
       {/* The page's notices share one capped scroll area, as a pane's do:
           capped one by one, they add up under the topbar and starve the
@@ -1676,6 +1695,8 @@ function HomeContent() {
         <RunLinkControls links={runLinks} />
         <AppBanner {...(appBanner ? { selection: appBanner } : {})} />
       </div>
+
+      {recovery.drawer}
 
       <EnvironmentDrawer
         open={Boolean(environmentDrawer)}
@@ -1742,6 +1763,7 @@ function HomeContent() {
       />
       ) : mode === "prompts" ? (
         <PromptsMode
+          recovery={recovery}
           modelCatalog={{
             profiles,
             mappedProfileIds,
