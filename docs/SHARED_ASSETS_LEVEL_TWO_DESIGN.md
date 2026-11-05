@@ -1981,11 +1981,11 @@ instead of the chosen draft. The two `recovery-view` cases for
 `changesActiveCopy` and `recoveryGuidance` failed on their assertions against
 stubs first.
 
-### Step 7 decisions (proposed November 5, 2026)
+### Step 7 decisions (approved November 5, 2026)
 
 Step 7 lifts R4: with the gate on, a repeated experiment may run the selected
-request draft or scratch. D12 left the plan's representation for review. This
-section proposes it. Nothing here is approved yet.
+request draft or scratch. D12 left the plan's representation for review. The
+user approved the recommended answer to each decision: Y1-A, Y2-A and Y3-A.
 
 #### What the code does at `ae0f7c4`
 
@@ -2071,11 +2071,12 @@ These are decided under existing decisions rather than put to review.
 - **The batch freezes its input.** Editing, saving or discarding the draft
   or scratch while the batch runs changes none of its cells, because
   `createRepeatedExperimentPlan` clones the prepared input.
-- **Branching from a live cell follows R2.** The app notes every cell's run
-  ID with the record's branch parent, not only the discarded prepared run ID.
-  A draft batch's cells then hang on the draft's base revision, as a single
-  draft run's do. A saved cell trace follows R2's fallback, as a single trace
-  does.
+- **Nothing to note for R2.** The proposal said the app would note every
+  cell's run ID with the record's branch parent. Implementation found no
+  caller: "Edit from here" exists only on the live single run, which a batch
+  resets, and the Runs evidence view offers none. No branch can start from a
+  cell, so nothing is noted. If one is added later, it takes R2's parent
+  rules then.
 - **Nothing outside the gate changes.** With the gate off there is no draft
   or scratch, and the repeat path is today's.
 
@@ -2091,3 +2092,39 @@ These are decided under existing decisions rather than put to review.
   when given none.
 - With Y3-A: the dialog's Input line for a draft, a scratch and a saved
   revision.
+
+### Step 7 delivered (November 5, 2026)
+
+Repeated experiments on local input, behind the gate. With the gate off there
+is no draft or scratch, and the repeat path is unchanged.
+
+- **R4 lifted (Y1).** With a request draft or scratch selected, Repeat… is
+  enabled. The plan is created as before from the prepared input, so it stays
+  ExperimentPlan v7 and records I3's identity: the draft's saved
+  `conversationId` or the scratch's `localConversationId`, with a fresh
+  revision ID. No format, codec or CLI code changed.
+- **Branch point on every cell (Y2).** `ChatCellExecutor` and the chat
+  `ExperimentController` take an optional `branchedFrom` and write it on each
+  cell's trace. The page passes it only from a personal session's local input,
+  so a legacy pending branch, saved as a revision before it runs, still
+  records none, as before. Evaluations and the CLI pass nothing.
+- **Input line (Y3).** `localInputLabel` in
+  [local-chat-request.ts](../app/request/local-chat-request.ts) names the
+  input "Unsaved draft of *name*", "Unsaved draft" when the request is gone
+  from the project, or "Unsaved request" for a scratch. The repeated
+  experiment dialog shows it as "Input" under "Frozen request". A saved
+  revision shows no line.
+
+Checks: `tests/repeated-experiment-controller.test.ts` (Y2, with and without a
+branch point) and `tests/local-chat-request.test.ts` (Y3, against a stub) were
+run first and failed on their assertions: `undefined` where the branch point
+and the label belonged. Two gated cases in
+`tests/e2e/personal-workbench-request-drafts.spec.ts` cover a draft batch (v7
+plan, the draft's conversation, a revision ID absent from `project.json`, an
+unchanged `project.json`, no branch point) and a scratch batch (the local
+conversation ID, each cell's `branchedFrom`). Both first timed out on a
+disabled button. With an explicit assertion added, both failed on the R4
+title. The earlier draft case's R4 assertions were removed.
+
+With the gate on, steps 2–7 have all landed. Per D1 and D2, removing the gate
+is the enabling change. It needs its own approval, which nothing here gives.

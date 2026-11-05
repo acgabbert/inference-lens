@@ -138,6 +138,7 @@ import { RequestSwitcher } from "./workbench/request-switcher.client";
 import type { LaunchDefaultState } from "./request/launch-default-notice.client";
 import { useDecisionRequestRecord } from "./decisions/use-decision-request-record.client";
 import type { LocalChatRunInput } from "./request/use-chat-request-record.client";
+import { localInputLabel } from "./request/local-chat-request";
 import type { AppBanner as AppBannerCandidate } from "./notifications/banner-priority.client";
 
 const inferenceTransport = createInferenceTransport();
@@ -976,10 +977,6 @@ function HomeContent() {
     return `A repeated experiment answers its own tool calls, and nothing on this device serves ${names}. Enable a mock, grant a command tool, or allow an MCP tool first.${shell ? ` ${shell}` : ""}`;
   }
 
-  // R4: an ExperimentPlan pins a saved request until step 7 adds local input.
-  const localRepeatBlockedReason = chatRequest.record && chatRequest.record.kind !== "saved"
-    ? "Save this request to run a repeated experiment."
-    : undefined;
   function repeat(): void {
     evaluationExecution.clear();
     project.clearErrorKind();
@@ -988,13 +985,13 @@ function HomeContent() {
       project.setError(unservableToolsMessage(unservable));
       return;
     }
-    if (localRepeatBlockedReason) {
-      project.setError(localRepeatBlockedReason);
-      return;
-    }
     const composed = prepareComposerRun();
     if (!composed) return;
     const { prepared, input, local } = composed;
+    // Step 7: local input runs as its I3 identity, so the plan pins no saved
+    // revision (Y1); the confirmation says so (Y3), and a scratch's cells
+    // record its branch point (Y2).
+    const inputLabel = chatRequest.record && projectFile ? localInputLabel(projectFile, chatRequest.record) : undefined;
     repeatedExperiment.begin(input, requestSettings.profile.name || "Untitled profile", () => {
       commitPreparedRun(prepared, local);
       runSession.reset();
@@ -1003,6 +1000,11 @@ function HomeContent() {
       // A batch's results are read in the Runs mode, so the batch opens there
       // rather than displacing whatever the current pane was showing.
       setMode("runs");
+    }, {
+      ...(inputLabel ? { inputLabel } : {}),
+      // Only a personal session's scratch: a legacy pending branch is saved as
+      // a revision before it runs, and its batches record no branch point.
+      ...(local?.branchedFrom ? { branchedFrom: local.branchedFrom } : {}),
     });
   }
 
@@ -1441,14 +1443,12 @@ function HomeContent() {
       }}
       {...(readiness ? { readiness } : {})}
       repeat={{
-        disabled: Boolean(readiness?.blocked) || unservableToolNames.length > 0 || Boolean(localRepeatBlockedReason),
+        disabled: Boolean(readiness?.blocked) || unservableToolNames.length > 0,
         ...(readiness?.blocked
           ? { disabledReason: readiness.summary }
           : unservableToolNames.length > 0
             ? { disabledReason: `Nothing on this device serves ${unservableToolNames.join(", ")}.` }
-            : localRepeatBlockedReason
-              ? { disabledReason: localRepeatBlockedReason }
-              : {}),
+            : {}),
         onRepeat: repeat,
       }}
       pendingDestination={pendingReadinessDestination}

@@ -157,6 +157,26 @@ test("runs two, five, and high-count schedules strictly one cell at a time", asy
   }
 });
 
+test("Y2: every cell trace of a scratch batch records the scratch's branch point", async () => {
+  const branchedFrom = { runId: "run_parent" as const, parentConversationRevisionId: "revision_parent" as const, messageId: "message_branch" as const };
+  for (const given of [branchedFrom, undefined]) {
+    const traces: RunTrace[] = [];
+    const controller = new ExperimentController({
+      plan: plan(2),
+      createExecutor: createMockOnlyToolExecutor,
+      transport: transportFor(async function* (runId) { yield* completed(`response ${runId}`); }),
+      async prepareCredential() { return { kind: "none" }; },
+      onTerminalTrace(trace) { traces.push(trace); },
+      ...(given ? { branchedFrom: given } : {}),
+    });
+    assert.equal((await controller.run()).status, "completed");
+    assert.equal(traces.length, 2);
+    // Trace-only provenance: the plan's input is unchanged either way.
+    assert.deepEqual(traces.map((trace) => trace.branchedFrom), [given, given]);
+    assert.ok(traces.every((trace) => !("branchedFrom" in trace.input)));
+  }
+});
+
 test("finalizes a retryable failure and continues later cells", async () => {
   const started: string[] = [];
   const traces: RunTrace[] = [];
