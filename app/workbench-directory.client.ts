@@ -1,9 +1,9 @@
 "use client";
 
 import { WORKBENCH_GITIGNORE_CONTENTS } from "../packages/core/src/personal-workbench.ts";
-import { assertWorkbenchRecordPath, FOREIGN_PROJECT_MESSAGE, hasForeignWorkbenchIdentity } from "../packages/core/src/workbench-store.ts";
-import type { WorkbenchFile, WorkbenchStorage } from "../packages/core/src/workbench-store.ts";
-import { assertMigrationPath, hasForeignMigrationIdentity, sameMigrationBytes } from "../packages/core/src/migration-journal.ts";
+import { assertMigrationOperationId, assertWorkbenchRecordPath, assertWorkbenchWritablePath, FOREIGN_PROJECT_MESSAGE, hasForeignWorkbenchIdentity } from "../packages/core/src/workbench-store.ts";
+import type { WorkbenchFile, WorkbenchRemovalResult, WorkbenchStorage } from "../packages/core/src/workbench-store.ts";
+import { assertMigrationPath, hasForeignMigrationIdentity, isMigrationRecoveryPath, parseMigrationResolutions, sameMigrationBytes } from "../packages/core/src/migration-journal.ts";
 import type { MigrationFile, MigrationPayload, MigrationSnapshot, MigrationStageOutcome, MigrationStorage } from "../packages/core/src/migration-journal.ts";
 import type {
   MigrationCompletionActivation, MigrationCompletionHostResult, MigrationCompletionPlan, MigrationCompletionStorage,
@@ -16,7 +16,7 @@ export function browserWorkbenchStorage(directory: FileSystemDirectoryHandleLike
   return {
     list: () => list(directory),
     async mutate(path, expectedContents, contents, projectId) {
-      assertWorkbenchRecordPath(path);
+      assertWorkbenchWritablePath(path);
       return coordinateProjectWrites(projectId, async () => {
         const inventory = await list(directory);
         if (inventory.some(file => "error" in file && file.path.startsWith("migrations"))) throw new Error("Migration inventory is unavailable; workbench writes are blocked.");
@@ -40,7 +40,50 @@ export function browserWorkbenchStorage(directory: FileSystemDirectoryHandleLike
         return confirmed === contents ? { kind: "written" } : { kind: "conflict", phase: "read-back", actualContents: confirmed };
       });
     },
+    removeMigrationOperation(operationId, projectId) {
+      assertMigrationOperationId(operationId);
+      return coordinateProjectWrites(projectId, () => removeMigrationOperation(directory, operationId, projectId));
+    },
   };
+}
+
+/**
+ * W3, inside the project's write scope. Everything is checked before the first
+ * deletion: the recorded intent, identity, protection and the operation's
+ * fixed layout. `resolutions.json` goes last, so an interruption still reads
+ * as a removal to finish.
+ */
+async function removeMigrationOperation(directory: FileSystemDirectoryHandleLike, operationId: string, projectId: ProjectId): Promise<WorkbenchRemovalResult> {
+  const refused = (message: string): WorkbenchRemovalResult => ({ kind: "blocked", reason: "not-removable", message });
+  const inventory = await list(directory);
+  if (hasForeignWorkbenchIdentity(inventory, projectId)) return { kind: "blocked", reason: "foreign-project", message: FOREIGN_PROJECT_MESSAGE };
+  if (!await isWorkbenchProtected(directory)) return { kind: "blocked", reason: "protection", message: PROTECTION_MESSAGE };
+  const root = `migrations/${operationId}`;
+  const files = inventory.filter(file => file.path.startsWith(`${root}/`));
+  const unreadable = files.find(file => "error" in file);
+  if (unreadable) return refused(`${unreadable.path} cannot be read, so the backup is kept.`);
+  const resolutions = files.find(file => file.path === `${root}/resolutions.json`);
+  try {
+    const record = resolutions && "contents" in resolutions ? parseMigrationResolutions(JSON.parse(resolutions.contents), projectId) : undefined;
+    if (!record?.backupRemovedAt || record.operationId !== operationId) return refused("The removal of this backup was not recorded first.");
+  } catch (error) { return refused(`The removal of this backup was not recorded first: ${errorMessage(error)}`); }
+  for (const file of files) {
+    if (!isMigrationRecoveryPath(file.path)) {
+      try { assertMigrationPath(file.path); } catch { return refused(`${file.path} is not part of a migration backup, so the backup is kept.`); }
+    }
+  }
+  const workbench = await directory.getDirectoryHandle(".workbench");
+  const operation = await (await workbench.getDirectoryHandle("migrations")).getDirectoryHandle(operationId);
+  const ordered = files.map(file => file.path).sort((a, b) => Number(a.endsWith("/resolutions.json")) - Number(b.endsWith("/resolutions.json")));
+  for (const path of ordered) {
+    const [parent, name] = await recordLocation(workbench, path, false);
+    if (parent) await parent.removeEntry(name);
+  }
+  for (const folder of ["candidates", "replaced"]) {
+    try { await operation.removeEntry(folder); } catch (error) { if (!isMissing(error)) throw error; }
+  }
+  await (await workbench.getDirectoryHandle("migrations")).removeEntry(operationId);
+  return { kind: "removed" };
 }
 
 const PROTECTION_MESSAGE = "Workbench .gitignore must contain exactly '*\\n' before personal content can be written.";
@@ -60,12 +103,14 @@ async function writeFile(directory: FileSystemDirectoryHandleLike, name: string,
   await writable.close();
 }
 
+/** A validated record or recovery path's parent directory and file name. */
 async function recordLocation(workbench: FileSystemDirectoryHandleLike, path: string, create: boolean): Promise<[FileSystemDirectoryHandleLike | null, string]> {
-  if (path === "selections.json") return [workbench, path];
-  // Validated record paths have exactly one directory: drafts/ or scratch/.
-  const [folder, name] = path.split("/") as [string, string];
-  try { return [await workbench.getDirectoryHandle(folder, { create }), name]; }
+  const parts = path.split("/");
+  const name = parts.pop()!;
+  let parent = workbench;
+  try { for (const part of parts) parent = await parent.getDirectoryHandle(part, { create }); }
   catch (error) { if (!create && isMissing(error)) return [null, name]; throw error; }
+  return [parent, name];
 }
 
 async function list(directory: FileSystemDirectoryHandleLike): Promise<WorkbenchFile[]> {
@@ -94,7 +139,7 @@ async function listActiveRecords<T extends { contents: string } | { bytes: Uint8
     }
   }
   await collect(workbench, "");
-  for (const folder of ["drafts", "scratch"]) {
+  for (const folder of ["drafts", "scratch", "replaced"]) {
     let records: FileSystemDirectoryHandleLike | undefined;
     try { records = await workbench.getDirectoryHandle(folder); }
     catch (error) { if (!isMissing(error)) throw error; }
@@ -339,7 +384,7 @@ async function listMigrationFiles(directory: FileSystemDirectoryHandleLike): Pro
   async function collect(parent: FileSystemDirectoryHandleLike, prefix: string, depth: number) {
     for await (const entry of parent.values()) {
       const path = `${prefix}/${entry.name}`;
-      if (entry.kind === "directory" && depth < 2 && (depth === 0 || entry.name === "candidates")) {
+      if (entry.kind === "directory" && depth < 2 && (depth === 0 || entry.name === "candidates" || entry.name === "replaced")) {
         await collect(entry, path, depth + 1);
       } else if (entry.kind === "file") {
         try { files.push({ path, bytes: new Uint8Array(await (await entry.getFile()).arrayBuffer()) }); }

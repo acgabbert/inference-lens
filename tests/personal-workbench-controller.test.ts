@@ -6,7 +6,7 @@ import type { ChatPromptTemplate, ProjectFile, PromptTemplateMessages } from "..
 import { planSharedProjectMigration } from "../packages/core/src/shared-project-migration.ts";
 import { parseWorkbenchRecordJson, serializeWorkbenchRecord } from "../packages/core/src/personal-workbench.ts";
 import type { WorkbenchPromptDraftV1 } from "../packages/core/src/personal-workbench.ts";
-import type { WorkbenchMutationResult, WorkbenchStorage } from "../packages/core/src/workbench-store.ts";
+import type { WorkbenchMutationResult, WorkbenchRemovalResult, WorkbenchStorage } from "../packages/core/src/workbench-store.ts";
 import { publishPromptDraft } from "../packages/core/src/workbench-publication.ts";
 import { PersonalWorkbenchController } from "../app/workbench/personal-workbench-controller.ts";
 import type { SharedWriteOutcome } from "../app/use-project-workspace.client.ts";
@@ -30,6 +30,9 @@ class MemoryStorage implements WorkbenchStorage {
   failNext?: WorkbenchMutationResult;
   async list() {
     return [...this.files].map(([path, contents]) => ({ path, contents }));
+  }
+  async removeMigrationOperation(): Promise<WorkbenchRemovalResult> {
+    return { kind: "blocked", reason: "not-removable", message: "No migration backups here." };
   }
   async mutate(path: string, expected: string | null, contents: string | null): Promise<WorkbenchMutationResult> {
     if (this.failNext) {

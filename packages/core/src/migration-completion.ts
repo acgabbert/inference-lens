@@ -1,6 +1,6 @@
 import type { ProjectId } from "./run-kernel/types.ts";
 import {
-  inspectSharedProjectMigration, parseMigrationJournal, prepareSharedProjectMigration, sameMigrationBytes,
+  inspectSharedProjectMigration, parseMigrationJournal, prepareSharedProjectMigration, readMigrationResolutions, sameMigrationBytes,
 } from "./migration-journal.ts";
 import type { MigrationFile, MigrationInspection, MigrationSnapshot } from "./migration-journal.ts";
 import { parseWorkbenchRecordJson } from "./personal-workbench.ts";
@@ -82,9 +82,13 @@ async function verify(snapshot: MigrationSnapshot, projectId: ProjectId, operati
   const sourceBytes = find("source.project.json");
   const expected = await prepareSharedProjectMigration(sourceBytes);
   const journal = parseMigrationJournal(JSON.parse(decode(find("journal.json"))), projectId);
+  const resolutionsFile = snapshot.files.find(file => file.path === root + "resolutions.json");
+  const resolutions = resolutionsFile && readMigrationResolutions(decode(find("resolutions.json")), projectId, operationId);
+  if (resolutions?.backupRemovedAt) return { blocked: { kind: "needs-review", message: "Migration backup removal has started." } };
+  const settled = new Set(resolutions?.resolutions.map(({ candidate }) => candidate));
   return {
     projectId, state: inspection.kind, sourceBytes: copy(sourceBytes), sharedBytes: copy(expected.files[2].bytes),
-    candidates: journal.candidates.map(item => ({
+    candidates: journal.candidates.filter(item => !settled.has(item.path)).map(item => ({
       kind: item.kind, candidate: item.path, bytes: copy(find(item.path)),
       destination: item.kind === "selections" ? SELECTIONS : `drafts/${item.draftId}.json`,
       assetId: item.kind === "draft" ? item.asset.id : undefined,

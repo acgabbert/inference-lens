@@ -344,6 +344,9 @@ function HomeContent() {
     storage: project.projectWorkspace && project.projectSession?.format?.kind === "shared"
       ? project.projectWorkspace.storage.workbench
       : null,
+    migrations: project.projectWorkspace && project.projectSession?.format?.kind === "shared"
+      ? project.projectWorkspace.storage.migration
+      : null,
     shared: projectFile,
     writeShared: project.writeShared,
   });

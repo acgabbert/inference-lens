@@ -1757,3 +1757,131 @@ draft edited in the session and saves it afterwards, and checks that Cancel
 writes nothing. Both of its tests failed first because no Upgrade action
 existed; with the V2 carry disabled, the first fails again on the draft's
 content.
+
+### Step 6b decisions (approved November 4, 2026)
+
+The user approved four answers to questions that D6–D8, V4 and the resolutions
+schema left open. All of them apply only with the gate on.
+
+- **W1. Replacements outside a migration go to `replaced/`.** "Use this one"
+  on a competing draft that is not a migration candidate (two drafts for one
+  asset in `drafts/`, or a session copy V2 kept in memory) moves the active
+  draft it replaces to `.workbench/replaced/<draftId>.json`. That file holds
+  the same draft record, is never loaded as active, and appears in Recovery
+  as a replaced draft with Compare, "Use this one" and Discard. Core, the
+  browser host and the native host validate the path as they do `drafts/`.
+  Workbench v1 is amended in place, as D9 amended it.
+- **W2. A selections candidate offers Compare and Discard.** Selections are
+  pointers and cheap to redo by hand, so "Use this one" is not offered when a
+  migration's selections met existing ones. Discard records `discarded`. The
+  resolutions schema's `replacedCopy` is narrowed to drafts (amended in place:
+  nothing has written it).
+- **W3. Removing a backup writes its intent first.** "Remove migration backup"
+  writes `backupRemovedAt` into `resolutions.json`, creating it if needed.
+  A host operation on both hosts then deletes the operation's source, journal,
+  shared snapshot, candidates and replaced copies, then `resolutions.json`, and
+  then the directory. It is limited to one `migrations/migration_<sha256>/`
+  directory and refuses links. A removal that was interrupted reads as
+  "Finish removing backup". The confirmation lists what is deleted, replaced
+  copies included.
+- **W4. 6b lands as two pull requests.** 6b-1 adds the core, both hosts and
+  the personal controller's reconcile operations, with unit and Rust tests and
+  no UI. 6b-2 adds the Recovery chip and drawer, the pane marks and the gated
+  e2e spec. Both stay behind the gate.
+
+Defaults taken with them, reversible and inside the approved contracts:
+
+- **Candidates are assessed without the manifest.** Completion's inspection
+  refuses once `project.json` moves past an operation's output, which the first
+  shared save does. Recovery verifies each operation's journal and candidates
+  against its preserved source, as completion does, then classifies every
+  candidate against the active records and the resolutions record: settled,
+  present (its bytes are active), absent, competing, existing selections or
+  unavailable. An operation that cannot be verified is an unreadable item.
+- **Recovery files are not staged outputs.** Inspection and both inventory
+  listings accept `resolutions.json` and `replaced/draft_*.json` inside an
+  operation, so settling a candidate never reads as a damaged staging. Finish
+  skips candidates already recorded as used or discarded, even if their active
+  draft has since been deleted.
+- **"Use this one" writes in a crash-safe order.** The replaced copy first,
+  then the candidate becomes active, then the resolution. An interruption
+  leaves at worst two drafts for one asset, which Recovery lists again, or a
+  replaced copy no resolution names, which removing the backup deletes.
+- **Save as new never rebases.** An orphaned draft is saved as a new prompt or
+  request, named by the user, with the draft's content. A publication conflict's
+  "Keep as draft" clears the intent and keeps the edits over their original
+  base.
+
+### Step 6b-1 delivered (November 5, 2026)
+
+The recovery inventory and every reconcile action, behind the gate and without
+UI. With the gate off nothing calls them.
+
+- **Core.** [migration-recovery.ts](../packages/core/src/migration-recovery.ts)
+  assesses each operation against its preserved source, not the manifest, and
+  holds the resolutions operations: settle a candidate, mark a backup's removal
+  and decide whether a backup is removable. An operation whose manifest is
+  still exactly its output keeps its absent candidates for Finish upgrade (6a),
+  so Recovery cannot discard one that Finish would then activate.
+  [migration-journal.ts](../packages/core/src/migration-journal.ts) exports
+  `isMigrationRecoveryPath`, and inspection leaves those files out.
+  [workbench-store.ts](../packages/core/src/workbench-store.ts) lists
+  `replaced/` drafts apart from active records. It adds `writeRecovery` for the
+  recovery paths only, `refresh` (an explicit re-read that lifts a conflict or
+  failure block) and `removeMigrationOperation`.
+- **Hosts.** Both listings descend an operation's `replaced/` and the top-level
+  `replaced/`. Both mutations accept the recovery paths, with the native host
+  refusing links at every component. The new `removeMigrationOperation` (the
+  native `remove_workbench_migration_operation` command) checks the recorded
+  intent, identity, protection and the operation's fixed layout before
+  deleting anything. It deletes `resolutions.json` last, and any unexpected
+  entry keeps the whole backup.
+- **Controller.** On open, the
+  [personal controller](../app/workbench/personal-workbench-controller.ts)
+  reads the inventory before carried records are written. It records every
+  candidate whose exact bytes are active as `used`. Migrated draft IDs come
+  from the prompt ID alone, so without that record a migrated draft edited or
+  saved after the upgrade would look like a pending candidate. `recovery`
+  lists each item with an `id` and its V4 actions. `compareRecovery`,
+  `useRecovery`, `discardRecovery`, `keepRecoveryAsDraft`, `saveRecoveryAsNew`,
+  `retryRecovery` and `removeMigrationBackup` implement them, and
+  `migrationBackups` summarizes each operation. `usePersonalWorkbench` exposes
+  them as `reconcile` and `migrationBackups`. The page passes the folder's
+  migration reader (one prop).
+
+Implementation choices inside the approved contracts:
+
+- **"Use this one" takes a fresh ID on a clash.** When the incoming draft has
+  the active draft's own ID (migrated IDs are deterministic), the incoming one
+  is activated under a new ID. A swap whose replaced copy would overwrite the
+  incoming record's own file writes the incoming draft first. A selected
+  request draft's selection follows the draft that replaced it. An incoming
+  draft also takes a fresh ID if its destination belongs to another asset,
+  preserving that asset's draft in place. An existing
+  copy at the replaced path is never overwritten: Recovery asks to discard it
+  first.
+- **Record conflicts.** V4 named no actions for them. A store conflict on a
+  draft or scratch offers Compare, "Use this one" (keep this window's copy;
+  the copy on disk goes to `replaced/`, or to a new scratch) and Discard (take
+  the copy on disk). Selections and V2 session copies offer Compare and
+  Discard, as W2 does.
+- **A publication whose children were not updated** offers Retry, which
+  settles that record again, instead of Keep as draft: its save landed.
+- **Save as new** creates a prompt with the draft's content, or turns a request
+  draft into a parentless local request and saves it under the given name. If
+  that save fails, the work stays as the local request.
+
+Not changed in 6b-1: no drawer, chip or pane marks (6b-2), and nothing in the
+app calls `reconcile` yet.
+
+Checks: `tests/migration-recovery.test.ts` (eight cases) and
+`tests/personal-workbench-recovery.test.ts` (ten cases) were written before
+their code. Only the inspection case and the W2 narrowing could fail on an
+assertion; the rest failed because the module or method did not exist yet.
+Inspection with a resolutions record failed as `needs-review`, and the W2
+schema accepted a selections copy. `tests/workbench-store.test.ts` gains four
+cases over the browser host. The inventory case failed first with "Migration
+inventory is unavailable". The Rust tests
+`native_recovery_paths_live_beside_records_and_keep_migration_inventory_readable`
+and the two backup-removal tests failed against a stub. The link-refusal test
+passed against the stub as well, so it was never shown failing.

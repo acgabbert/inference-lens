@@ -33,7 +33,8 @@ const resolutionsSchema = z.object({
   backupRemovedAt: z.iso.datetime({ offset: true }).optional(),
 }).strict().superRefine((record, ctx) => {
   const settled = new Set<string>();
-  const replaced = new RegExp(`^migrations/${record.operationId}/replaced/(?:selections|draft_[A-Za-z0-9_-]+)\\.json$`);
+  // W2: selections are never replaced by a candidate, so only drafts have a copy.
+  const replaced = new RegExp(`^migrations/${record.operationId}/replaced/draft_[A-Za-z0-9_-]+\\.json$`);
   for (const [index, resolution] of record.resolutions.entries()) {
     if (settled.has(resolution.candidate)) ctx.addIssue({ code: "custom", path: ["resolutions", index, "candidate"], message: "A candidate is settled once." });
     settled.add(resolution.candidate);
@@ -52,6 +53,13 @@ export function parseMigrationResolutions(value: unknown, expectedProjectId?: Pr
     throw new WorkbenchValidationError([{ code: "custom", path: ["projectId"], message: "Migration resolutions belong to a different project." }]);
   }
   return structuredClone(parsed.data);
+}
+
+/** Decode a resolution file only in the project and operation that own it. */
+export function readMigrationResolutions(contents: string, projectId: ProjectId, operationId: string): MigrationResolutionsV1 {
+  const record = parseMigrationResolutions(JSON.parse(contents), projectId);
+  if (record.operationId !== operationId) throw new Error("Resolutions name another operation.");
+  return record;
 }
 
 export function serializeMigrationResolutions(record: MigrationResolutionsV1): string {
@@ -114,6 +122,15 @@ export function parseMigrationJournal(value: unknown, expectedProjectId?: Projec
 export function serializeMigrationJournal(journal: MigrationJournalV1): string {
   return `${JSON.stringify(parseMigrationJournal(journal), null, 2)}\n`;
 }
+/**
+ * Files reconciliation adds inside an operation (D7, D6): its resolutions
+ * record and the active drafts "Use this one" replaced. They are not staged
+ * outputs, so inspection and staging verification leave them out.
+ */
+const MIGRATION_RECOVERY_PATH = /^migrations\/migration_[a-f0-9]{64}\/(?:resolutions\.json|replaced\/draft_[A-Za-z0-9_-]+\.json)$/;
+export function isMigrationRecoveryPath(path: string): boolean {
+  return MIGRATION_RECOVERY_PATH.test(path);
+}
 export function assertMigrationPath(path: string): string {
   if (!/^migrations\/migration_[a-f0-9]{64}\/(?:source\.project\.json|journal\.json|shared\.project\.json|candidates\/(?:selections|draft_migrated-[a-f0-9]{64})\.json)$/.test(path)) throw new Error("Invalid migration path.");
   return path;
@@ -173,7 +190,7 @@ export async function inspectSharedProjectMigration(snapshot: MigrationSnapshot,
     // Unavailable migration inventory prevents claiming that an operation is ready.
     if (snapshot.files.some(file => "error" in file && file.path.startsWith("migrations"))) return { kind: "needs-review", message: "Migration inventory is unavailable." };
     const root = `migrations/${operationId}/`;
-    const files = snapshot.files.filter(file => file.path === root.slice(0, -1) || file.path.startsWith(root));
+    const files = snapshot.files.filter(file => (file.path === root.slice(0, -1) || file.path.startsWith(root)) && !isMigrationRecoveryPath(file.path));
     if (!files.length) return { kind: "none" };
     const byPath = new Map<string, Uint8Array>();
     for (const file of files) {
