@@ -6,8 +6,11 @@ selections win; nothing is merged or overwritten), pending drafts not blocking t
 shared write, and ordinary-save-handle invalidation on any manifest-write attempt.
 Revised October 27 (browser save coordination, completion capability ownership,
 `stale-plan` result, corrupt selections). Implementation proceeds in the order
-under "Required implementation evidence": core, browser adapter, then native. No
-application caller is approved; App/CLI remain on v15.
+under "Required implementation evidence": core, browser adapter, then native.
+Since [step 8b](SHARED_ASSETS_LEVEL_TWO_DESIGN.md#step-8b-delivered-november-5-2026)
+(November 5) the app writes v19 and the migration owner is completion's one
+application caller; the approval condition below was met when reconciliation
+shipped in step 6b.
 
 **Approval condition.** Pending drafts may coexist with a v19 manifest only while
 completion has no application caller. Add a test or guard asserting that no
@@ -351,3 +354,7 @@ the guard lifts with the gate (D2).
 Step 6a (November 4) narrows the guard to one caller, the gated migration
 owner in `app/workbench/project-migration.ts`; see
 [step 6a](SHARED_ASSETS_LEVEL_TWO_DESIGN.md#step-6a-delivered-november-4-2026).
+Step 8b (November 5) removed the gate, so that owner now calls completion for
+every session, and the guard test keeps it the only caller. The native command
+has not yet run end to end from the desktop app; the
+[native checklist](SHARED_ASSETS_LEVEL_TWO_DESIGN.md#native-checklist-z5) covers it.

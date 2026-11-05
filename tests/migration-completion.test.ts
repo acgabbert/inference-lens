@@ -289,15 +289,15 @@ test("the plan's expected snapshot is independent of storage buffers mutated bet
   assert.equal(setup.host.files.has("selections.json"), false);
 });
 
-test("only the gated migration owner calls the completion capability", async () => {
+test("only the migration owner calls the completion capability", async () => {
   const { readdirSync, statSync } = await import("node:fs");
   const { join, relative } = await import("node:path");
   const root = new URL("..", import.meta.url).pathname;
   const core = "packages/core/src/migration-completion.ts";
   // Host adapters construct the capability inside the workspace storage factory; nothing else may import it.
   const adapters = new Set(["app/workbench-directory.client.ts", "app/migration-native.client.ts", "app/project-workspace.client.ts"]);
-  // Step 6a narrows the approval condition: the migration owner, which runs only
-  // in a gated personal session, is the one caller until the gate is removed (D2).
+  // Step 6a narrowed the approval condition to the migration owner; since 8b
+  // removed the gate (D2) it is the one application caller for every session.
   const owner = "app/workbench/project-migration.ts";
   const offenders: string[] = [];
   const walk = (dir: string) => {
@@ -315,7 +315,7 @@ test("only the gated migration owner calls the completion capability", async () 
     }
   };
   walk(root);
-  assert.deepEqual(offenders, [], "completion stays with the gated migration owner until the gate is removed");
+  assert.deepEqual(offenders, [], "completion stays with the migration owner");
 });
 
 test("a misnamed valid draft at a candidate destination is unavailable, not a pending competitor", async () => {
