@@ -1385,8 +1385,8 @@ and diff check, not a browser run.
 ## Remaining decisions for the design review
 
 Level 1's presets and Level 2's choices recorded above are resolved, and 2b is
-delivered. The next reviews cover the in-memory v19 label and slice 2c; Level 3
-decisions remain deferred.
+delivered, and so is the in-memory v19 label. The next review covers slice 2c;
+Level 3 decisions remain deferred.
 
 1. Approve the field-by-field classification and migration examples for prompts,
    chat requests, decision requests, and evaluation suites, preserving legacy

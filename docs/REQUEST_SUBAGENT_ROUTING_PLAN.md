@@ -54,7 +54,7 @@ approval UI or scheduler behavior; otherwise keep the MVP tool-free.
 | App and [CLI executor factories](../packages/cli/src/tool-executor.ts) | Host-specific execution stays outside pure core. | Both factories need injected child-run services, not embedded React or service calls in core. |
 
 Current formats: active Project v15, RunTrace v8, ExperimentPlan v5, and
-ExperimentResult v6. [`shared-project.ts`](../packages/core/src/shared-project.ts)
+ExperimentResult v6. `shared-project.ts` (since folded into `project.ts`)
 also defines a **staged** shared format that app/CLI do not yet use, renumbered
 to v19 on 2026-10-30. [Prompt environments](PROMPT_ENVIRONMENTS_PLAN.md#format-version)
 take active Project v16, RunTrace v9 and ExperimentPlan v6,

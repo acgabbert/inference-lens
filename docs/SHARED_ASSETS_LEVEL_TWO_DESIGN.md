@@ -2455,7 +2455,7 @@ format step.
 ## In-memory v19 label (approved November 5, 2026)
 
 **Status: the user approved the recommended answer to each decision: L1-A,
-L2-A and L3-A. Implementation has not started.** Since 8b the app writes
+L2-A and L3-A. Delivered November 5; see below.** Since 8b the app writes
 only v19, but owners still hold `ProjectFile`, which is `ProjectFileV18`: it
 says `schemaVersion: 18` and its templates may carry a `draft`. The manifest
 boundary relabels on every read and write (I1). This slice makes the
@@ -2556,3 +2556,63 @@ user-visible, the e2e specs that save, import, upgrade or recover
 (`personal-workbench-*`, `project-replacement-guard`,
 `project-tab-coordination`, `file-prompt-*`, `linked-prompt-sources`) run locally, and CI runs the
 rest. No desktop change.
+
+### In-memory v19 label delivered (November 5, 2026)
+
+`ProjectFile` is the shared document, in memory as on disk.
+
+- **Core (L1-A, L2-A).** `PROJECT_SCHEMA_VERSION` is 19 and `ProjectFile` is
+  `ProjectFileV19`: v18's content, with templates that have no `draft`.
+  `parseProjectFile`, `parseProjectJson` and `serializeProjectFile` read and
+  write v19 only. They took over v19's two checks: a named refusal of a
+  template draft, and secret fields inside provider-option arrays.
+  `shared-project.ts` is gone, with `sharedProjectAsActive`;
+  `declaredProjectSchemaVersion` moved to `project.ts`. The v10→v18 chain is
+  `parseLegacyProjectFile`, marked internal, and only
+  `planSharedProjectMigration` calls it. Given a v10–v18 document,
+  `parseProjectFile` refuses it and says the app upgrades it. The draft writers
+  `updatePromptTemplateDraft` and `updateDecisionPromptTemplateDraft` are gone.
+- **Boundary.** `readProjectManifest` and `serializeProjectManifest` no longer
+  relabel. The CLI reads a legacy folder through the plan and drops its drafts
+  (Z2-A).
+- **App owners.** The editors read `PromptTemplateView`
+  ([prompt-template-view.ts](../app/templates/prompt-template-view.ts)): the
+  shared template plus the user's draft. The templates owner builds it from the
+  personal record, or from a session-only prompt's own state. A draft edit to
+  a project prompt always goes to the personal workbench. The two branches
+  that wrote a draft into the shared document are gone. The save fallbacks
+  that append a revision directly are still there, since they write no draft.
+- **Version message.** The message lists v10 to v19 and says this build
+  upgrades v10–v18 to v19. Its regression case is in `project-manifest.test.ts`
+  rather than `project.test.ts`, because the defect was reproduced through
+  `readProjectManifest`. It ran red on the v18-only list.
+- **Update from file.** `planFilePromptUpdate` and `applyFilePromptUpdate`
+  take `FilePromptPersonalUses`. That covers the prompt's personal draft and
+  the items of every chat request draft and scratch. The templates owner fills
+  it from the personal workbench. Apply takes it too, so the names it writes
+  match the preview. The case in `file-prompt-update.test.ts` ran red: names
+  that only a draft or a scratch used were reused.
+- **Fixtures (L3-A).** `serializeProjectFile` writes v19, so the specs that
+  seeded v18 by accident now seed v19 folders. `serializeFolderProject` and
+  `parseFolderProject` are folded into it. The test-only legacy writers are in
+  [legacy-project-helpers.ts](../tests/legacy-project-helpers.ts):
+  `serializeLegacyProjectFile`, `withLegacyPromptDraft` and
+  `openLegacyProject`. The upgrade, recovery, replacement and CLI legacy cases
+  use them. Chain tests open their input through the plan, so they run on the
+  same path as the app. Some legacy rejection cases matched only the generic
+  "Invalid Inference Lens project" prefix, which the new "older format"
+  refusal would also satisfy. They now open through the plan and match a
+  specific message.
+- **Formats.** No on-disk change. HEAD and this branch write byte-identical
+  `project.json` for:
+  - the v15 and v19 examples;
+  - the v15 example's lifted drafts and its migration journal files;
+  - the headless and linked-prompt fixtures, compared by rewriting this
+    branch's bytes with HEAD.
+
+  The one difference found is the intended one: a v7 file's refusal now
+  lists v19.
+
+Decided during implementation: the legacy writers live with the migration
+test helpers, not under `tests/e2e/support`. The message wording is as above.
+`applyFilePromptUpdate` takes the personal uses as an option.
