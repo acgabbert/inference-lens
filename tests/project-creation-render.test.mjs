@@ -3,7 +3,7 @@ import test from "node:test";
 
 import { ssrLoadModule } from "./support/ssr.mjs";
 
-async function renderProjectCreationDialog(mode = "new") {
+async function renderProjectCreationDialog(mode = "new", extra = {}) {
   const [
     { ProjectCreationDialog },
     { renderToStaticMarkup },
@@ -19,6 +19,7 @@ async function renderProjectCreationDialog(mode = "new") {
       initialName: "Prompt Lab",
       onClose: () => {},
       onCreate: () => {},
+      ...extra,
     }),
   );
 }
@@ -33,6 +34,12 @@ test("creates visible project bundles with Git protection on by default", async 
   assert.match(html, /Manage Git rules myself/);
   assert.match(html, /Choose location/);
   assert.doesNotMatch(html, /undefined|NaN|Infinity/);
+});
+
+test("in a personal session the definitions preset says drafts stay out of project.json", async () => {
+  const html = await renderProjectCreationDialog("new", { personalDrafts: true });
+  assert.match(html, /Shares the saved definitions in project\.json\. Personal drafts in \.workbench\/, run history and other files stay excluded by default\./);
+  assert.doesNotMatch(html, /including persisted drafts/);
 });
 
 test("each save mode names what choosing a folder will do", async () => {

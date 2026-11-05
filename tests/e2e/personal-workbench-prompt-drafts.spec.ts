@@ -130,3 +130,20 @@ test("a legacy folder opens with its prompt draft, but nothing is written to it"
   expect(Object.keys(files)).toEqual(["project.json"]);
   expect(files["project.json"]).toBe(manifest);
 });
+
+test("export says unsaved drafts are not included, and the copy carries none (step 8a)", async ({ page }) => {
+  const manifest = serializeProjectManifest(fixtureProject(), "personal");
+  await openFolder(page, manifest);
+  await openMode(page, "Prompts");
+  await page.locator(".template-editor").getByLabel("Prompt content").fill("Triage {{incident}} in a draft.");
+
+  await page.getByLabel("Project menu").click();
+  const menu = page.locator(".project-popover:not(.run-data-popover)");
+  await expect(menu).toContainText("Exports leave out unsaved drafts.");
+  const download = page.waitForEvent("download");
+  await menu.getByRole("button", { name: "Export JSON copy…" }).click();
+  const exported = JSON.parse(await (await (await download).createReadStream()).toArray().then((chunks) => Buffer.concat(chunks).toString("utf8")));
+  expect(exported.schemaVersion).toBe(19);
+  expect(exported.promptTemplates[0].draft).toBeUndefined();
+  expect(exported.promptTemplates[0].revisions[0].messages[0].content).toBe("Triage {{incident}}.");
+});

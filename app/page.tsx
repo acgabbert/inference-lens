@@ -30,7 +30,7 @@ import {
 } from "./tauri-inference-transport.client";
 import { AppErrorBoundary } from "./app-error-boundary.client";
 import { useInsecureOriginNotice } from "./use-insecure-origin.client";
-import { projectFolderAccessAvailable, runTraceWorkspacePath } from "./project-workspace.client";
+import { currentProjectSessionMode, projectFolderAccessAvailable, runTraceWorkspacePath } from "./project-workspace.client";
 import { useToolRegistry } from "./tools/use-tool-registry.client";
 import { ToolRegistryModal } from "./tools/tool-registry-modal.client";
 import { N8nImportModal } from "./n8n-import-modal.client";
@@ -326,7 +326,9 @@ function HomeContent() {
         detail:
           destination === "folder"
             ? "Written to the project folder."
-            : "Downloaded as a project file.",
+            : project.projectSession?.mode === "personal"
+              ? "Downloaded as a project file. Unsaved drafts are not included."
+              : "Downloaded as a project file.",
         durableHome: "the project name in the topbar, which drops its unsaved marker",
       });
     },
@@ -1680,6 +1682,7 @@ function HomeContent() {
         onSaveProject={saveOrChooseProjectLocation}
         onImportProject={(event) => { runLinks.cancel(); void project.importProject(event); }}
         onExportProject={project.exportProject}
+        exportExcludesDrafts={project.projectSession?.mode === "personal"}
         {...(n8nImportDisabledReason ? { n8nImportDisabledReason } : {})}
         onOpenN8nImport={() => setN8nImportOpen(true)}
         onDownloadDiagnostics={runSession.downloadDiagnostics}
@@ -2035,6 +2038,8 @@ function HomeContent() {
       {projectCreationMode && (
         <ProjectCreationDialog
           mode={projectCreationMode}
+          // A new folder is created in the mode the gate selects now (S2).
+          personalDrafts={currentProjectSessionMode() === "personal"}
           initialName={
             projectCreationMode === "new"
               ? "Untitled Inference Lens project"
