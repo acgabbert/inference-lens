@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import { parseProjectFile } from "../packages/core/src/project.ts";
 import type { ChatPromptTemplate, ProjectFile } from "../packages/core/src/project.ts";
+import { inspectSharedProjectMigrationCompletion } from "../packages/core/src/migration-completion.ts";
 import { parseMigrationResolutions, prepareSharedProjectMigration } from "../packages/core/src/migration-journal.ts";
 import type { MigrationSnapshot, PreparedSharedProjectMigration } from "../packages/core/src/migration-journal.ts";
 import { planSharedProjectMigration } from "../packages/core/src/shared-project-migration.ts";
@@ -167,6 +168,7 @@ test("a competing candidate offers Compare, Use this one and Discard; using it k
   assert.equal(setup.storage.files.has("drafts/draft_rival.json"), false);
   const copy = `${setup.root}replaced/draft_rival.json`;
   assert.deepEqual(setup.storage.read(copy), rival);
+  assert.ok(instance.migrationBackups[0].files.includes(copy), "removal must disclose the replaced draft");
   const resolution = resolutionsOf(setup).resolutions.find(({ candidate }) => candidate === setup.draft.candidate);
   assert.deepEqual(resolution, { candidate: setup.draft.candidate, outcome: "used", settledAt: NOW, replacedCopy: copy });
   // Copy first, then the candidate, then the rival's deletion, then the resolution.
@@ -329,4 +331,91 @@ test("a failed write is retried explicitly, after the path is re-read", async ()
   assert.deepEqual(instance.recovery, []);
   const stored = storage.read("drafts/draft_test-1.json")!;
   assert.deepEqual(stored.kind === "draft" && stored.edited, { messages: [{ role: "user", content: "Kept." }], variableDefaults: {} });
+});
+
+test("concurrent discards persist every candidate decision", async () => {
+  const setup = await upgraded();
+  const instance = controller(setup.storage);
+  await instance.open(shared);
+  const items = instance.recovery.filter((item) => item.kind === "migration-candidate");
+  const results = await Promise.all(items.map((item) => instance.discardRecovery(item.id)));
+  assert.deepEqual(results, items.map(() => ({ kind: "settled" })));
+  assert.deepEqual(resolutionsOf(setup).resolutions.map(({ candidate }) => candidate).sort(),
+    items.map((item) => item.candidate).sort());
+});
+
+for (const afterWrite of [false, true]) {
+  test(`Retry records restored candidates after a failure ${afterWrite ? "after" : "before"} writing`, async () => {
+    const setup = await upgraded({ activate: true });
+    const mutate = setup.storage.mutate.bind(setup.storage);
+    setup.storage.mutate = async (...args) => {
+      setup.storage.mutate = mutate;
+      if (afterWrite) await mutate(...args);
+      throw new Error("temporary write failure");
+    };
+    const instance = controller(setup.storage);
+    await instance.open(shared);
+    const item = find(instance, "write-failed")!;
+    assert.deepEqual(await instance.retryRecovery(item.id, shared), { kind: "settled" });
+    assert.deepEqual(instance.recovery, []);
+    assert.ok(resolutionsOf(setup).resolutions.some(({ candidate }) => candidate === setup.draft.candidate));
+  });
+}
+
+test("Finish upgrade skips a settled draft after its active copy is discarded", async () => {
+  const setup = await upgraded({ activate: true });
+  setup.storage.manifest = setup.prepared.files[2].bytes;
+  const instance = controller(setup.storage);
+  await instance.open(shared);
+  await instance.discardDraft(setup.draft.record.asset);
+  const inspection = await inspectSharedProjectMigrationCompletion(await setup.storage.migrations.read(), projectId, setup.prepared.operationId);
+  assert.equal(inspection.kind, "shared-written");
+  assert.deepEqual(inspection.candidates.filter(({ disposition }) => disposition === "activate"), []);
+});
+
+test("using a candidate preserves the unrelated asset occupying its draft ID", async () => {
+  const setup = await upgraded();
+  const occupant = { ...setup.draft.record, asset: { ...setup.draft.record.asset, id: "template_other" } } as WorkbenchPromptDraftV1;
+  setup.storage.files.set(setup.draft.path, serializeWorkbenchRecord(occupant));
+  const instance = controller(setup.storage);
+  await instance.open(shared);
+  const item = instance.recovery.find((entry) => entry.path === setup.root + setup.draft.candidate)!;
+  assert.deepEqual(await instance.useRecovery(item.id), { kind: "settled" });
+  assert.deepEqual(setup.storage.read(setup.draft.path), occupant);
+  assert.deepEqual(instance.draftFor(occupant.asset), occupant);
+  assert.equal(instance.draftFor(setup.draft.record.asset)?.draftId, "draft_test-1");
+});
+
+test("another edit of a conflicted draft keeps the explicit conflict choices", async () => {
+  const setup = await upgraded({ activate: true });
+  const instance = controller(setup.storage);
+  await instance.open(shared);
+  const base = setup.draft.record as WorkbenchPromptDraftV1 & { asset: { kind: "chat-prompt" } };
+  const external = rivalOf(base, base.draftId, "External change");
+  setup.storage.files.set(setup.draft.path, serializeWorkbenchRecord(external));
+  for (const content of ["first edit", "second edit"]) {
+    instance.updatePromptDraft(base.asset, base.base, { messages: [{ role: "user", content }], variableDefaults: {} });
+    await instance.flush();
+  }
+  assert.deepEqual(instance.recovery.map(({ kind }) => kind), ["record-conflict"]);
+  assert.deepEqual(await instance.useRecovery(instance.recovery[0].id), { kind: "settled" });
+  assert.deepEqual(setup.storage.read(`replaced/${base.draftId}.json`), external);
+});
+
+test("Retry after an IO failure detects a subsequent external edit", async () => {
+  const setup = await upgraded({ activate: true });
+  const instance = controller(setup.storage);
+  await instance.open(shared);
+  const base = setup.draft.record as WorkbenchPromptDraftV1 & { asset: { kind: "chat-prompt" } };
+  const mutate = setup.storage.mutate.bind(setup.storage);
+  setup.storage.mutate = async () => { throw new Error("write failed"); };
+  instance.updatePromptDraft(base.asset, base.base, { messages: [{ role: "user", content: "Mine" }], variableDefaults: {} });
+  await instance.flush();
+  setup.storage.mutate = mutate;
+  const external = rivalOf(base, base.draftId, "External change");
+  setup.storage.files.set(setup.draft.path, serializeWorkbenchRecord(external));
+  const result = await instance.retryRecovery(find(instance, "write-failed")!.id, shared);
+  assert.deepEqual(setup.storage.read(setup.draft.path), external);
+  assert.equal(result.kind, "blocked");
+  assert.deepEqual(instance.recovery.map(({ kind }) => kind), ["record-conflict"]);
 });

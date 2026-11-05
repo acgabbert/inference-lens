@@ -181,6 +181,9 @@ export async function openWorkbenchStore(storage: WorkbenchStorage, projectId: P
     /** Initial read only; callers keep their own current editor content. */
     records,
     unavailable,
+    hasRecord(path: string): boolean {
+      return blocked.has(path) || expected.get(path) != null;
+    },
     get writeBlocked() { return writeBlocked; },
     async save(record: WorkbenchRecordV1): Promise<WorkbenchStoreOutcome> {
       const validated = parseWorkbenchRecord(record, projectId);
@@ -198,15 +201,22 @@ export async function openWorkbenchStore(storage: WorkbenchStorage, projectId: P
     /**
      * Explicit reconciliation of one path: re-reads it, adopts what is on disk
      * as the expectation and lifts a conflict or failure block. The caller
-     * decides what to do with the contents.
+     * decides what to do with the contents. Passing the intended contents for
+     * a retry keeps the path blocked if a third party changed the record.
      */
-    refresh(path: string): Promise<{ kind: "refreshed"; path: string; contents: string | null } | { kind: "failed"; path: string; message: string }> {
+    refresh(path: string, retryContents?: string | null): Promise<{ kind: "refreshed"; path: string; contents: string | null } | { kind: "failed" | "conflict"; path: string; message: string }> {
       const operation = queue.then(async () => {
         assertWorkbenchWritablePath(path);
         try {
           const file = (await storage.list()).find(entry => entry.path === path);
           if (file && "error" in file) throw new Error(file.error);
           const contents = file ? file.contents : null;
+          // Retry may confirm a write that landed, but only an explicit conflict
+          // choice may adopt an unrelated change as the next write's baseline.
+          if (retryContents !== undefined && contents !== retryContents && contents !== (expected.get(path) ?? null)) {
+            blocked.add(path);
+            return { kind: "conflict" as const, path, message: "The record on disk changed. Compare the copies before choosing one." };
+          }
           if (contents === null) expected.delete(path); else expected.set(path, contents);
           blocked.delete(path);
           return { kind: "refreshed" as const, path, contents };

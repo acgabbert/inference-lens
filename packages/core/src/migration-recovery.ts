@@ -4,6 +4,7 @@ import {
   parseMigrationJournal,
   parseMigrationResolutions,
   prepareSharedProjectMigration,
+  readMigrationResolutions,
   sameMigrationBytes,
 } from "./migration-journal.ts";
 import type { MigrationFile, MigrationJournalV1, MigrationResolutionsV1, MigrationSnapshot } from "./migration-journal.ts";
@@ -170,8 +171,7 @@ export async function assessMigrationRecovery(snapshot: MigrationSnapshot, proje
     const resolutionsBytes = byPath.get(`${root}resolutions.json`);
     if (resolutionsBytes) {
       try {
-        resolutions = parseMigrationResolutions(JSON.parse(decode(resolutionsBytes)), projectId);
-        if (resolutions.operationId !== operationId) throw new Error("Resolutions name another operation.");
+        resolutions = readMigrationResolutions(decode(resolutionsBytes), projectId, operationId);
       } catch (error) {
         inventory.unreadable.push({ path: `${root}resolutions.json`, message: message(error) });
         continue;

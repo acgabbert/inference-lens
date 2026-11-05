@@ -55,6 +55,13 @@ export function parseMigrationResolutions(value: unknown, expectedProjectId?: Pr
   return structuredClone(parsed.data);
 }
 
+/** Decode a resolution file only in the project and operation that own it. */
+export function readMigrationResolutions(contents: string, projectId: ProjectId, operationId: string): MigrationResolutionsV1 {
+  const record = parseMigrationResolutions(JSON.parse(contents), projectId);
+  if (record.operationId !== operationId) throw new Error("Resolutions name another operation.");
+  return record;
+}
+
 export function serializeMigrationResolutions(record: MigrationResolutionsV1): string {
   return `${JSON.stringify(stableJsonValue(parseMigrationResolutions(record), { preferredKeyOrder: resolutionsFieldOrder }), null, 2)}\n`;
 }

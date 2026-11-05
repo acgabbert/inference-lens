@@ -1,6 +1,6 @@
 import { createPromptTemplate, ProjectValidationError } from "../../packages/core/src/project.ts";
 import { createDecisionPromptTemplate } from "../../packages/core/src/decision-template.ts";
-import { isMigrationRecoveryPath, serializeMigrationResolutions } from "../../packages/core/src/migration-journal.ts";
+import { isMigrationRecoveryPath, readMigrationResolutions, serializeMigrationResolutions } from "../../packages/core/src/migration-journal.ts";
 import type { MigrationResolutionsV1, MigrationSnapshot } from "../../packages/core/src/migration-journal.ts";
 import {
   assessMigrationRecovery,
@@ -263,6 +263,7 @@ export class PersonalWorkbenchController {
   private recoveryItems: RecoveryItem[] = [];
   /** Migration operations by ID, as assessed at open and settled since. */
   private readonly migrationOperations = new Map<string, MigrationRecoveryOperation>();
+  private resolutionWrites: Promise<void> = Promise.resolve();
   /** Recovery files known on disk: `replaced/` and each operation's own files. */
   private readonly recoveryFiles = new Set<string>();
   private pendingWrites = 0;
@@ -965,10 +966,16 @@ export class PersonalWorkbenchController {
     const operation = this.migrationOperations.get(operationId);
     if (!operation) return true;
     const settledAt = this.options.now?.() ?? new Date().toISOString();
-    const written = await this.writeResolutions(operationId, (current) => operation.present.reduce(
-      (resolutions, candidate) => settleMigrationCandidate(resolutions, { projectId: this.projectId, operationId, candidate, outcome: "used", settledAt }),
-      current,
-    ));
+    const written = await this.writeResolutions(operationId, (current) => {
+      const settled = new Set(current?.resolutions.map(({ candidate }) => candidate));
+      let resolutions = current;
+      for (const candidate of operation.present) {
+        if (!settled.has(candidate)) {
+          resolutions = settleMigrationCandidate(resolutions, { projectId: this.projectId, operationId, candidate, outcome: "used", settledAt });
+        }
+      }
+      return resolutions;
+    });
     if (written !== true) {
       const path = migrationResolutionsPath(operationId);
       this.recoveryItems = [
@@ -982,23 +989,42 @@ export class PersonalWorkbenchController {
   }
 
   /** Writes the operation's next resolutions record and adopts it once confirmed. */
-  private async writeResolutions(
+  private writeResolutions(
+    operationId: string,
+    next: (current: MigrationResolutionsV1 | undefined) => MigrationResolutionsV1 | undefined,
+  ): Promise<true | Exclude<ReconcileOutcome, { kind: "settled" }>> {
+    // Queue the read and derivation as well as the write. Otherwise two
+    // decisions in this window can each build on the same older record.
+    const write = this.resolutionWrites.then(() => this.updateResolutions(operationId, next));
+    this.resolutionWrites = write.then(() => {}, () => {});
+    return write;
+  }
+
+  private async updateResolutions(
     operationId: string,
     next: (current: MigrationResolutionsV1 | undefined) => MigrationResolutionsV1 | undefined,
   ): Promise<true | Exclude<ReconcileOutcome, { kind: "settled" }>> {
     const store = this.store;
     const operation = this.migrationOperations.get(operationId);
     if (!store || !operation) return refused("blocked", "The personal workbench is not ready.");
+    const path = migrationResolutionsPath(operationId);
+    const refreshed = await store.refresh(path);
+    if (refreshed.kind !== "refreshed") return refused("failed", refreshed.message);
     let record: MigrationResolutionsV1 | undefined;
     try {
-      record = next(operation.resolutions);
+      const current = refreshed.contents === null ? undefined : readMigrationResolutions(refreshed.contents, this.projectId, operationId);
+      if (!current && operation.resolutions) return refused("blocked", "The resolutions file was removed. Reopen the folder to review the backup.");
+      record = next(current);
+      if (current?.backupRemovedAt && !same(current, record)) return refused("blocked", "Migration backup removal has started.");
     } catch (error) {
       return refused("failed", errorMessage(error, "Could not settle the candidate."));
     }
     if (!record) return true;
-    const path = migrationResolutionsPath(operationId);
-    const outcome = await store.writeRecovery(path, serializeMigrationResolutions(record));
-    if (outcome.kind !== "saved") return refused(outcome.kind === "blocked" ? "blocked" : "failed", storeMessage(outcome));
+    const contents = serializeMigrationResolutions(record);
+    if (contents !== refreshed.contents) {
+      const outcome = await store.writeRecovery(path, contents);
+      if (outcome.kind !== "saved") return refused(outcome.kind === "blocked" ? "blocked" : "failed", storeMessage(outcome));
+    }
     operation.resolutions = record;
     this.recoveryFiles.add(path);
     if (!operation.files.includes(path)) operation.files = [...operation.files, path].sort();
@@ -1243,7 +1269,15 @@ export class PersonalWorkbenchController {
       return this.settleItem(item);
     }
     // An earlier failure may have changed the file: read it before writing again.
-    const refreshed = await store.refresh(item.path);
+    const attempted = this.records.get(item.path);
+    const refreshed = await store.refresh(item.path, attempted ? serializeWorkbenchRecord(attempted) : null);
+    if (refreshed.kind === "conflict") {
+      this.recoveryItems = this.recoveryItems.map((entry) => entry === item
+        ? { ...entry, kind: "record-conflict", message: refreshed.message }
+        : entry);
+      this.changed();
+      return refused("blocked", refreshed.message);
+    }
     if (refreshed.kind !== "refreshed") return refused("failed", refreshed.message);
     const record = this.records.get(item.path);
     if (!record && refreshed.contents === null) return this.settleItem(item);
@@ -1317,10 +1351,14 @@ export class PersonalWorkbenchController {
       return refused("blocked", "The active draft is being saved, or an earlier save needs review first.");
     }
     let record = clearPublication(incoming) as WorkbenchDraftV1;
-    if (active && active.draftId === record.draftId) {
+    const destination = workbenchRecordPath(record);
+    const occupied = (path: string) => this.records.has(path) || store.hasRecord(path);
+    const needsNewId = source?.path !== destination && occupied(destination);
+    if (needsNewId) {
       record = parseWorkbenchRecord({ ...record, draftId: this.options.newDraftId?.() ?? `draft_${randomUUID()}` }, this.projectId) as WorkbenchDraftV1;
     }
     const path = workbenchRecordPath(record);
+    if (needsNewId && occupied(path)) return refused("failed", "The new draft ID is already in use.");
     const copy = active ? target(active.draftId) : undefined;
     if (copy && copy !== source?.path && this.recoveryFiles.has(copy)) {
       return refused("failed", `A replaced copy of the active draft is already kept at ${copy}. Discard it first.`);
@@ -1335,6 +1373,10 @@ export class PersonalWorkbenchController {
       const outcome = await store.writeRecovery(copy, serializeWorkbenchRecord(active));
       if (outcome.kind !== "saved") return refused("failed", storeMessage(outcome));
       this.recoveryFiles.add(copy);
+      if (isMigrationRecoveryPath(copy)) {
+        const operation = this.migrationOperations.get(copy.split("/")[1]);
+        if (operation && !operation.files.includes(copy)) operation.files = [...operation.files, copy].sort();
+      }
       return undefined;
     };
     const steps = copy && copy === source?.path ? [writeIncoming, writeCopy] : [writeCopy, writeIncoming];
@@ -1747,6 +1789,8 @@ export class PersonalWorkbenchController {
       // Keep the work in memory and say so; the store refuses further writes
       // to a conflicted path until it is reconciled.
       if (record) this.dirty.add(path);
+      const conflict = this.recoveryItems.find((item) => item.kind === "record-conflict" && !item.memory && item.path === path);
+      if (conflict && outcome.kind === "blocked" && outcome.reason === "reconciliation") return outcome;
       this.recoveryItems = [
         ...this.recoveryItems.filter((item) => !(item.kind === "write-failed" && item.path === path)),
         {

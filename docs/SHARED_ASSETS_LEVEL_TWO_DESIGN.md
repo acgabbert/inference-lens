@@ -1800,7 +1800,9 @@ Defaults taken with them, reversible and inside the approved contracts:
   unavailable. An operation that cannot be verified is an unreadable item.
 - **Recovery files are not staged outputs.** Inspection and both inventory
   listings accept `resolutions.json` and `replaced/draft_*.json` inside an
-  operation, so settling a candidate never reads as a damaged staging.
+  operation, so settling a candidate never reads as a damaged staging. Finish
+  skips candidates already recorded as used or discarded, even if their active
+  draft has since been deleted.
 - **"Use this one" writes in a crash-safe order.** The replaced copy first,
   then the candidate becomes active, then the resolution. An interruption
   leaves at worst two drafts for one asset, which Recovery lists again, or a
@@ -1853,7 +1855,9 @@ Implementation choices inside the approved contracts:
   the active draft's own ID (migrated IDs are deterministic), the incoming one
   is activated under a new ID. A swap whose replaced copy would overwrite the
   incoming record's own file writes the incoming draft first. A selected
-  request draft's selection follows the draft that replaced it. An existing
+  request draft's selection follows the draft that replaced it. An incoming
+  draft also takes a fresh ID if its destination belongs to another asset,
+  preserving that asset's draft in place. An existing
   copy at the replaced path is never overwritten: Recovery asks to discard it
   first.
 - **Record conflicts.** V4 named no actions for them. A store conflict on a
