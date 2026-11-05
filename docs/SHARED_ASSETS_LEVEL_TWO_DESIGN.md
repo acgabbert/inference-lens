@@ -2452,9 +2452,10 @@ Not run: the desktop host. The native checklist above stays open, and the next
 macOS release waits for it. Moving the in-memory label to v19 is the next
 format step.
 
-## In-memory v19 label (proposed November 5, 2026)
+## In-memory v19 label (approved November 5, 2026)
 
-**Status: proposed; no decision below is approved.** Since 8b the app writes
+**Status: the user approved the recommended answer to each decision: L1-A,
+L2-A and L3-A. Implementation has not started.** Since 8b the app writes
 only v19, but owners still hold `ProjectFile`, which is `ProjectFileV18`: it
 says `schemaVersion: 18` and its templates may carry a `draft`. The manifest
 boundary relabels on every read and write (I1). This slice makes the
