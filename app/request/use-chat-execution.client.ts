@@ -26,8 +26,8 @@ import type { SelectedChatRecord } from "./local-chat-request.ts";
  * temperature, protocol, tool-enable and environment choices become sparse
  * overrides in `selections.json` (T2); "Use as launch default" copies the
  * selected saved revision and the execution into `defaults` in one shared
- * write (D13, T3). Disabled in a legacy session or without a project: every
- * caller then takes today's path.
+ * write (D13, T3). Disabled without a project: every caller then takes the
+ * session-less path.
  */
 export interface ChatExecutionHandle {
   enabled: boolean;

@@ -91,7 +91,8 @@ export function ProjectCreationDialog({
           <legend>Git sharing</legend>
           {([
             ["private", "Keep this project out of Git", "Excludes the entire project from ordinary Git staging."],
-            ["definitions", "Share definitions; keep run history local", "Shares all content in project.json, including persisted drafts and saved values. Run history and other files stay excluded by default."],
+            // Drafts live in `.workbench/`, out of `project.json` (Level 2).
+            ["definitions", "Share definitions; keep run history local", "Shares the saved definitions in project.json. Personal drafts in .workbench/, run history and other files stay excluded by default."],
             ["unmanaged", "Manage Git rules myself", "Creates no .gitignore. Your Git rules decide which files are staged."],
           ] as const).map(([value, title, description]) => (
             <label className="project-creation-protection" key={value}>

@@ -304,8 +304,18 @@ function HomeContent() {
       const environment = document.environments.find(({ id }) => id === environmentId);
       return environment ? { environment } : {};
     },
+    // Only for a save with no project open; see `withDecisionDraft`.
     withDecisionDraft(document) { return decision.project.fold(document); },
     getUnsavedDraftReason() { return decision.project.saveBlockedReason; },
+    // The personal owner is declared below and read only from commands (Z3).
+    getSessionOnlyWorkCount() { return personalWorkbench.sessionOnlyWorkCount(); },
+    persistSessionWork(opened) {
+      return personalWorkbench.persistSessionInto({
+        project: opened.project,
+        storage: opened.handle.storage.workbench,
+        migrations: opened.handle.storage.migration,
+      });
+    },
     onApplyDecisionRequest(document, adoption) {
       if (adoption === "refresh") decision.project.refresh(document);
       else { promptNavigation.reset(); decision.project.adopt(document); }
@@ -317,7 +327,7 @@ function HomeContent() {
         detail:
           destination === "folder"
             ? "Written to the project folder."
-            : "Downloaded as a project file.",
+            : "Downloaded as a project file. Unsaved drafts are not included.",
         durableHome: "the project name in the topbar, which drops its unsaved marker",
       });
     },
@@ -331,8 +341,8 @@ function HomeContent() {
     projectErrorKind,
     mappedProfileIds,
   } = project;
-  // The 2b personal owner (D3). Off in a legacy session; a legacy folder in a
-  // personal session keeps its drafts session-only (S1).
+  // The 2b personal owner (D3). Off without a project; a legacy folder keeps
+  // its drafts session-only (S1).
   // The upgrade of a pre-v19 folder (D4, I2); the tab that edits it runs it.
   const projectMigration = useProjectMigration({
     session: project.projectSession,
@@ -1671,6 +1681,7 @@ function HomeContent() {
         onSaveProject={saveOrChooseProjectLocation}
         onImportProject={(event) => { runLinks.cancel(); void project.importProject(event); }}
         onExportProject={project.exportProject}
+        exportExcludesDrafts={Boolean(project.projectSession)}
         {...(n8nImportDisabledReason ? { n8nImportDisabledReason } : {})}
         onOpenN8nImport={() => setN8nImportOpen(true)}
         onDownloadDiagnostics={runSession.downloadDiagnostics}
@@ -1771,7 +1782,11 @@ function HomeContent() {
             prepareCredentialForProfile: credential.prepareForProfile,
             updateProfile,
           }}
-          key={project.projectAdoption}
+          // The prompt editor copies its draft when it mounts, so it remounts
+          // once this session's personal records finish loading. Until its
+          // controller opens, reads may still answer from the previous
+          // session's folder, such as the one a JSON import replaced.
+          key={`${project.projectAdoption}:${!personalWorkbench.current || personalWorkbench.status.kind === "loading" ? "loading" : "loaded"}`}
           {...(projectFile ? { project: projectFile } : {})}
           templates={projectTemplates}
           decision={decision}

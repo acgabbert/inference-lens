@@ -1,5 +1,5 @@
 /**
- * Shared assets 2b step 5, behind the gate (D2): the request switcher moves
+ * Shared assets 2b step 5: the request switcher moves
  * only the personal selection, model and environment choices are sparse
  * overrides in `.workbench/selections.json`, and only "Use as launch default"
  * writes `defaults` (docs/SHARED_ASSETS_LEVEL_TWO_DESIGN.md, "Step 5
@@ -22,8 +22,6 @@ import {
   stubProjectDirectory,
   waitForHydration,
 } from "./support";
-
-test.use({ personalWorkbench: true });
 
 const SECOND_TEXT = "What is 5 + 5?";
 const staging = createEntityId("environment", "staging") as EnvironmentId;
@@ -115,7 +113,7 @@ const personalChip = (scope: ReturnType<Page["getByRole"]>) => scope.getByRole("
 test("the switcher selects a saved revision personally; only Use as launch default writes defaults", async ({ page }) => {
   const project = fixtureProject();
   const [launch, second] = project.conversationRevisions;
-  const manifest = serializeProjectManifest(project, "personal");
+  const manifest = serializeProjectManifest(project);
   await openFolder(page, project, manifest);
 
   const pane = composer(page);
@@ -143,7 +141,7 @@ test("the switcher selects a saved revision personally; only Use as launch defau
 
 test("model and environment choices are sparse personal overrides read back on open", async ({ page }) => {
   const project = fixtureProject();
-  const manifest = serializeProjectManifest(project, "personal");
+  const manifest = serializeProjectManifest(project);
   await openFolder(page, project, manifest, {
     ".workbench/selections.json": serializeWorkbenchRecord({
       schemaVersion: 1, kind: "selections", projectId: project.projectId,
@@ -173,7 +171,7 @@ test("model and environment choices are sparse personal overrides read back on o
 test("the decision switcher moves the decision selection, and its launch action writes only the pin", async ({ page }) => {
   const project = fixtureProject();
   const [first] = project.decisionRequestRevisions;
-  await openFolder(page, project, serializeProjectManifest(project, "personal"));
+  await openFolder(page, project, serializeProjectManifest(project));
   await page.getByRole("radio", { name: "Decision" }).click();
   const pane = page.getByRole("region", { name: "Decision request" });
   const revision = pane.getByRole("combobox", { name: "Revision", exact: true });
@@ -200,7 +198,7 @@ test("the decision switcher moves the decision selection, and its launch action 
 
 test("edits made during launch-default save survive completion", async ({ page }) => {
   const project = fixtureProject();
-  await openFolder(page, project, serializeProjectManifest(project, "personal"));
+  await openFolder(page, project, serializeProjectManifest(project));
   const pane = composer(page);
   const model = pane.getByRole("combobox", { name: /^Model/ });
   await model.fill("model-to-publish");

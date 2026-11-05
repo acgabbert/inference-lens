@@ -59,6 +59,8 @@ interface TopbarProps {
   onSaveProject(): void;
   onImportProject(event: ChangeEvent<HTMLInputElement>): void;
   onExportProject(): void;
+  /** A personal session exports shared definitions only (S2); the menu says so. */
+  exportExcludesDrafts?: boolean;
   n8nImportDisabledReason?: string;
   onOpenN8nImport(): void;
   onDownloadDiagnostics(): void;
@@ -92,7 +94,7 @@ export function Topbar({
   hasProjectWorkspace,
   onChooseProfile, onOpenConnections, onOpenEnvironments, onNewProject, onOpenProject,
   evaluationStartDisabled, evaluationStartDisabledReasonId,
-  onSaveProject, onImportProject, onExportProject,
+  onSaveProject, onImportProject, onExportProject, exportExcludesDrafts,
   n8nImportDisabledReason, onOpenN8nImport,
   onDownloadDiagnostics, onStopExperiment, onStartEvaluation,
   onDownloadRunTrace,
@@ -128,7 +130,7 @@ export function Topbar({
             : projectStorageState.kind === "secondary"
               ? "Not saved — another tab is editing this project"
               : projectStorageState.kind === "blocked"
-                ? "Not saved — shared saves need this older-format folder upgraded"
+                ? "Not saved — folder needs upgrading"
               : `Saved to ${projectStorageState.displayPath}`;
 
   useEffect(() => {
@@ -220,7 +222,7 @@ export function Topbar({
         <details className="header-menu project-menu"><summary aria-label="Project menu" className="button secondary"><span className="project-menu-label">Project</span> <span className="menu-chevron">⌄</span></summary><div className="menu-popover project-popover">
           <div className="menu-group-heading">Project</div>
           {folderAccessAvailable && <><button type="button" onClick={(event) => { closeContainingMenu(event.currentTarget); onNewProject(); }}>New project folder…</button><button type="button" onClick={(event) => { closeContainingMenu(event.currentTarget); onOpenProject(); }}>Open project folder…</button><span className="menu-separator" /></>}
-          <button type="button" onClick={(event) => { closeContainingMenu(event.currentTarget); onSaveProject(); }}>{hasProjectWorkspace ? "Save now" : folderAccessAvailable ? "Save project to folder…" : "Download project JSON…"} <kbd>⌘S</kbd></button><label className="menu-file-button">Import project JSON…<input type="file" accept="application/json,.json" onChange={onImportProject} /></label><button type="button" onClick={(event) => { closeContainingMenu(event.currentTarget); onExportProject(); }}>Export JSON copy…</button><span className="menu-separator" /><button type="button" onClick={(event) => { closeContainingMenu(event.currentTarget); onOpenEnvironments(); }}>Environments…</button><button disabled={Boolean(n8nImportDisabledReason)} title={n8nImportDisabledReason} type="button" onClick={(event) => { onOpenN8nImport(); closeContainingMenu(event.currentTarget); }}>Import prompt from n8n…</button>
+          <button type="button" onClick={(event) => { closeContainingMenu(event.currentTarget); onSaveProject(); }}>{hasProjectWorkspace ? "Save now" : folderAccessAvailable ? "Save project to folder…" : "Download project JSON…"} <kbd>⌘S</kbd></button><label className="menu-file-button">Import project JSON…<input type="file" accept="application/json,.json" onChange={onImportProject} /></label><button type="button" onClick={(event) => { closeContainingMenu(event.currentTarget); onExportProject(); }}>Export JSON copy…</button>{exportExcludesDrafts && <p className="menu-note">Exports leave out unsaved drafts.</p>}<span className="menu-separator" /><button type="button" onClick={(event) => { closeContainingMenu(event.currentTarget); onOpenEnvironments(); }}>Environments…</button><button disabled={Boolean(n8nImportDisabledReason)} title={n8nImportDisabledReason} type="button" onClick={(event) => { onOpenN8nImport(); closeContainingMenu(event.currentTarget); }}>Import prompt from n8n…</button>
         </div></details>
         <details className="header-menu run-data-menu"><summary aria-label="Run data menu" className="button secondary"><span className="run-data-menu-label">Run data</span> <span className="menu-chevron">⌄</span></summary><div className="menu-popover project-popover run-data-popover">
           <div className="menu-group-heading">Run data</div>

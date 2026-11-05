@@ -1,5 +1,5 @@
 /**
- * Shared assets 2b step 4, behind the gate (D2): a decision edit is a request
+ * Shared assets 2b step 4: a decision edit is a request
  * draft and a new decision request is a scratch, both in the folder's
  * `.workbench/`; runs write nothing to `project.json`, and only Save appends a
  * revision or names a request (docs/SHARED_ASSETS_LEVEL_TWO_DESIGN.md,
@@ -24,8 +24,6 @@ import {
   stubProjectDirectory,
   waitForHydration,
 } from "./support";
-
-test.use({ personalWorkbench: true });
 
 const captured = JSON.parse(
   readFileSync(new URL("../fixtures/system-one/llamacpp-all-types.json", import.meta.url), "utf8"),
@@ -61,7 +59,7 @@ function fixtureProject(withRequest: boolean): ProjectFile {
   });
 }
 
-async function openFolder(page: Page, manifest: string, extraFiles: Record<string, string> = {}): Promise<void> {
+async function seedDecisionProfiles(page: Page): Promise<void> {
   await seedProfiles(page, [
     { id: "buffered", instanceId: "buffered-instance", name: "Buffered fixture", endpoint: BUFFERED_FIXTURE_ENDPOINT },
     {
@@ -73,6 +71,10 @@ async function openFolder(page: Page, manifest: string, extraFiles: Record<strin
       systemOne: true,
     },
   ], "buffered");
+}
+
+async function openFolder(page: Page, manifest: string, extraFiles: Record<string, string> = {}): Promise<void> {
+  await seedDecisionProfiles(page);
   await stubProjectDirectory(page, { name: "personal-decisions", files: { "project.json": manifest, ...extraFiles }, directories: ["traces"] });
   await page.goto("/");
   await waitForHydration(page);
@@ -123,7 +125,7 @@ async function chooseModel(page: Page): Promise<void> {
 }
 
 test("a new decision request is a local scratch until Save names it", async ({ page }) => {
-  const manifest = serializeProjectManifest(fixtureProject(false), "personal");
+  const manifest = serializeProjectManifest(fixtureProject(false));
   await openFolder(page, manifest);
   const pane = decisionPane(page);
   await pane.getByRole("tab", { name: "JSON" }).first().click();
@@ -181,7 +183,7 @@ test("a new decision request is a local scratch until Save names it", async ({ p
 test("editing a saved decision request is a draft until Save appends a child", async ({ page, browser, baseURL }) => {
   const project = fixtureProject(true);
   const baseId = project.defaults.decisionRequestRevisionId!;
-  const manifest = serializeProjectManifest(project, "personal");
+  const manifest = serializeProjectManifest(project);
   await openFolder(page, manifest);
   const variables = decisionPane(page).getByRole("region", { name: "Variables" });
   await expect(variables.getByLabel("{{plan}}")).toHaveValue(capturedValues.plan);
@@ -234,7 +236,7 @@ test("using a decision prompt starts a local request that Save offers the prompt
     variableDefaults: { ticket: "Default ticket" }, idSuffix: "ticket-decision",
   });
   const template = project.promptTemplates[0]!;
-  const manifest = serializeProjectManifest(project, "personal");
+  const manifest = serializeProjectManifest(project);
   await openFolder(page, manifest);
   await openMode(page, "Prompts");
   await page.locator(".template-list").getByRole("button", { name: /Ticket decision/ }).click();
@@ -270,7 +272,7 @@ test("using a decision prompt starts a local request that Save offers the prompt
 });
 
 test("Replace with example loads the example over an invalid edit", async ({ page }) => {
-  await openFolder(page, serializeProjectManifest(fixtureProject(false), "personal"));
+  await openFolder(page, serializeProjectManifest(fixtureProject(false)));
   const pane = decisionPane(page);
   await pane.getByRole("button", { name: "Load example" }).click();
   await expect.poll(async () => recordFiles(await folderFiles(page), "scratch").length).toBe(1);
@@ -290,4 +292,36 @@ test("Replace with example loads the example over an invalid edit", async ({ pag
   await pane.getByRole("tab", { name: "JSON" }).first().click();
   await expect(editor).not.toHaveValue("{ not json");
   expect(Object.keys(JSON.parse(await editor.inputValue()).questions)).toEqual(["intent", "severity", "is_spam"]);
+});
+
+test("a decision authored before any project is open survives the first save to a folder", async ({ page }) => {
+  await seedDecisionProfiles(page);
+  await stubProjectDirectory(page, { name: "Projects", files: {} });
+  await page.goto("/");
+  await waitForHydration(page);
+  await page.getByRole("radio", { name: "Decision" }).click();
+  const pane = decisionPane(page);
+  await pane.getByRole("tab", { name: "JSON" }).first().click();
+  const editor = page.getByLabel("Decision input (state and questions)");
+  await editor.fill(JSON.stringify(templated, null, 2));
+  const variables = pane.getByRole("region", { name: "Variables" });
+  await variables.getByLabel("{{ticket}}").fill(capturedValues.ticket);
+  await variables.getByLabel("{{plan}}").fill(capturedValues.plan);
+
+  // No personal record exists yet, so the first save writes the authored
+  // request into the new project, as it does the chat request.
+  await page.getByLabel("Project menu").click();
+  await page.getByRole("button", { name: /^Save project to folder…/ }).click();
+  await page.getByRole("dialog", { name: "Save this project" })
+    .getByRole("button", { name: "Save to folder…", exact: true }).click();
+  await expect(page.locator(".brand")).toContainText("Saved to");
+
+  await pane.getByRole("tab", { name: "JSON" }).first().click();
+  expect(JSON.parse(await editor.inputValue())).toEqual(templated);
+  await expect(variables.getByLabel("{{ticket}}")).toHaveValue(capturedValues.ticket);
+  const files = await folderFiles(page);
+  const [, manifest] = Object.entries(files).find(([path]) => path.endsWith("project.json"))!;
+  const saved = JSON.parse(manifest);
+  expect(saved.decisionRequestRevisions).toHaveLength(1);
+  expect(saved.decisionRequestRevisions[0]).toMatchObject({ kind: "inline", decision: templated, values: capturedValues });
 });

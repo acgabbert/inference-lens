@@ -64,7 +64,8 @@ test("schema drafts generate, validate, cancel, and survive export and reopen", 
   expect(saved.inputPolicy).toBe("surrounding-fence");
   expect(saved).not.toHaveProperty("example");
   exported.name = "Reopened structured authoring";
-  await importProject(page, exported, "Reopened structured authoring", { replaceDirty: "discard" });
+  expect(exported.schemaVersion).toBe(19);
+  await importProject(page, JSON.stringify(exported), "Reopened structured authoring", { replaceDirty: "discard" });
   await expect(draft).toHaveValue(JSON.stringify(generated, null, 2));
   await page.getByLabel("New check kind").selectOption("json-schema");
   await page.getByRole("button", { name: "+ Add check" }).click();

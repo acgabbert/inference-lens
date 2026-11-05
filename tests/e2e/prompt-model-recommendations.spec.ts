@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { expect, test, type Page } from "./support/test";
-import { createProjectFile, createPromptTemplate, parseProjectJson, setPromptTemplateRecommendedTarget } from "../../packages/core/src/project";
+import { createProjectFile, createPromptTemplate, setPromptTemplateRecommendedTarget } from "../../packages/core/src/project";
+import { parseSharedProjectJson, sharedProjectAsActive } from "../../packages/core/src/shared-project";
 import { BUFFERED_FIXTURE_ENDPOINT, importProject, openMode, PROJECT_PROFILE_MAP_STORAGE_KEY, seedProfile, waitForHydration } from "./support";
 
 const PROJECT_NAME = "Prompt model recommendations";
@@ -132,20 +133,28 @@ test("a narrow composer keeps the model warning and its actions within the viewp
   await page.screenshot({ path: testInfo.outputPath("narrow-model-warning.png"), fullPage: true });
 });
 
-test("export keeps the recommendation and pin while dismissals reset in a new page session", async ({ page }) => {
+test("export keeps the recommendation and a saved pin while dismissals reset in a new page session", async ({ page }) => {
   const card = await insert(page);
   await card.getByRole("button", { name: "Dismiss", exact: true }).click();
+  // The pin is a request draft until saved, and exports leave drafts out.
+  await page.getByRole("status").filter({ hasText: "Unsaved changes" }).getByRole("button", { name: "Save request" }).click();
+  await expect(page.getByRole("status").filter({ hasText: "Unsaved changes" })).toHaveCount(0);
   await page.getByLabel("Project menu").click();
   const downloading = page.waitForEvent("download");
   await page.getByRole("button", { name: "Export JSON copy…" }).click();
   const download = await downloading;
-  const exported = parseProjectJson(await readFile((await download.path())!, "utf8"));
+  // Exports are v19 shared definitions.
+  const exported = sharedProjectAsActive(parseSharedProjectJson(await readFile((await download.path())!, "utf8")));
   expect(exported.promptTemplates).toEqual(fixture().promptTemplates);
   expect(exported.defaults.target.model).toBe("buffered-test-model");
-  expect(exported.conversationRevisions.find(({ id }) => id === exported.defaults.conversationRevisionId)!.items.some((item) => item.kind === "template-use")).toBe(true);
+  // Save appends a child revision; the launch default stays where it was.
+  const pinned = exported.conversationRevisions.filter((revision) => revision.items.some((item) => item.kind === "template-use"));
+  expect(pinned.map(({ id }) => id)).not.toContain(exported.defaults.conversationRevisionId);
+  expect(pinned).toHaveLength(1);
   await page.reload();
   await waitForHydration(page);
   await importProject(page, exported, PROJECT_NAME);
+  await page.getByRole("region", { name: "Request composer" }).getByRole("combobox", { name: "Revision", exact: true }).selectOption(pinned[0]!.id);
   await expect(page.locator("[data-template-use-id]")).toContainText("This prompt recommends triage-model. You’re using buffered-test-model.");
 });
 

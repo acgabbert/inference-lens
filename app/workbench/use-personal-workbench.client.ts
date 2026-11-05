@@ -69,14 +69,33 @@ export type {
  * (docs/SHARED_ASSETS_LEVEL_TWO_DESIGN.md, "Delivery inside the gate").
  */
 export interface PersonalWorkbenchHandle {
-  /** False in a legacy session: every owner takes today's path. */
+  /** False until a project session exists: without one, every owner takes its session-less path. */
   enabled: boolean;
   status: PersonalWorkbenchStatus;
+  /**
+   * False from an adoption's first render until the controller opened for it
+   * replaces the previous one. Until then reads may still answer from the
+   * previous session, so a view that copies a draft once on mount waits.
+   */
+  current: boolean;
   /** Counts the controller's changes, for a view that reads a record outside render, such as Compare. */
   revision: number;
   /** One active draft per asset (D6). */
   draftFor(asset: WorkbenchAssetRef): WorkbenchDraftV1 | undefined;
   unsavedDrafts: UnsavedDraftSummary[];
+  /** Drafts and scratch requests that replacing the session would lose (Z3). Read from commands. */
+  sessionOnlyWorkCount(): number;
+  /**
+   * Writes this session's records into a folder it was just saved to, and
+   * resolves once they are on disk (S2, Z3). "Save and switch" waits for it:
+   * the session's own carry-over runs after the next render, which the switch
+   * would overtake.
+   */
+  persistSessionInto(target: {
+    project: ProjectFile;
+    storage: WorkbenchStorage;
+    migrations: { read(): Promise<MigrationSnapshot> };
+  }): Promise<void>;
   /** D8: everything the Recovery drawer lists, each with the actions it offers (V4). */
   recovery: readonly RecoveryEntry[];
   /** Migration backups, for "Remove migration backup" (D7, W3). */
@@ -164,6 +183,10 @@ export function usePersonalWorkbench(input: {
   writeShared(update: (current: ProjectFile) => ProjectFile): Promise<SharedWriteOutcome>;
 }): PersonalWorkbenchHandle {
   const [controller, setController] = useState<PersonalWorkbenchController | null>(null);
+  // The session key and folder the controller was opened for. A new adoption
+  // renders before the effect below replaces the controller.
+  const [opened, setOpened] = useState<{ key: string; storage: WorkbenchStorage | null }>();
+  const controllerKey = opened?.key;
   const [revision, setRevision] = useState(0);
   const controllerRef = useRef<PersonalWorkbenchController | null>(null);
   const sharedRef = useRef(input.shared);
@@ -173,7 +196,7 @@ export function usePersonalWorkbench(input: {
     writeSharedRef.current = input.writeShared;
   });
 
-  const personalSession = input.session?.mode === "personal" ? input.session : undefined;
+  const personalSession = input.session;
   const sessionRef = useRef(personalSession);
   useEffect(() => {
     sessionRef.current = personalSession;
@@ -192,11 +215,14 @@ export function usePersonalWorkbench(input: {
     if (!personal) {
       controllerRef.current = null;
       setController(null);
+      setOpened(undefined);
       if (previous) void previous.flush().finally(() => previous.close());
       return;
     }
     // A session saved into a folder keeps the drafts it made meanwhile (S2).
-    const carried = previous && previous.status.kind === "session" && previous.projectId === personal.projectId
+    // Any other adoption of the same project, such as a re-import after
+    // "Discard and switch", starts from that document's own records.
+    const carried = personal.carriesSessionWork && previous && previous.status.kind === "session" && previous.projectId === personal.projectId
       ? previous.allRecords
       : [];
     const seeds: WorkbenchRecordV1[] = [...carried, ...personal.personalSeeds];
@@ -210,6 +236,7 @@ export function usePersonalWorkbench(input: {
     });
     controllerRef.current = next;
     setController(next);
+    setOpened({ key: sessionKey!, storage });
     let cancelled = false;
     void (async () => {
       // The outgoing session's queued writes land before the new one reads.
@@ -244,14 +271,44 @@ export function usePersonalWorkbench(input: {
     return () => window.removeEventListener("beforeunload", warnBeforeUnload);
   }, [unsaved]);
 
+  // Until then, render reads skip a previous session that held its records
+  // only in memory: this adoption discards them unless it carries them (S2).
+  // A folder's records are on disk, so the next controller reads the same ones.
+  const stale = controller && controllerKey !== sessionKey && controller.status.kind === "session" && !personalSession?.carriesSessionWork;
+  const live = stale ? null : controller;
+
   return {
     enabled: Boolean(personalSession),
-    status: controller?.status ?? OFF,
+    status: live?.status ?? OFF,
+    current: !personalSession || (controllerKey === sessionKey && opened?.storage === storage),
     revision,
-    draftFor: (asset) => controller?.draftFor(asset),
-    unsavedDrafts: controller?.unsavedDrafts ?? [],
-    recovery: controller?.recovery ?? [],
-    migrationBackups: controller?.migrationBackups ?? [],
+    draftFor: (asset) => live?.draftFor(asset),
+    unsavedDrafts: live?.unsavedDrafts ?? [],
+    sessionOnlyWorkCount: () => controllerRef.current?.sessionOnlyWorkCount ?? 0,
+    async persistSessionInto(target) {
+      // Snapshot now, before the save's adoption renders a new controller.
+      const records = controllerRef.current?.allRecords ?? [];
+      if (!records.some((record) => record.kind !== "selections")) return;
+      const writer = new PersonalWorkbenchController({
+        projectId: target.project.projectId,
+        storage: target.storage,
+        migrations: target.migrations,
+        seeds: records,
+        onChange: () => undefined,
+      });
+      try {
+        await writer.open(target.project);
+        if (writer.status.kind !== "ready" || writer.hasUnpersistedWork) {
+          throw new Error(writer.status.kind === "blocked"
+            ? writer.status.message
+            : "Could not write this session's drafts to the new folder.");
+        }
+      } finally {
+        writer.close();
+      }
+    },
+    recovery: live?.recovery ?? [],
+    migrationBackups: live?.migrationBackups ?? [],
     reconcile: {
       async compare(id) {
         const current = controllerRef.current;
@@ -297,10 +354,10 @@ export function usePersonalWorkbench(input: {
     async flush() {
       await controllerRef.current?.flush();
     },
-    chatSelection: controller?.chatSelection,
-    scratches: controller?.scratches ?? [],
-    scratch: (scratchId) => controller?.scratch(scratchId),
-    draftById: (draftId) => controller?.draftById(draftId),
+    chatSelection: live?.chatSelection,
+    scratches: live?.scratches ?? [],
+    scratch: (scratchId) => live?.scratch(scratchId),
+    draftById: (draftId) => live?.draftById(draftId),
     selectChat(selection) {
       controllerRef.current?.selectChat(selection);
     },
@@ -331,7 +388,7 @@ export function usePersonalWorkbench(input: {
       if (!current || !shared) return { kind: "blocked", message: "Open a project before saving a request." };
       return current.publishScratch(scratchId, shared, (update) => writeSharedRef.current(update), name);
     },
-    decisionSelection: controller?.decisionSelection,
+    decisionSelection: live?.decisionSelection,
     selectDecision(selection) {
       controllerRef.current?.selectDecision(selection);
     },
@@ -353,7 +410,7 @@ export function usePersonalWorkbench(input: {
       if (!current || !shared) return { kind: "blocked", message: "Open a project before saving a request." };
       return current.publishDecisionRequestDraft(decisionRequestId, shared, (update) => writeSharedRef.current(update));
     },
-    chatExecution: controller?.chatExecution,
+    chatExecution: live?.chatExecution,
     updateChatExecution(update) {
       const current = controllerRef.current;
       current?.setChatExecution(update(current.chatExecution));

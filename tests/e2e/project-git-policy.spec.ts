@@ -1,9 +1,10 @@
 import { expect, test } from "./support/test";
-import { createProjectFile, serializeProjectFile } from "../../packages/core/src/project";
+import { createProjectFile } from "../../packages/core/src/project";
 import {
   BUFFERED_FIXTURE_ENDPOINT,
   PROJECT_REQUIREMENT_PROFILE_MAP_STORAGE_KEY,
   seedProfile, stubProjectDirectory, waitForHydration,
+  serializeFolderProject,
 } from "./support";
 import { expectModalContract } from "./support/modal";
 
@@ -38,14 +39,15 @@ test("project creation explains the three Git presets and the manifest sharing b
   await expect(dialog).toContainText("Manage Git rules myself");
   await expect(dialog.getByRole("radio", { name: "Keep this project out of Git", exact: true })).toBeChecked();
   await dialog.getByRole("radio", { name: "Share definitions; keep run history local", exact: true }).check();
-  await expect(dialog).toContainText("Shares all content in project.json, including persisted drafts and saved values.");
+  await expect(dialog).toContainText("Shares the saved definitions in project.json. Personal drafts in .workbench/, run history and other files stay excluded by default.");
+  await expect(dialog).not.toContainText("including persisted drafts");
   await expect(dialog).not.toContainText(/NaN|Infinity|undefined/);
   await dialog.getByLabel("Project name").fill("Shared definitions");
   await dialog.getByRole("button", { name: "Choose location…", exact: true }).click();
   await expect(page.locator(".brand")).toContainText("Saved to Shared definitions.inference-lens");
   const files = await directoryFiles(page, ["Shared definitions.inference-lens"]);
   expect(files[".gitignore"]).toBe("*\n!/.gitignore\n!/project.json\n");
-  expect(JSON.parse(files["project.json"]).name).toBe("Shared definitions");
+  expect(JSON.parse(files["project.json"])).toMatchObject({ schemaVersion: 19, name: "Shared definitions" });
 });
 
 for (const preset of [
@@ -81,7 +83,7 @@ test("a definitions-only clone opens without evidence and running leaves its man
       messages: [{ role: "user", content: "Run from shared definitions." }],
     },
   });
-  const manifest = serializeProjectFile(project);
+  const manifest = serializeFolderProject(project);
   await seedProfile(page, { instanceId: "definitions-clone-profile" });
   await page.addInitScript(({ key, projectId, requirementId }) => {
     localStorage.setItem(key, JSON.stringify({

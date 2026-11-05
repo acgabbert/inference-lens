@@ -1,5 +1,5 @@
 /**
- * Shared assets 2b step 2, behind the gate (D2): prompt drafts live in the
+ * Shared assets 2b step 2: prompt drafts live in the
  * folder's `.workbench/`, and only Save writes `project.json`
  * (docs/SHARED_ASSETS_LEVEL_TWO_DESIGN.md, "Step 2 decisions").
  */
@@ -16,13 +16,12 @@ import type { ProjectFile } from "../../packages/core/src/project";
 import { serializeProjectManifest } from "../../app/workbench/project-manifest";
 import {
   BUFFERED_FIXTURE_ENDPOINT,
+  importProject,
   openMode,
   seedProfile,
   stubProjectDirectory,
   waitForHydration,
 } from "./support";
-
-test.use({ personalWorkbench: true });
 
 function fixtureProject(): ProjectFile {
   const project = createProjectFile({
@@ -78,7 +77,7 @@ const draftFiles = (files: Record<string, string>) =>
   Object.entries(files).filter(([path]) => path.startsWith(".workbench/drafts/"));
 
 test("a prompt edit is a personal draft until Save publishes it to project.json", async ({ page }) => {
-  const manifest = serializeProjectManifest(fixtureProject(), "personal");
+  const manifest = serializeProjectManifest(fixtureProject());
   await openFolder(page, manifest);
   await openMode(page, "Prompts");
   const editor = page.locator(".template-editor");
@@ -118,15 +117,46 @@ test("a legacy folder opens with its prompt draft, but nothing is written to it"
   const manifest = serializeProjectFile(project);
   expect(JSON.parse(manifest).schemaVersion).toBe(18);
   await openFolder(page, manifest);
-  await expect(page.locator(".brand")).toContainText("Not saved — shared saves need this older-format folder upgraded");
+  await expect(page.locator(".brand")).toContainText("Not saved — folder needs upgrading");
 
   await openMode(page, "Prompts");
   const editor = page.locator(".template-editor");
   await expect(editor.getByLabel("Prompt content")).toHaveValue("Triage {{incident}} from the legacy draft.");
-  await editor.getByLabel("Prompt content").fill("Triage {{incident}} edited in a gated session.");
+  await editor.getByLabel("Prompt content").fill("Triage {{incident}} edited in a personal session.");
   // Session-only: no .workbench/, and project.json keeps its v18 bytes.
   await page.waitForTimeout(1_500);
   const files = await folderFiles(page);
   expect(Object.keys(files)).toEqual(["project.json"]);
   expect(files["project.json"]).toBe(manifest);
+});
+
+test("export says unsaved drafts are not included, and the copy carries none (step 8a)", async ({ page }) => {
+  const manifest = serializeProjectManifest(fixtureProject());
+  await openFolder(page, manifest);
+  await openMode(page, "Prompts");
+  await page.locator(".template-editor").getByLabel("Prompt content").fill("Triage {{incident}} in a draft.");
+
+  await page.getByLabel("Project menu").click();
+  const menu = page.locator(".project-popover:not(.run-data-popover)");
+  await expect(menu).toContainText("Exports leave out unsaved drafts.");
+  const download = page.waitForEvent("download");
+  await menu.getByRole("button", { name: "Export JSON copy…" }).click();
+  const exported = JSON.parse(await (await (await download).createReadStream()).toArray().then((chunks) => Buffer.concat(chunks).toString("utf8")));
+  expect(exported.schemaVersion).toBe(19);
+  expect(exported.promptTemplates[0].draft).toBeUndefined();
+  expect(exported.promptTemplates[0].revisions[0].messages[0].content).toBe("Triage {{incident}}.");
+});
+
+test("importing the project's JSON over its folder shows the imported text, not the folder's draft", async ({ page }) => {
+  const manifest = serializeProjectManifest(fixtureProject());
+  await openFolder(page, manifest);
+  await openMode(page, "Prompts");
+  const editor = page.locator(".template-editor");
+  await editor.getByLabel("Prompt content").fill("Triage {{incident}} in the folder's draft.");
+  await expect.poll(async () => draftFiles(await folderFiles(page)).length).toBe(1);
+
+  // The draft is in the folder's .workbench/, which the import does not have.
+  await importProject(page, fixtureProject(), "Personal drafts fixture");
+  await expect(page.locator(".brand")).toContainText("Session only");
+  await expect(editor.getByLabel("Prompt content")).toHaveValue("Triage {{incident}}.");
 });

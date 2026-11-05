@@ -3,7 +3,7 @@ import test from "node:test";
 
 import { ssrLoadModule } from "./support/ssr.mjs";
 
-async function renderProjectCreationDialog(mode = "new") {
+async function renderProjectCreationDialog(mode = "new", extra = {}) {
   const [
     { ProjectCreationDialog },
     { renderToStaticMarkup },
@@ -19,6 +19,7 @@ async function renderProjectCreationDialog(mode = "new") {
       initialName: "Prompt Lab",
       onClose: () => {},
       onCreate: () => {},
+      ...extra,
     }),
   );
 }
@@ -29,7 +30,8 @@ test("creates visible project bundles with Git protection on by default", async 
   assert.match(html, /Keep this project out of Git/);
   assert.match(html, /<input(?=[^>]*type="radio")(?=[^>]*value="private")(?=[^>]*checked="")[^>]*>/);
   assert.match(html, /Share definitions; keep run history local/);
-  assert.match(html, /including persisted drafts and saved values/);
+  assert.match(html, /Shares the saved definitions in project\.json\. Personal drafts in \.workbench\/, run history and other files stay excluded by default\./);
+  assert.doesNotMatch(html, /including persisted drafts/);
   assert.match(html, /Manage Git rules myself/);
   assert.match(html, /Choose location/);
   assert.doesNotMatch(html, /undefined|NaN|Infinity/);

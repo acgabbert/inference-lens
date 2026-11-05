@@ -300,7 +300,8 @@ pre,
 .target-caption,
 .mcp-permission-note,
 .decision-answer-type,
-.decision-scale-tick {
+.decision-scale-tick,
+.menu-note {
   font-size: var(--type-metadata);
 }
 

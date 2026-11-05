@@ -324,6 +324,19 @@ export class PersonalWorkbenchController {
     return false;
   }
 
+  /**
+   * Drafts and scratch requests held only in memory, with no folder to write
+   * them to (no-folder sessions, pre-v19 folders). Replacing the session loses
+   * them (Z3). Queued writes to a folder are not counted: the outgoing session
+   * flushes them on a switch.
+   */
+  get sessionOnlyWorkCount(): number {
+    let count = this.recoveryItems.filter((item) => item.memory).length;
+    if (this.store) return count;
+    for (const record of this.records.values()) if (record.kind !== "selections") count += 1;
+    return count;
+  }
+
   draftFor(asset: WorkbenchAssetRef): WorkbenchDraftV1 | undefined {
     const key = assetKey(asset);
     for (const record of this.records.values()) {

@@ -1,5 +1,5 @@
 /**
- * Shared assets 2b step 3, behind the gate (D2): a composer edit is a request
+ * Shared assets 2b step 3: a composer edit is a request
  * draft and a branch is a scratch, both in the folder's `.workbench/`; runs
  * write nothing to `project.json`, and only Save appends a revision
  * (docs/SHARED_ASSETS_LEVEL_TWO_DESIGN.md, "Step 3 decisions").
@@ -22,8 +22,6 @@ import {
   stubProjectDirectory,
   waitForHydration,
 } from "./support";
-
-test.use({ personalWorkbench: true });
 
 function fixtureProject(): ProjectFile {
   return createProjectFile({
@@ -87,7 +85,7 @@ function localRequestChip(page: Page, label: "Unsaved changes" | "Local request"
 test("a composer edit is a request draft until Save appends a child revision", async ({ page }) => {
   const project = fixtureProject();
   const launchRevisionId = project.defaults.conversationRevisionId;
-  const manifest = serializeProjectManifest(project, "personal");
+  const manifest = serializeProjectManifest(project);
   await openFolder(page, project, manifest);
   await page.getByLabel("Message 1 content").fill("What is 3 + 3?");
 
@@ -122,7 +120,7 @@ test("a composer edit is a request draft until Save appends a child revision", a
 test("runs write nothing to project.json, and a branch is a local request saved as a child", async ({ page }) => {
   const project = fixtureProject();
   const launchRevisionId = project.defaults.conversationRevisionId;
-  const manifest = serializeProjectManifest(project, "personal");
+  const manifest = serializeProjectManifest(project);
   await openFolder(page, project, manifest);
   await page.getByLabel("Message 1 content").fill("What is 3 + 3?");
   await primaryAction(page, "compose").click();
@@ -185,7 +183,7 @@ function batchPlan(files: Record<string, string>) {
 
 test("step 7: a repeated experiment runs a request draft under its run identity, writing nothing to project.json", async ({ page }) => {
   const project = fixtureProject();
-  const manifest = serializeProjectManifest(project, "personal");
+  const manifest = serializeProjectManifest(project);
   await openFolder(page, project, manifest);
   await page.getByLabel("Message 1 content").fill("What is 5 + 5?");
   await expect.poll(async () => recordFiles(await folderFiles(page), "drafts").length).toBe(1);
@@ -206,7 +204,7 @@ test("step 7: a repeated experiment runs a request draft under its run identity,
 
 test("step 7: every repetition of a scratch records where the scratch branched from", async ({ page }) => {
   const project = fixtureProject();
-  const manifest = serializeProjectManifest(project, "personal");
+  const manifest = serializeProjectManifest(project);
   await openFolder(page, project, manifest);
   await primaryAction(page, "compose").click();
   await expect(page.getByLabel("Run transcript")).toContainText("Buffered fixture response");
@@ -237,7 +235,7 @@ test("step 7: every repetition of a scratch records where the scratch branched f
 for (const action of ["saved", "discarded"] as const) {
   test(`a scratch run can be branched again after the scratch is ${action}`, async ({ page }) => {
     const project = fixtureProject();
-    await openFolder(page, project, serializeProjectManifest(project, "personal"));
+    await openFolder(page, project, serializeProjectManifest(project));
     await primaryAction(page, "compose").click();
     await expect(page.getByLabel("Run transcript")).toContainText("Buffered fixture response");
     await page.getByLabel("Run transcript").getByRole("button", { name: "Edit from here" }).first().click();
@@ -275,7 +273,7 @@ test("opening an interrupted scratch Save displays the recovered revision", asyn
     },
   };
   const planned = publishScratch(project, scratch, { scratches: [], idSuffix: "recovered", createdAt: scratch.createdAt });
-  await openFolder(page, planned.project, serializeProjectManifest(planned.project, "personal"), {
+  await openFolder(page, planned.project, serializeProjectManifest(planned.project), {
     ".workbench/scratch/scratch_recovery.json": serializeWorkbenchRecord({ ...scratch, publishing: planned.intent }),
     ".workbench/selections.json": serializeWorkbenchRecord({ schemaVersion: 1, kind: "selections", projectId: project.projectId, chat: { selectedInput: { kind: "scratch", scratchId: scratch.scratchId } } }),
   });

@@ -223,11 +223,9 @@ test("Runs inspects saved evidence without replacing the Compose draft", async (
   ).toHaveAttribute("aria-current", "page");
   await expect(page.getByLabel("Message 1 content")).toHaveValue("Saved evidence request");
   await expect(page.getByLabel("Message 2 content")).toHaveValue("Saved evidence response");
-  // A saved parent is named by its request and the branch message, not IDs.
-  const chip = page.getByRole("status").filter({ hasText: "Pending branch" });
-  await expect(chip).toContainText(
-    "Branching from \u201cSaved evidence request\u201d at Message 2 \u00b7 assistant.",
-  );
+  // The branch is a local scratch request (R2); its notice shows no IDs.
+  const chip = page.getByRole("status").filter({ hasText: "Local request" });
+  await expect(chip).toContainText("This branch stays on this device until you save it.");
   expect(await chip.innerText()).not.toMatch(/\b(run|message)_[A-Za-z0-9]/);
 });
 

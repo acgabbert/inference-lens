@@ -2128,3 +2128,326 @@ title. The earlier draft case's R4 assertions were removed.
 
 With the gate on, steps 2–7 have all landed. Per D1 and D2, removing the gate
 is the enabling change. It needs its own approval, which nothing here gives.
+
+### Step 8 decisions (approved November 5, 2026)
+
+Step 8 removes the gate (D1, D2): the app writes v19, every session is
+`personal`, and the migration completion guard lifts. The user approved the
+recommended answer to each decision: Z1-A, Z2-A, Z3-A, Z4-A and Z5-A.
+
+#### What the code does at `2ec9222`
+
+An audit and a probe run found gaps that the enabling change has to close
+first, as well as the expected test churn.
+
+- **The CLI cannot read v19.** `openNodeProjectFolder` parses with the active
+  `parseProjectJson`, which opens v10–v18 and refuses v19
+  (`tests/project.test.ts` asserts the refusal). "The CLI reads v19 shared
+  definitions whatever the gate says" ([Gate (D2)](#gate-d2)) was never built.
+  Once a folder is upgraded, `run`, `repeat` and `drift` would all fail on it.
+- **The replacement guard ignores session-only drafts.** In a no-folder
+  personal session, an edited prompt becomes a session-only personal draft. The
+  title bar no longer says "Unsaved", and `requestProjectReplacement` counts
+  only `projectDirty` and the legacy draft reason. Importing a project or
+  opening a folder then replaces the session without a dialog, and the draft
+  is lost. Closing the tab still warns, through the personal owner's
+  `beforeunload`. With a folder, drafts are already in `.workbench/`, so
+  replacement loses nothing.
+- **The export wording does not say drafts are excluded.** "Export JSON
+  copy…" and "Download project JSON…" write v19 shared definitions only (S2),
+  which [JSON compatibility](#json-cli-and-backup-compatibility) allows only if
+  the wording says so. It does not. The creation dialog's Git preset still says
+  `project.json` includes "persisted drafts".
+- **The request switcher breaks the composer header budget.** With a project
+  open at 1280×800, the first message sits at 366.5 px against
+  `composer-header.spec.ts`'s 326.5 px budget. The switcher row (T1) adds the
+  40 px.
+- **A short window starves the response output.** At 1280×560, two
+  `evaluation-case-promotion.spec.ts` cases fail the layout audit: the
+  response pane's `.output-scroll` is 89 px tall for 160 px of content.
+- **The desktop host has never run a personal session end to end.** Its
+  workbench, migration, reopen and recovery commands have Rust unit tests. The
+  gated e2e suite runs in the browser only, and this environment cannot run
+  Tauri. Merging to `main` publishes the `:main` container image at once. The
+  macOS release is manual and off by default.
+
+Probe: the 107 ungated specs, run in Chromium light against the app with the
+flag on (a scratch config, not committed). 452 passed, 63 failed in 27 files.
+The same 27 files with the flag off failed 3: both `batch-live-progress.spec.ts`
+cases and the gated `personal-workbench-decision-drafts.spec.ts` scratch case,
+which fail in this container whatever the gate says. That leaves **61 failures
+in 25 files caused by the gate**. Apart from the findings above, they assert
+today's behavior, which v19 changes on purpose:
+
+- Folder autosave and the "Unsaved" title for edits that are now drafts:
+  `project-tab-coordination` (15), `run-deep-links` (6),
+  `project-replacement-guard` (6), `ui-ux-workflow-review` (4) and single
+  cases in eight other specs.
+- Revision counts and decision requests in `project.json` after an edit:
+  `system-one-decision-requests` (6), `system-one-decision-suites` (2),
+  `system-one-saved-prompts` (2), `system-one-prompt-evaluations` (1).
+- The legacy "Pending branch" notice, which scratch replaces:
+  `run-deep-links`, `runs-result-discovery`, `workbench-composition`.
+- Test helpers that parse an export with the v18 parser:
+  `prompt-model-recommendations`, `saved-prompt-experiment-review`,
+  `structured-output-checks`.
+- Settings scope text that sparse overrides (T2) changed:
+  `inference-settings-panel`, `provider-protocols`.
+
+#### Decisions
+
+- **Z1. How the gate goes.**
+  - *A. Remove it outright, in two PRs (recommended).* 8a lands the fixes
+    below with the gate still in place, each tested on the gated server. 8b
+    then deletes the flag, the `legacy` session mode and its manifest path,
+    the second e2e server and the `personalWorkbench` fixture, and rewrites the
+    61 cases for v19 behavior. This is D1 and D2 as approved, and D4's "the app
+    keeps no v15 writer". Rollback is a revert of 8b.
+  - *B. Default on, with an opt-out flag for one release.* Keeps the v18
+    writer and both e2e servers for a release, and deletes them later. An
+    opted-out build refuses every upgraded folder, so it helps only a team
+    that has not upgraded. It reverses D4 for that release.
+- **Z2. The CLI and pre-v19 folders.** Either way the CLI opens v19 with the
+  strict shared parser, uses saved pins and the authored launch defaults, and
+  never opens `.workbench/`.
+  - *A. It also keeps opening v10–v18 (recommended).* Through the existing
+    chain, in memory, writing nothing and running no template draft, as
+    [JSON compatibility](#json-cli-and-backup-compatibility) allows. CI keeps
+    working before and after a team upgrades.
+  - *B. It refuses them.* It names the folder's version and says to upgrade
+    it in the app. One parser, but every CI job breaks until someone upgrades.
+- **Z3. Replacing a session that holds only session drafts.** Personal backup
+  is 2e, so this is the interim.
+  - *A. The guard counts them (recommended).* The replacement risk includes
+    the personal owner's unpersisted work, and the dialog says how many
+    unsaved drafts the switch would discard. "Save and switch" stays only
+    where saving keeps those drafts; otherwise the choices are Cancel and
+    "Discard and switch".
+  - *B. Leave it to 2e.* A no-folder session loses its drafts silently on
+    import or open until then.
+- **Z4. The request switcher and the header budget.**
+  - *A. Fit the switcher into the budget (recommended).* Move it into the
+    composer header's existing line, so the first message stays at or above
+    326.5 px. The budget came from the composer header slice of the
+    [UX plan](UX_DISCOVERABILITY_PLAN.md) and still holds with the gate off.
+  - *B. Raise the budget by the switcher's row.* Costs 40 px of request on
+    every screen.
+- **Z5. The desktop host.**
+  - *A. Merge on browser evidence; gate the next desktop release on a native
+    check (recommended).* The plan records a manual native checklist:
+    open a v18 folder, Upgrade, draft and publish a prompt, save a scratch
+    request, reopen, and settle a Recovery candidate. The next macOS release
+    waits for it. Merging publishes only the `:main` image, which is the
+    browser.
+  - *B. Block 8b on that native check.* 8b then waits for someone with the
+    desktop app.
+
+#### Taken with them
+
+These are decided under existing decisions rather than put to review.
+
+- **Export and creation wording (JSON compatibility).** Both export actions
+  say that unsaved drafts are not included, and the Git preset text stops
+  saying `project.json` holds drafts.
+- **The short-window layout is fixed, not exempted.** The audit failure is a
+  starved scroller, which AGENTS.md says to fix.
+- **Workbench v1 freezes (D9).** After 8b, any change to an arm versions the
+  codec.
+- **The completion guard lifts (D2).** The migration owner is already its
+  only caller, so 8b removes the guard's gate condition rather than adding a
+  caller.
+- **Format numbers.** v19 becomes the active Project format, and the
+  `ProjectFile` label in memory moves with it. Final output takes the next
+  free Project version, v20, under the
+  [allocation convention](FINAL_OUTPUT_CONTRACTS.md#d1-format-version-allocation).
+  `PROJECT_FORMAT.md` and the plan index say so in 8b.
+- **What stays as it is.** D15's assets (suites, tools, mocks, environments)
+  keep direct shared writes until 2c, and the preview and Recovery drawer
+  already say so. Two tabs on one folder keep best-effort detection.
+
+#### Verification planned
+
+- 8a, red first on the gated server: a CLI case that opens a v19 folder
+  (refused today) and, with Z2-A, a v18 one; a replacement-guard case that
+  imports over a session draft (no dialog today); the export wording; the
+  header budget and the short-window layout with the gate on.
+- 8b: the whole suite runs on one server, sharded in CI. Each rewritten case
+  asserts the v19 behavior it now covers, not only the absence of the old
+  one. With Z5-A, the native checklist is recorded as open.
+
+### Step 8a delivered (November 5, 2026)
+
+The audit's gaps are closed, with the gate still in place. Apart from the CLI,
+every change applies only with the gate on.
+
+- **The CLI reads v19 (Z2).** `openNodeProjectFolder` reads a v19 file with
+  the strict shared parser and an older one through the existing chain, in
+  memory, never upgrading it. `sharedProjectAsActive` and
+  `declaredProjectSchemaVersion` moved to
+  [shared-project.ts](../packages/core/src/shared-project.ts), so the app's
+  manifest boundary and the CLI share them. A v19 file carrying a template
+  draft is refused, not read as legacy.
+- **The replacement guard counts session-only work (Z3).** The controller's
+  `sessionOnlyWorkCount` counts drafts and scratch requests held with no
+  store, and memory-only Recovery copies. Queued writes to a folder are not
+  counted, because the outgoing session flushes them. The dialog says how many
+  drafts the session holds. "Save and switch" appears only when saving
+  chooses a folder. Implementation found that S2's carry-over did not survive
+  a switch: the replacement closed the new folder's controller before it
+  wrote, so the drafts never reached the folder. Saving before a switch now
+  writes the session's records into the new folder's workbench through
+  `persistSessionInto` and waits for them first.
+- **Export wording.** Under "Export JSON copy…" the Project menu says
+  "Exports leave out unsaved drafts.", and the download toast says it too. The
+  creation dialog's definitions preset says drafts stay in `.workbench/`. A
+  legacy session keeps today's wording.
+- **The switcher fits the header (Z4).** It now sits in the Chat and Decision
+  composer header lines and takes the remaining width, moving to its own line
+  only below 200px. Its labels have a class, because the global label rule
+  added a 16px margin that put the label above the select.
+- **The short-window layout.** The cause was the title bar, not the response
+  pane. "Not saved — shared saves need this older-format folder upgraded"
+  pushed the topbar's controls onto a second row at 1280px, and with the
+  upgrade banner below it a 560px window left the output 89px. The status now
+  reads "Not saved — folder needs upgrading", since the banner explains the
+  upgrade.
+
+Checks, red first unless noted: `tests/cli-project-folder.test.ts` (a v19
+folder opens and runs an evaluation with `project.json` byte-identical,
+refused before; a v15 folder still opens; a drafted v19 file is refused). The
+gated `tests/e2e/personal-workbench-replacement.spec.ts`: three cases, all
+failing first on a dialog that never appeared. The Save-and-switch case then
+failed again on an empty `.workbench/drafts/`, which is how the carry-over gap
+was found. A gated case in `composer-header.spec.ts` (366.5 px, then 330 px
+from the label margin, then within budget), a gated export case in
+`personal-workbench-prompt-drafts.spec.ts` (no note), a gated one-row case in
+`personal-workbench-upgrade.spec.ts` (Project menu at y 65.5), and
+`project-creation-render.test.mjs` for the preset text. The
+`sessionOnlyWorkCount` unit case in `personal-workbench-controller.test.ts`
+was written after the code and was not run red. `evaluation-case-promotion.spec.ts`,
+run with the flag on through a scratch config, passes its layout audit.
+
+Not run: the whole suite with the flag on after these changes, the dark
+theme project and the desktop host. `personal-workbench-decision-drafts.spec.ts`'s
+scratch case and both `batch-live-progress.spec.ts` cases fail in this
+container under four workers with or without the gate, and pass alone.
+
+#### Native checklist (Z5)
+
+Before the next macOS release after 8b, someone with the desktop app runs
+these and records the outcome here:
+
+1. Open a v18 folder: the upgrade banner shows, and shared saves are refused.
+2. Upgrade it. `project.json` is v19, the source backup and `.workbench/`
+   exist, and a draft edited before the upgrade survives.
+3. Draft a prompt, quit and reopen: the draft is still there. Create a
+   revision: `project.json` gains it and the draft file goes.
+4. Save a scratch request. Run a repeated experiment on a request draft.
+5. Leave a competing draft in Recovery and settle it with "Use this one".
+6. Run `inference-lens run` on the upgraded folder.
+
+8b removes the gate.
+
+#### Decided for 8b (November 5, 2026)
+
+The user approved both before 8b started.
+
+- **The in-memory label stays v18 for now.** 8b makes v19 the only format the
+  app writes and says so in `PROJECT_FORMAT.md`. `PROJECT_SCHEMA_VERSION`, the
+  core parser chain, the v19 shared parser and the CLI's legacy path all
+  depend on the in-memory label being 18, so moving it is a follow-up slice
+  with its own review. The manifest boundary keeps relabeling until then.
+- **One pull request.** 8a was never opened as its own PR, so 8a and 8b land
+  together, with 8b in its own commits. Reverting those commits rolls back
+  8b alone, as Z1-A intended.
+
+### Step 8b delivered (November 5, 2026)
+
+The gate is gone. The app writes Project v19, every project session is
+personal, and the migration owner is the application's caller of migration
+completion.
+
+- **Removed (Z1).** `personal-workbench-gate.ts`, its Vite define, the
+  `legacy` session mode and its manifest path, the second e2e server and the
+  `personalWorkbench` fixture. `readProjectManifest` and
+  `serializeProjectManifest` take no mode. A pre-v19 folder still opens and
+  refuses shared saves until **Upgrade project…** (S1).
+- **Wording.** The export note, the download toast and the definitions preset
+  now always describe drafts in `.workbench/`. The composer's "Project
+  settings" label, which only a legacy session could reach, is gone.
+- **Format numbers.** `PROJECT_FORMAT.md` says new saves are v19, how a v10–v18
+  folder or import opens, and that the in-memory label is still v18 (decided
+  above). Final output takes Project v20 in
+  [FINAL_OUTPUT_CONTRACTS.md](FINAL_OUTPUT_CONTRACTS.md).
+
+Running every spec against personal sessions found three defects in the gated
+code, each fixed with a case that failed first:
+
+- **"Discard and switch" kept the draft.** The personal owner carried a
+  session's records into any adoption of the same project, so re-importing the
+  file after choosing to discard brought the draft back, and personal
+  overrides survived a re-import. Records now carry only when the adoption
+  saved the session into a folder or reopened it in place
+  (`carriesSessionWork`). Until the next controller opens, render reads also
+  skip a previous session that held its records only in memory. A folder
+  session's records are on disk, so it stays readable: hiding it reset the
+  composer during a link handoff. New case in
+  `personal-workbench-replacement.spec.ts`; `request-settings-ownership.spec.ts`
+  now expects a re-import to restore the launch defaults.
+- **A folder reopened while Prompts was showing lost its draft on screen.**
+  The prompt editor copies its draft when it mounts, so it kept the saved text
+  after the folder's records loaded. Prompts now remounts once they finish
+  loading. New case in `project-replacement-guard.spec.ts`.
+- **Filling a variable of a prompt inserted into a request draft crashed the
+  page.** `authoredDraft` resolved the launch revision with run overrides that
+  named the draft's own template uses. The launch revision now resolves
+  without them. Found by `ui-ux-workflow-review.spec.ts`, which failed on the
+  error overlay.
+
+Review of the pull request found two more, each fixed with a case that failed
+first:
+
+- **The first save of a session with no project lost its decision request.**
+  Removing the decision fold left nothing to hold a request authored before
+  any project existed, so the save's adoption reset the editor to the empty
+  starter. A document created from a session with no project now folds the
+  decision draft again, as it takes the chat request; once a project is open
+  the draft still reaches `project.json` only through publication. New case
+  in `personal-workbench-decision-drafts.spec.ts`.
+- **Importing JSON over a folder showed the folder's prompt draft.** Render
+  reads keep a folder session's controller until the next one opens, so the
+  prompt editor, remounted for the import, copied a draft the imported session
+  does not have, and nothing remounted it once the session-only controller
+  opened. The personal owner now says whether its controller is the one
+  opened for the current session (`current`), and Prompts treats a stale one
+  as still loading. Reads stay as they were, since hiding a folder session's
+  controller from every owner is what reset the composer during a link
+  handoff. New case in `personal-workbench-prompt-drafts.spec.ts`.
+
+Rewritten cases, by the v19 behavior they now assert:
+
+- **Folders seed v19.** A new `serializeFolderProject` / `parseFolderProject`
+  pair in `tests/e2e/support`; `importProject` also takes a file's exact
+  text, so a v19 export can be re-imported as it was written.
+- **Prompt and request edits are personal.** Where a case needed
+  `project.json` autosave or an unsaved project, it now drives a suite edit,
+  which is still a direct shared write (D15): tab coordination (15 cases),
+  storage clarity, the failed-save guard, and Save and switch behind a link.
+- **Drafts.** The title bar says "Session only" for session drafts, the
+  replacement dialog counts them, exports leave them out, a folder's draft
+  survives a switch without a question, and file-prompt drafts are read from
+  `.workbench/drafts/`.
+- **Requests.** A branch is a Local request scratch, not the Pending branch
+  notice. Decision edits and prompt uses are local until Save, and Save never
+  moves the launch default (D11). Settings and protocol scope say they are
+  yours.
+
+Checks: lint, typecheck, `test:core` (1959), the render and interaction tests,
+and the build with the standalone server tests. The full e2e suite ran in
+Chromium light (520 passed, 7 skipped, 1 failed) and the dark project (all
+passed on rerun). The one light failure, the repeat dialog's modal contract,
+also fails 3 times in 8 on the 8a commit, so it predates this step.
+
+Not run: the desktop host. The native checklist above stays open, and the next
+macOS release waits for it. Moving the in-memory label to v19 is the next
+format step.

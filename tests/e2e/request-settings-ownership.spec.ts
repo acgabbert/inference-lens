@@ -66,7 +66,7 @@ test("without a project, editing the model and temperature edits the active prof
   );
 });
 
-test("in a project, editing settings marks it unsaved, leaves the profile alone, and a re-import restores them", async ({
+test("in a project, editing settings keeps them as personal overrides, leaves the profile alone, and a re-import restores them", async ({
   page,
 }) => {
   const project = echoProject("request-settings-session");
@@ -93,7 +93,9 @@ test("in a project, editing settings marks it unsaved, leaves the profile alone,
   await model.fill(ECHO_TEMPERATURE_MODEL);
   await model.press("Escape");
   await panel.getByRole("slider", { name: "Temperature" }).fill("1.3");
-  await expect(page.locator(".brand")).toContainText("Unsaved");
+  // Sparse personal overrides (T2): the project itself is unchanged.
+  await expect(page.locator(".brand")).toContainText("Session only");
+  await expect(page.locator(".brand")).not.toContainText("Unsaved");
 
   await page.getByRole("button", { name: /run current conversation/i }).click();
   await expect(page.locator(".response-pane")).toContainText(
@@ -105,10 +107,8 @@ test("in a project, editing settings marks it unsaved, leaves the profile alone,
     temperature: 0.3,
   });
 
-  // Applying a project draft replaces the session values with the project's.
-  await importProject(page, project, "Request settings fixture", {
-    replaceDirty: "discard",
-  });
+  // A new session over the same project starts from its launch defaults.
+  await importProject(page, project, "Request settings fixture");
   await openInferenceSettings(page);
   await expect(model).toHaveValue("project-model");
   await expect(panel.locator(".temperature-control output")).toHaveText("0.8");

@@ -1,5 +1,5 @@
 /**
- * Shared assets 2b step 6b-2, behind the gate (D2): the Recovery chip opens one
+ * Shared assets 2b step 6b-2: the Recovery chip opens one
  * drawer that lists what needs a decision, the Templates and Request panes
  * mark the affected assets, and every action reaches the folder
  * (docs/SHARED_ASSETS_LEVEL_TWO_DESIGN.md, "Step 6b-2 decisions").
@@ -27,8 +27,6 @@ import {
   stubProjectDirectory,
   waitForHydration,
 } from "./support";
-
-test.use({ personalWorkbench: true });
 
 function fixtureProject(): ProjectFile {
   return createPromptTemplate(createProjectFile({
@@ -144,7 +142,7 @@ test("a competing prompt draft is marked, compared, used and its replaced copy d
   const first = promptDraft(project, "draft_first", "Triage {{incident}} from the first draft.");
   const second = promptDraft(project, "draft_second", "Triage {{incident}} from the second draft.");
   await openFolder(page, {
-    "project.json": serializeProjectManifest(project, "personal"),
+    "project.json": serializeProjectManifest(project),
     ".workbench/.gitignore": "*\n",
     ".workbench/drafts/draft_first.json": serializeWorkbenchRecord(first),
     ".workbench/drafts/draft_second.json": serializeWorkbenchRecord(second),
@@ -197,7 +195,7 @@ test("Use this one on a decision prompt shows the chosen draft, not the session'
   const first = decisionPromptDraft(project, "draft_first", "{{ticket}} from the first draft");
   const second = decisionPromptDraft(project, "draft_second", "{{ticket}} from the second draft");
   await openFolder(page, {
-    "project.json": serializeProjectManifest(project, "personal"),
+    "project.json": serializeProjectManifest(project),
     ".workbench/.gitignore": "*\n",
     ".workbench/drafts/draft_first.json": serializeWorkbenchRecord(first),
     ".workbench/drafts/draft_second.json": serializeWorkbenchRecord(second),
@@ -234,7 +232,7 @@ test("Use this one on a decision prompt shows the chosen draft, not the session'
 test("settling an unrelated item keeps an open prompt editor's revision rename", async ({ page }) => {
   const project = fixtureProject();
   await openFolder(page, {
-    "project.json": serializeProjectManifest(project, "personal"),
+    "project.json": serializeProjectManifest(project),
     ".workbench/.gitignore": "*\n",
     ".workbench/drafts/draft_orphan.json": serializeWorkbenchRecord(orphanedRequestDraft(project)),
   });
@@ -258,7 +256,7 @@ test("settling an unrelated item keeps an open prompt editor's revision rename",
 test("an orphaned request draft is marked in the switcher and saved as a new request", async ({ page }) => {
   const project = fixtureProject();
   await openFolder(page, {
-    "project.json": serializeProjectManifest(project, "personal"),
+    "project.json": serializeProjectManifest(project),
     ".workbench/.gitignore": "*\n",
     ".workbench/drafts/draft_orphan.json": serializeWorkbenchRecord(orphanedRequestDraft(project)),
   });

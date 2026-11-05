@@ -29,8 +29,7 @@ export type { SelectedDecisionRecord };
  * (Q2). Decision runs carry no request pin (D12), so there is no run identity
  * or branch here.
  *
- * Disabled in a legacy session or without a project: every caller then takes
- * today's path.
+ * Disabled without a project: every caller then takes the session-less path.
  */
 export interface DecisionRequestRecordHandle {
   enabled: boolean;

@@ -16,7 +16,7 @@ import {
   serializeExperimentResult,
   type ExperimentResult,
 } from "../../packages/core/src/experiment";
-import { createProjectFile, parseProjectFile, serializeProjectFile } from "../../packages/core/src/project";
+import { createProjectFile, parseProjectFile } from "../../packages/core/src/project";
 import type { EvaluationVariantId } from "../../packages/core/src/run-kernel";
 import { serializeDecisionRunTrace } from "../../packages/core/src/run-trace";
 import { decisionAnswers, decisionProject, decisionRuntimeTarget, finishedDecisionRun } from "../fixtures/decision-evaluation";
@@ -28,6 +28,7 @@ import {
   openMode,
   primaryAction,
   seedProfiles,
+  serializeFolderProject,
   stubProjectDirectory,
   waitForHydration,
 } from "./support";
@@ -58,7 +59,7 @@ function projectWithRequest(): string {
     idSuffix: "decision-suites",
     createdAt: "2026-10-24T12:00:00.000Z",
   });
-  return serializeProjectFile(updateDecisionRequestDraft(project, {
+  return serializeFolderProject(updateDecisionRequestDraft(project, {
     decision: {
       state: { ticket: "{{ticket}}", plan: captured.state.plan },
       questions: captured.questions as never,
@@ -188,13 +189,20 @@ test("editing the request after a suite pins it makes a new revision and leaves 
   await openMode(page, "Compose");
   const variables = page.getByRole("region", { name: "Decision request" }).getByRole("region", { name: "Variables" });
   await variables.getByLabel("{{ticket}}").fill("A different ticket");
+  // The edit is a request draft until Save appends a child revision (Q1).
+  await page.getByRole("region", { name: "Decision request" }).getByRole("status").filter({ hasText: "Unsaved changes" })
+    .getByRole("button", { name: "Save request" }).click();
   await expect.poll(async () => (await savedProject(page)).decisionRequestRevisions.length).toBe(2);
   const saved = await savedProject(page);
   const pinned = inlineRevision(saved.decisionRequestRevisions.find(({ id }) => id === "decision-revision_routing"));
   expect(pinned.values.ticket).toBe(captured.state.ticket);
   const suite = saved.evaluationSuites[0]!;
   expect(suite.input).toEqual({ kind: "decision-request-revision", decisionRequestRevisionId: "decision-revision_routing" });
-  expect(saved.defaults.decisionRequestRevisionId).not.toBe("decision-revision_routing");
+  const child = inlineRevision(saved.decisionRequestRevisions.find(({ id }) => id !== "decision-revision_routing"));
+  expect(child.parentRevisionId).toBe("decision-revision_routing");
+  expect(child.values.ticket).toBe("A different ticket");
+  // Save moves the personal selection, never the launch default (D11).
+  expect(saved.defaults.decisionRequestRevisionId).toBe("decision-revision_routing");
 });
 
 test("the rail makes a decision suite from Compose's request, and offers decision checks only", async ({ page }) => {
@@ -260,7 +268,7 @@ function decisionHistoryFolder(): Record<string, string> {
     return files;
   };
   return {
-    "project.json": serializeProjectFile(project),
+    "project.json": serializeFolderProject(project),
     ...execution("local-decision", "2026-10-24T13:00:00.000Z", "base", "refund"),
     ...execution("other-decision", "2026-10-24T14:00:00.000Z", "cand", "billing"),
   };
@@ -328,7 +336,7 @@ test("a v15 template-backed suite resolves its pin on screen and sends an explic
     input: { kind: "decision-request-revision", decisionRequestRevisionId: "decision-revision_pin" },
     cases: suite.cases.map((evaluationCase) => ({ ...evaluationCase, values: { "evaluation-input_ticket": "" } })),
   })) });
-  await openFolder(page, serializeProjectFile(project));
+  await openFolder(page, serializeFolderProject(project));
   await page.locator(".target-menu summary").click();
   await page.getByRole("button", { name: /manage connections/i }).click();
   await page.getByRole("combobox", { name: "Profile for Default connection" }).selectOption("decisions");

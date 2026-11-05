@@ -4,13 +4,13 @@ import { expect, test } from "./support/test";
 import type { BrowserContext, Page } from "./support/test";
 import type { FileSystemDirectoryHandleLike } from "../../app/project-directory.client";
 import { DECISIONS_API_PATH, INFERENCE_API_PATH } from "../../packages/contracts/src";
+import { createEvaluationSuite } from "../../packages/core/src/evaluation-suite-authoring";
 import { updateDecisionRequestDraft } from "../../packages/core/src/decision-request";
 import type { DecisionInput } from "../../packages/core/src/decision";
 
 import {
   createProjectFile,
   createPromptTemplate,
-  serializeProjectFile,
 } from "../../packages/core/src/project";
 import {
   closeProjectMenu,
@@ -20,6 +20,7 @@ import {
   primaryAction,
   seedProfile,
   seedProfiles,
+  serializeFolderProject,
   SYSTEM_ONE_FIXTURE_ORIGIN,
   stubSharedProjectDirectory,
   waitForHydration,
@@ -30,9 +31,15 @@ const FOLDER = "tab-coordination.inference-lens";
 const SECONDARY_LABEL = "Not saved — another tab is editing this project";
 const SECONDARY_TITLE = "Another tab is editing this project. Changes in this tab are not saved.";
 const SAVED_PROMPT = "Saved router prompt";
+/**
+ * A prompt edit is a personal draft in `.workbench/`; a suite is still written
+ * to project.json directly (D15), so the cases below edit the suite's name to
+ * drive the editor tab's writes.
+ */
+const SAVED_SUITE = "Router suite";
 
 function project() {
-  return createPromptTemplate(
+  const withPrompt = createPromptTemplate(
     createProjectFile({
       name: "Tab coordination",
       request: {
@@ -52,12 +59,13 @@ function project() {
       createdAt: "2026-10-28T12:01:00.000Z",
     },
   );
+  return createEvaluationSuite(withPrompt, SAVED_SUITE, () => "tab-coordination").project;
 }
 
 async function sharedProject(context: BrowserContext, document = project()): Promise<SharedProjectDirectory> {
   return stubSharedProjectDirectory(context, {
     name: FOLDER,
-    files: { "project.json": serializeProjectFile(document) },
+    files: { "project.json": serializeFolderProject(document) },
     directories: ["traces"],
   });
 }
@@ -104,13 +112,15 @@ async function openFolder(page: Page): Promise<void> {
   await closeProjectMenu(page);
 }
 
-async function editPrompt(page: Page, content: string): Promise<void> {
-  await openMode(page, "Prompts");
-  await page.getByLabel("Prompt content", { exact: true }).fill(content);
+async function renameSuite(page: Page, name: string): Promise<void> {
+  await openMode(page, "Evaluations");
+  await page.getByRole("button", { name: "Edit suite name" }).click();
+  await page.getByLabel("Suite name", { exact: true }).fill(name);
+  await page.getByRole("button", { name: "Save suite name" }).click();
 }
 
-function promptContent(page: Page) {
-  return page.getByLabel("Prompt content", { exact: true });
+function suiteName(page: Page) {
+  return page.locator(".evaluation-editor h2");
 }
 
 function tabBanner(page: Page) {
@@ -175,16 +185,16 @@ test("a second tab edits without a conflict, and only the editor tab writes proj
   await openFolder(editor!);
   await openFolder(second!);
 
-  await editPrompt(editor!, "Router prompt edited in the editor tab");
+  await renameSuite(editor!, "Router suite renamed in the editor tab");
   await expect(editor!.locator(".brand")).toContainText(`Saved to ${FOLDER}`);
 
-  await editPrompt(second!, "Specialist prompt tried in the second tab");
+  await renameSuite(second!, "Specialist suite tried in the second tab");
   await expect(second!.locator(".brand")).toContainText(SECONDARY_LABEL);
   await expect(second!.getByText(/changed outside Inference Lens/)).toHaveCount(0);
   await expect(tabBanner(second!)).toContainText(SECONDARY_TITLE);
 
   expect(manifestWriters(directory)).toEqual([editor]);
-  expect(directory.read("project.json")).toContain("Router prompt edited in the editor tab");
+  expect(directory.read("project.json")).toContain("Router suite renamed in the editor tab");
 });
 
 test("every tab runs, and every tab's traces reach the folder", async ({ context }) => {
@@ -213,20 +223,20 @@ test("Edit here flushes the editor's pending change before this tab reloads", as
 
   // Held timers keep the editor's autosave pending, so only the handover can write it.
   await holdLongTimers(editor!);
-  await editPrompt(editor!, "Pending in the editor when the handover arrives");
+  await renameSuite(editor!, "Pending in the editor when the handover arrives");
   await expect(editor!.locator(".brand")).toContainText(`Saving to ${FOLDER}…`);
   expect(manifestWriters(directory)).toEqual([]);
 
-  await openMode(second!, "Prompts");
+  await openMode(second!, "Evaluations");
   await tabBanner(second!).getByRole("button", { name: "Edit here", exact: true }).click();
 
   await expect(second!.locator(".brand")).toContainText(`Saved to ${FOLDER}`);
   await expect(tabBanner(second!)).toHaveCount(0);
-  await expect(promptContent(second!)).toHaveValue("Pending in the editor when the handover arrives");
+  await expect(suiteName(second!)).toHaveText("Pending in the editor when the handover arrives");
   await expect(editor!.locator(".brand")).toContainText(SECONDARY_LABEL);
   expect(manifestWriters(directory)).toEqual([editor]);
 
-  await promptContent(second!).fill("Saved from the new editor");
+  await renameSuite(second!, "Saved from the new editor");
   await expect.poll(() => manifestWriters(directory)).toEqual([editor, second]);
   expect(directory.read("project.json")).toContain("Saved from the new editor");
 });
@@ -236,19 +246,19 @@ test("Edit here in a tab with its own edits asks before discarding them", async 
   const [editor, second] = await loadTabs(context, 2);
   await openFolder(editor!);
   await openFolder(second!);
-  await editPrompt(second!, "Only in the second tab");
+  await renameSuite(second!, "Only in the second tab");
 
   await tabBanner(second!).getByRole("button", { name: "Edit here", exact: true }).click();
   await expect(tabBanner(second!)).toContainText("Edit here and discard this tab's unsaved changes?");
   await expect(tabBanner(second!).getByRole("button", { name: "Export JSON copy…", exact: true })).toBeVisible();
   await tabBanner(second!).getByRole("button", { name: "Not now", exact: true }).click();
   await expect(tabBanner(second!)).toContainText(SECONDARY_TITLE);
-  await expect(promptContent(second!)).toHaveValue("Only in the second tab");
+  await expect(suiteName(second!)).toHaveText("Only in the second tab");
 
   await tabBanner(second!).getByRole("button", { name: "Edit here", exact: true }).click();
   await tabBanner(second!).getByRole("button", { name: "Discard and edit here", exact: true }).click();
   await expect(second!.locator(".brand")).toContainText(`Saved to ${FOLDER}`);
-  await expect(promptContent(second!)).toHaveValue(SAVED_PROMPT);
+  await expect(suiteName(second!)).toHaveText(SAVED_SUITE);
   await expect(editor!.locator(".brand")).toContainText(SECONDARY_LABEL);
   expect(manifestWriters(directory)).toEqual([]);
 });
@@ -260,16 +270,16 @@ test("an editor that does not answer loses the role to a steal and says its edit
   await openFolder(editor!);
   await openFolder(second!);
   await expect(second!.locator(".brand")).toContainText(SECONDARY_LABEL);
-  await openMode(second!, "Prompts");
+  await openMode(second!, "Evaluations");
 
   await holdLongTimers(editor!);
-  await editPrompt(editor!, "Never flushed by the silent editor");
+  await renameSuite(editor!, "Never flushed by the silent editor");
   await expect(editor!.locator(".brand")).toContainText(`Saving to ${FOLDER}…`);
 
   await tabBanner(second!).getByRole("button", { name: "Edit here", exact: true }).click();
   // No reply arrives, so the second tab steals after the handover timeout.
   await expect(second!.locator(".brand")).toContainText(`Saved to ${FOLDER}`);
-  await expect(promptContent(second!)).toHaveValue(SAVED_PROMPT);
+  await expect(suiteName(second!)).toHaveText(SAVED_SUITE);
 
   // Its pending autosave, once allowed to run, must not reach the folder.
   await editor!.evaluate(() => (window as unknown as { releaseLongTimers(): void }).releaseLongTimers());
@@ -277,7 +287,7 @@ test("an editor that does not answer loses the role to a steal and says its edit
     "Another tab took over editing before this tab's changes were saved.",
   );
   await expect(editor!.locator(".brand")).toContainText(SECONDARY_LABEL);
-  await expect(promptContent(editor!)).toHaveValue("Never flushed by the silent editor");
+  await expect(suiteName(editor!)).toHaveText("Never flushed by the silent editor");
   expect(manifestWriters(directory)).toEqual([]);
 });
 
@@ -288,15 +298,15 @@ test("closing the editor promotes an unedited tab, which then saves", async ({ c
   await openFolder(second!);
   await expect(second!.locator(".brand")).toContainText(SECONDARY_LABEL);
 
-  await editPrompt(editor!, "Saved before the editor closed");
+  await renameSuite(editor!, "Saved before the editor closed");
   await expect(editor!.locator(".brand")).toContainText(`Saved to ${FOLDER}`);
   await editor!.close();
 
   await expect(second!.locator(".brand")).toContainText(`Saved to ${FOLDER}`);
   await expect(tabBanner(second!)).toHaveCount(0);
-  await openMode(second!, "Prompts");
-  await expect(promptContent(second!)).toHaveValue("Saved before the editor closed");
-  await promptContent(second!).fill("Saved by the promoted tab");
+  await openMode(second!, "Evaluations");
+  await expect(suiteName(second!)).toHaveText("Saved before the editor closed");
+  await renameSuite(second!, "Saved by the promoted tab");
   await expect.poll(() => manifestWriters(directory)).toEqual([editor, second]);
 });
 
@@ -305,17 +315,17 @@ test("closing the editor asks an edited tab before it reloads", async ({ context
   const [editor, second] = await loadTabs(context, 2);
   await openFolder(editor!);
   await openFolder(second!);
-  await editPrompt(second!, "Unsaved in the second tab");
+  await renameSuite(second!, "Unsaved in the second tab");
   await expect(second!.locator(".brand")).toContainText(SECONDARY_LABEL);
 
   await editor!.close();
   await expect(tabBanner(second!)).toContainText(
     "The tab that was editing this project closed. Edit here and discard this tab's unsaved changes?",
   );
-  await expect(promptContent(second!)).toHaveValue("Unsaved in the second tab");
+  await expect(suiteName(second!)).toHaveText("Unsaved in the second tab");
   await tabBanner(second!).getByRole("button", { name: "Discard and edit here", exact: true }).click();
   await expect(second!.locator(".brand")).toContainText(`Saved to ${FOLDER}`);
-  await expect(promptContent(second!)).toHaveValue(SAVED_PROMPT);
+  await expect(suiteName(second!)).toHaveText(SAVED_SUITE);
   expect(manifestWriters(directory)).toEqual([]);
 });
 
@@ -348,19 +358,19 @@ test("a tab asked about the closed editor yields quietly when another tab takes 
   await openFolder(editor!);
   await openFolder(edited!);
   await openFolder(third!);
-  await editPrompt(edited!, "Kept in the edited tab");
+  await renameSuite(edited!, "Kept in the edited tab");
 
   // The edited tab queued first, so it receives the lock and asks before reloading.
   await editor!.close();
   await expect(tabBanner(edited!)).toContainText("The tab that was editing this project closed.");
 
-  await openMode(third!, "Prompts");
+  await openMode(third!, "Evaluations");
   await tabBanner(third!).getByRole("button", { name: "Edit here", exact: true }).click();
   await expect(third!.locator(".brand")).toContainText(`Saved to ${FOLDER}`);
 
   await expect(tabBanner(edited!)).toContainText(SECONDARY_TITLE);
   await expect(tabBanner(edited!)).not.toContainText("took over editing before");
-  await expect(promptContent(edited!)).toHaveValue("Kept in the edited tab");
+  await expect(suiteName(edited!)).toHaveText("Kept in the edited tab");
   expect(manifestWriters(directory)).toEqual([]);
 });
 
@@ -462,7 +472,7 @@ for (const during of ["handover", "reload", "vacancy reload"] as const) {
     await openFolder(editor!);
     await openFolder(second!);
     await expect(second!.locator(".brand")).toContainText(SECONDARY_LABEL);
-    await openMode(second!, "Prompts");
+    await openMode(second!, "Evaluations");
     const readGate = during === "handover" ? undefined : await holdNextManifestRead(second!);
     try {
       if (during === "vacancy reload") await editor!.close();
@@ -470,21 +480,21 @@ for (const during of ["handover", "reload", "vacancy reload"] as const) {
       await expect(tabBanner(second!).getByRole("button", { name: "Switching…", exact: true })).toBeVisible();
       await readGate?.wait();
       const typed = `Typed during ${during}`;
-      await promptContent(second!).fill(typed);
-      await expect(promptContent(second!)).toHaveValue(typed);
+      await renameSuite(second!, typed);
+      await expect(suiteName(second!)).toHaveText(typed);
       await readGate?.release();
       // Both the broken adoption and a guarded confirmation finish switching;
       // assert on the actual draft before checking the new confirmation UI.
       await expect(tabBanner(second!).getByRole("button", { name: "Switching…", exact: true })).toHaveCount(0);
-      await expect(promptContent(second!)).toHaveValue(typed);
+      await expect(suiteName(second!)).toHaveText(typed);
       await expect(tabBanner(second!)).toContainText("discard this tab's unsaved changes?");
       expect(manifestWriters(directory)).toEqual([]);
       await tabBanner(second!).getByRole("button", { name: "Not now", exact: true }).click();
-      await expect(promptContent(second!)).toHaveValue(typed);
+      await expect(suiteName(second!)).toHaveText(typed);
       await tabBanner(second!).getByRole("button", { name: "Edit here", exact: true }).click();
       await tabBanner(second!).getByRole("button", { name: "Discard and edit here", exact: true }).click();
       await expect(second!.locator(".brand")).toContainText(`Saved to ${FOLDER}`);
-      await expect(promptContent(second!)).toHaveValue(SAVED_PROMPT);
+      await expect(suiteName(second!)).toHaveText(SAVED_SUITE);
     } finally {
       await readGate?.release();
     }
@@ -497,13 +507,13 @@ test("declining a re-asked takeover hands the role back to the tab that yielded 
   await openFolder(editor!);
   await openFolder(second!);
   await expect(second!.locator(".brand")).toContainText(SECONDARY_LABEL);
-  await openMode(second!, "Prompts");
+  await openMode(second!, "Evaluations");
   const readGate = await holdNextManifestRead(second!);
   try {
     await tabBanner(second!).getByRole("button", { name: "Edit here", exact: true }).click();
     await readGate.wait();
     await expect(editor!.locator(".brand")).toContainText(SECONDARY_LABEL);
-    await promptContent(second!).fill("Typed during the switch");
+    await renameSuite(second!, "Typed during the switch");
     await readGate.release();
     await expect(tabBanner(second!)).toContainText("discard this tab's unsaved changes?");
     await tabBanner(second!).getByRole("button", { name: "Not now", exact: true }).click();
@@ -511,8 +521,8 @@ test("declining a re-asked takeover hands the role back to the tab that yielded 
     // The tab that handed over saves again rather than waiting on a tab that declined.
     await expect(editor!.locator(".brand")).toContainText(`Saved to ${FOLDER}`);
     await expect(tabBanner(second!)).toContainText(SECONDARY_TITLE);
-    await expect(promptContent(second!)).toHaveValue("Typed during the switch");
-    await editPrompt(editor!, "Saved after the decline");
+    await expect(suiteName(second!)).toHaveText("Typed during the switch");
+    await renameSuite(editor!, "Saved after the decline");
     await expect.poll(() => manifestWriters(directory)).toEqual([editor]);
   } finally {
     await readGate.release();

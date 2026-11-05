@@ -1,8 +1,8 @@
 import { expect, test, type Page } from "./support/test";
-import { createProjectFile, parseProjectJson, serializeProjectFile, type ProjectFile } from "../../packages/core/src/project";
+import { createProjectFile, type ProjectFile } from "../../packages/core/src/project";
 import { createFilePromptCandidate, importFilePromptCandidates } from "../../packages/core/src/file-prompt-import";
 import { linkFilePrompt } from "../../packages/core/src/source-roots";
-import { BUFFERED_FIXTURE_ENDPOINT, importProject, openMode, seedProfile, stubSharedProjectDirectory, waitForHydration } from "./support";
+import { BUFFERED_FIXTURE_ENDPOINT, importProject, openMode, seedProfile, stubSharedProjectDirectory, waitForHydration, parseFolderProject, serializeFolderProject } from "./support";
 import { expectModalContract } from "./support/modal";
 import { expectLayoutFits } from "./support/layout";
 import { sourceRootFixture } from "./support/source-roots";
@@ -36,7 +36,7 @@ test("links a tracked prompt to a server folder file, shows drift, and pulls it 
   const roots = sourceRootFixture(testInfo);
   const path = roots.write("e2e-prompts", "flows/agent.md", "Hello {{ $json.name }}");
   const original = createProjectFile({ name: "Linked sources", idSuffix: "linked-sources", request });
-  const directory = await stubSharedProjectDirectory(context, { name: "linked.inference-lens", files: { "project.json": serializeProjectFile(original) } });
+  const directory = await stubSharedProjectDirectory(context, { name: "linked.inference-lens", files: { "project.json": serializeFolderProject(original) } });
   await seedProfile(page);
   await page.goto("/");
   await waitForHydration(page);
@@ -70,8 +70,8 @@ test("links a tracked prompt to a server folder file, shows drift, and pulls it 
   await expect(bar).toContainText(`Linked to e2e-prompts/${path}`);
   await expect(sourceStatus(page)).toHaveText(["File matches the last pull"]);
   await expect(libraryEntry(page, "agent").locator(".template-list-source")).toHaveCount(0);
-  await expect.poll(() => parseProjectJson(directory.read("project.json")!).sourceRoots.map(({ name }) => name)).toEqual(["e2e-prompts"]);
-  const linked = parseProjectJson(directory.read("project.json")!);
+  await expect.poll(() => parseFolderProject(directory.read("project.json")!).sourceRoots.map(({ name }) => name)).toEqual(["e2e-prompts"]);
+  const linked = parseFolderProject(directory.read("project.json")!);
   const linkedTemplate = linked.promptTemplates[0]!;
   expect(linkedTemplate.kind === "chat" && linkedTemplate.fileSource).toEqual({ sourceRootId: linked.sourceRoots[0]!.id, path });
   expect(linkedTemplate.kind === "chat" && linkedTemplate.revisions.length).toBe(1);
@@ -107,8 +107,8 @@ test("links a tracked prompt to a server folder file, shows drift, and pulls it 
   await expect(sourceStatus(page)).toHaveText(["File matches the last pull"]);
   await expect(libraryEntry(page, "agent").locator(".template-list-source")).toHaveCount(0);
 
-  await expect.poll(() => parseProjectJson(directory.read("project.json")!).externalImports.length).toBe(2);
-  const saved = parseProjectJson(directory.read("project.json")!);
+  await expect.poll(() => parseFolderProject(directory.read("project.json")!).externalImports.length).toBe(2);
+  const saved = parseFolderProject(directory.read("project.json")!);
   expect(saved.externalImports.map(({ source }) => source.resource.id)).toEqual(["agent.md", path]);
   expect(saved.conversationRevisions).toEqual(original.conversationRevisions);
 
@@ -136,7 +136,7 @@ test("a root this server does not declare is named, can be read from another fol
   const roots = sourceRootFixture(testInfo);
   roots.write("e2e-alternate", "alpha.md", "Alpha {{ $json.a }} changed");
   const original = await undeclaredRootProject(roots.prefix);
-  const directory = await stubSharedProjectDirectory(context, { name: "undeclared.inference-lens", files: { "project.json": serializeProjectFile(original) } });
+  const directory = await stubSharedProjectDirectory(context, { name: "undeclared.inference-lens", files: { "project.json": serializeFolderProject(original) } });
   await seedProfile(page);
   await page.goto("/");
   await waitForHydration(page);
@@ -157,10 +157,10 @@ test("a root this server does not declare is named, can be read from another fol
   await expect(page.locator(".linked-prompt-source")).toContainText("Not linked to a source folder.");
   await expect(libraryEntry(page, "beta").locator(".template-list-source")).toHaveCount(0);
   await expect.poll(() => {
-    const saved = parseProjectJson(directory.read("project.json")!);
+    const saved = parseFolderProject(directory.read("project.json")!);
     return saved.promptTemplates.map((template) => template.kind === "chat" && template.fileSource?.path);
   }).toEqual([`${roots.prefix}/alpha.md`, undefined]);
-  const saved = parseProjectJson(directory.read("project.json")!);
+  const saved = parseFolderProject(directory.read("project.json")!);
   // The mapping is for this session only and never reaches the project.
   expect(saved.sourceRoots.map(({ name }) => name)).toEqual(["team-prompts"]);
   expect(saved.promptTemplates.map((template) => template.kind === "chat" && template.revisions.length)).toEqual([1, 1]);

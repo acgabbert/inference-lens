@@ -5,13 +5,14 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import test from "node:test";
 import { browserMigrationCompletionStorage, browserMigrationStorage, browserWorkbenchStorage } from "../app/workbench-directory.client.ts";
-import { openProjectFolder, ProjectHandleInvalidatedError, ProjectManifestConflictError, saveProjectWorkspace } from "../app/project-workspace.client.ts";
+import { openProjectFolder, ProjectHandleInvalidatedError, ProjectManifestConflictError, saveProjectWorkspace, SharedSaveBlockedError } from "../app/project-workspace.client.ts";
+import type { OpenedProjectWorkspace } from "../app/project-workspace.client.ts";
 import { prepareSharedProjectMigration, stageSharedProjectMigration } from "../packages/core/src/migration-journal.ts";
 import type { PreparedSharedProjectMigration } from "../packages/core/src/migration-journal.ts";
 import { completeSharedProjectMigration } from "../packages/core/src/migration-completion.ts";
 import type { MigrationCompletionPlan, MigrationCompletionStorage } from "../packages/core/src/migration-completion.ts";
 import { parseWorkbenchRecordJson, serializeWorkbenchRecord } from "../packages/core/src/personal-workbench.ts";
-import { parseProjectJson } from "../packages/core/src/project.ts";
+import { parseProjectJson, serializeProjectFile } from "../packages/core/src/project.ts";
 import { openWorkbenchStore } from "../packages/core/src/workbench-store.ts";
 import { planSharedProjectMigration } from "../packages/core/src/shared-project-migration.ts";
 import { ByteDirectory } from "./migration-directory-helpers.ts";
@@ -60,6 +61,21 @@ async function openHandle(directory: ByteDirectory) {
   assert.ok(opened);
   return opened;
 }
+
+/**
+ * The app refuses to save a legacy folder before it reaches storage (S1), so
+ * these cases write the pre-v19 bytes through the handle's storage directly:
+ * a stale handle's write must still be fenced there.
+ */
+const legacySave = (opened: OpenedProjectWorkspace, name: string) => opened.handle.storage.save(serializeProjectFile({ ...opened.project, name }));
+
+test("the app refuses a legacy folder's save before it reaches storage", async () => {
+  const setup = await staged();
+  const opened = await openHandle(setup.directory);
+  await assert.rejects(saveProjectWorkspace(opened.handle, { ...opened.project, name: "Blocked" }), SharedSaveBlockedError);
+  assert.deepEqual(setup.directory.writes, []);
+  assert.deepEqual(setup.directory.files.get("project.json"), source);
+});
 
 test("browser completion writes the exact shared manifest, then each absent candidate, byte for byte", async () => {
   const setup = await staged();
@@ -142,7 +158,7 @@ test("a completion attempt invalidates the originating handle's saves without ad
   const opened = await openHandle(setup.directory);
   const outcome = await complete(setup, opened.handle.storage.migrationCompletion);
   assert.equal(outcome.kind === "completed" && outcome.shared, "confirmed-shared");
-  await assert.rejects(saveProjectWorkspace(opened.handle, { ...opened.project, name: "Stale v15 save" }), ProjectHandleInvalidatedError);
+  await assert.rejects(legacySave(opened, "Stale v15 save"), ProjectHandleInvalidatedError);
   assert.deepEqual(setup.directory.files.get("project.json"), setup.shared);
 });
 
@@ -154,7 +170,7 @@ test("an uncertain manifest write that left the source in place still invalidate
   setup.directory.failPath = undefined;
   assert.equal(outcome.kind === "completed" && outcome.shared, "uncertain");
   assert.deepEqual(setup.directory.files.get("project.json"), source);
-  await assert.rejects(saveProjectWorkspace(opened.handle, { ...opened.project, name: "Stale v15 save" }), ProjectHandleInvalidatedError);
+  await assert.rejects(legacySave(opened, "Stale v15 save"), ProjectHandleInvalidatedError);
   assert.deepEqual(setup.directory.files.get("project.json"), source);
 });
 
@@ -165,7 +181,7 @@ test("recognizing an already-written shared manifest invalidates the handle", as
   const outcome = await complete(setup, opened.handle.storage.migrationCompletion);
   assert.equal(outcome.kind === "completed" && outcome.shared, "confirmed-shared");
   assert.equal(setup.directory.writes.includes("project.json"), false);
-  await assert.rejects(saveProjectWorkspace(opened.handle, { ...opened.project, name: "Stale v15 save" }), ProjectHandleInvalidatedError);
+  await assert.rejects(legacySave(opened, "Stale v15 save"), ProjectHandleInvalidatedError);
 });
 
 test("a stale plan writes nothing and leaves the handle able to save", async () => {
@@ -184,7 +200,7 @@ test("a stale plan writes nothing and leaves the handle able to save", async () 
   assert.deepEqual(outcome, { kind: "stale-plan" });
   assert.deepEqual(setup.directory.writes, []);
   assert.deepEqual(setup.directory.files.get("project.json"), source);
-  await saveProjectWorkspace(opened.handle, { ...opened.project, name: "Still v15" });
+  await legacySave(opened, "Still v15");
   assert.equal(parseProjectJson(text(setup.directory.files.get("project.json"))!).name, "Still v15");
 });
 
@@ -199,7 +215,7 @@ test("missing or customized protection blocks before any write and is never repa
     if (outcome.kind === "blocked") assert.equal(outcome.reason, "protection", protection);
     assert.deepEqual(setup.directory.writes, [], protection);
     assert.equal(text(setup.directory.files.get(".workbench/.gitignore")), protection === "missing" ? undefined : "# custom\n");
-    await saveProjectWorkspace(opened.handle, { ...opened.project, name: "Still v15" });
+    await legacySave(opened, "Still v15");
   }
 });
 
@@ -326,7 +342,7 @@ test("completion, recovery writes and ordinary saves from another handle share o
       const completing = await openHandle(setup.directory);
       const other = await openHandle(setup.directory);
       const store = await openWorkbenchStore(browserWorkbenchStorage(setup.directory), setup.prepared.projectId);
-      const save = () => saveProjectWorkspace(other.handle, { ...other.project, name: "Other handle" }).then((): unknown => "saved", (error: unknown) => error);
+      const save = () => legacySave(other, "Other handle").then((): unknown => "saved", (error: unknown) => error);
       const completion = () => complete(setup, completing.handle.storage.migrationCompletion);
       let saving: Promise<unknown>;
       let completingPromise: ReturnType<typeof completion>;

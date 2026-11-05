@@ -9,6 +9,12 @@ import {
 } from "../../core/src/experiment.ts";
 import { PROJECT_FILE_NAME, parseProjectJson } from "../../core/src/project.ts";
 import type { ProjectFile } from "../../core/src/project.ts";
+import {
+  declaredProjectSchemaVersion,
+  parseSharedProjectJson,
+  SHARED_PROJECT_SCHEMA_VERSION,
+  sharedProjectAsActive,
+} from "../../core/src/shared-project.ts";
 import { assertTraceEntryName, TRACES_DIRECTORY_NAME, traceFileName } from "../../core/src/run-trace.ts";
 import type { ExperimentId, RunId } from "../../core/src/run-kernel/types.ts";
 
@@ -22,7 +28,11 @@ export class ProjectFolderError extends Error {
 /**
  * A project folder on the local filesystem, for a host with no browser.
  *
- * It reads `project.json` and never writes it. It writes only new artifacts,
+ * It reads `project.json` and never writes it. A v19 file is read strictly as
+ * shared definitions; an older one through the legacy chain, in memory, and is
+ * never upgraded (docs/SHARED_ASSETS_LEVEL_TWO_DESIGN.md, Z2). Either way the
+ * CLI runs saved pins and authored launch defaults only, and never opens
+ * `.workbench/`. It writes only new artifacts,
  * with the app's names and the app's write-once rule: an identical rewrite is
  * a no-op, and a different one is refused. That is what lets a headless run
  * write into a folder the app has open — neither side ever rewrites a file the
@@ -58,7 +68,9 @@ export async function openNodeProjectFolder(directoryArgument: string): Promise<
   }
   let project: ProjectFile;
   try {
-    project = parseProjectJson(text);
+    project = declaredProjectSchemaVersion(text) === SHARED_PROJECT_SCHEMA_VERSION
+      ? sharedProjectAsActive(parseSharedProjectJson(text))
+      : parseProjectJson(text);
   } catch (error) {
     throw new ProjectFolderError(
       `${PROJECT_FILE_NAME} in ${directoryArgument} is not a valid project: ${error instanceof Error ? error.message : String(error)}`,

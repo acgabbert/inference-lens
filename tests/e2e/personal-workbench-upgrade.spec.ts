@@ -1,5 +1,5 @@
 /**
- * Shared assets 2b step 6a, behind the gate (D2): a pre-v19 folder upgrades
+ * Shared assets 2b step 6a: a pre-v19 folder upgrades
  * through a preview, stages its source and drafts in `.workbench/migrations/`,
  * writes v19 and reopens as a shared session. Edits made to the lifted drafts
  * before the upgrade carry over (V2)
@@ -24,8 +24,6 @@ import {
   stubProjectDirectory,
   waitForHydration,
 } from "./support";
-
-test.use({ personalWorkbench: true });
 
 function legacyProject(): ProjectFile {
   const project = createPromptTemplate(createProjectFile({
@@ -89,7 +87,7 @@ test("Upgrade writes v19, keeps the source, and carries a draft edited before it
   const manifest = serializeProjectFile(legacyProject());
   expect(JSON.parse(manifest).schemaVersion).toBe(18);
   await openFolder(page, manifest);
-  await expect(page.locator(".brand")).toContainText("Not saved — shared saves need this older-format folder upgraded");
+  await expect(page.locator(".brand")).toContainText("Not saved — folder needs upgrading");
 
   await openMode(page, "Prompts");
   const editor = page.locator(".template-editor");
@@ -145,7 +143,7 @@ test("Cancel leaves the folder untouched and shared saves still blocked", async 
   const dialog = page.getByRole("dialog", { name: "Upgrade this project to the shared format?" });
   await dialog.getByRole("button", { name: "Cancel" }).click();
   await expect(dialog).toBeHidden();
-  await expect(page.locator(".brand")).toContainText("Not saved — shared saves need this older-format folder upgraded");
+  await expect(page.locator(".brand")).toContainText("Not saved — folder needs upgrading");
   expect(await folderFiles(page)).toEqual({ "project.json": manifest });
 });
 
@@ -186,7 +184,7 @@ test("Check again keeps saves blocked when the upgraded manifest diverged", asyn
   await expect(page.getByRole("button", { name: "Check again", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Check again", exact: true }).click();
   await expect(page.getByRole("alert").filter({ hasText: "still cannot be confirmed" })).toContainText("still cannot be confirmed against this upgrade's staged output");
-  await expect(page.locator(".brand")).toContainText("Not saved — shared saves need this older-format folder upgraded");
+  await expect(page.locator(".brand")).toContainText("Not saved — folder needs upgrading");
   await expect(page.getByRole("button", { name: "Check again", exact: true })).toBeVisible();
   // Repair the divergent file with the exact staged output, then recheck.
   await page.evaluate(async () => {
@@ -259,7 +257,7 @@ test("Check again after a write that never landed reopens the old file and offer
   // Back to a pre-v19 folder: shared saves off, Upgrade offered, the session edit kept.
   await expect(page.locator("[data-app-banner='project-upgrade']")).toContainText("older project format");
   await expect(page.getByRole("button", { name: "Check again", exact: true })).toBeHidden();
-  await expect(page.locator(".brand")).toContainText("Not saved — shared saves need this older-format folder upgraded");
+  await expect(page.locator(".brand")).toContainText("Not saved — folder needs upgrading");
   expect((await folderFiles(page))["project.json"]).toBe(manifest);
   await expect(editor.getByLabel("Prompt content")).toHaveValue("Triage {{incident}} edited before a failed upgrade.");
 
@@ -269,4 +267,16 @@ test("Check again after a write that never landed reopens the old file and offer
   await expect.poll(async () => activeDrafts(await folderFiles(page))
     .map(([, contents]) => JSON.parse(contents).edited.messages[0].content))
     .toEqual(["Triage {{incident}} edited before a failed upgrade."]);
+});
+
+test("a pre-v19 folder's title-bar status leaves the topbar on one row (step 8a)", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 560 });
+  await openFolder(page, serializeProjectFile(legacyProject()));
+  await expect(page.locator('[data-app-banner="project-upgrade"]')).toBeVisible();
+  const brand = await page.locator(".brand").boundingBox();
+  const projectMenu = await page.getByLabel("Project menu").boundingBox();
+  expect(brand && projectMenu).toBeTruthy();
+  expect(projectMenu!.y).toBeLessThan(brand!.y + brand!.height);
+  // The banner explains the upgrade; the title bar only says nothing saves.
+  await expect(page.locator(".brand")).toContainText("Not saved — folder needs upgrading");
 });

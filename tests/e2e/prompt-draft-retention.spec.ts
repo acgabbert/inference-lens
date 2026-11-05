@@ -54,7 +54,9 @@ test("keeps the exact prompt draft across request navigation", async ({ page }) 
   const content = page.getByLabel("Prompt content", { exact: true });
   await content.fill("SESSION DRAFT: keep {{incident}} exactly");
 
-  await expect(page.locator(".brand")).toContainText("Unsaved");
+  // A personal draft held for the session, not an unsaved project edit.
+  await expect(page.locator(".brand")).toContainText("Session only");
+  await expect(page.locator(".brand")).not.toContainText("Unsaved");
   await openMode(page, "Evaluations");
   await openMode(page, "Prompts");
   await expect(content).toHaveValue("SESSION DRAFT: keep {{incident}} exactly");
