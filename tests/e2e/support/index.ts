@@ -370,7 +370,8 @@ export async function closeProjectMenu(page: Page): Promise<void> {
  */
 export async function importProject(
   page: Page,
-  project: ProjectFile,
+  /** A document to import as v18, or a file's exact text, such as a v19 export. */
+  project: ProjectFile | string,
   expectedName: string,
   options?: { replaceDirty: "discard" },
 ): Promise<void> {
@@ -380,7 +381,7 @@ export async function importProject(
     {
       name: "fixture.project.json",
       mimeType: "application/json",
-      buffer: Buffer.from(serializeProjectFile(project)),
+      buffer: Buffer.from(typeof project === "string" ? project : serializeProjectFile(project)),
     },
   );
   if (options?.replaceDirty === "discard") {
