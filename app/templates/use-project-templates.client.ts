@@ -365,8 +365,10 @@ export function useProjectTemplates(input: UseProjectTemplatesInput): ProjectTem
 
   /** The composer's draft for a project: a local record renders its own items. */
   function authoredDraft(project: ProjectFile, context: TemplateResolutionContext, items = localItems): ReturnType<typeof projectDraft> {
-    const draft = projectDraft(project, context);
-    if (!items) return draft;
+    if (!items) return projectDraft(project, context);
+    // Run overrides name the local record's template uses, which the launch
+    // revision may not hold; resolving it with them would reject them.
+    const draft = projectDraft(project, context.environment ? { environment: context.environment } : {});
     try {
       return { ...draft, items, messages: renderLocal(project, items, context) };
     } catch {

@@ -3,7 +3,7 @@ import { parseSharedProjectJson, sharedProjectAsActive } from "../../packages/co
 import { expect, test, type Page } from "./support/test";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { createProjectFile, createPromptTemplate, serializeProjectFile } from "../../packages/core/src/project";
-import { BUFFERED_FIXTURE_ENDPOINT, PROJECT_REQUIREMENT_PROFILE_MAP_STORAGE_KEY, closeProjectMenu, importProject, openMode, seedProfile, stubProjectDirectory, waitForHydration } from "./support";
+import { BUFFERED_FIXTURE_ENDPOINT, PROJECT_REQUIREMENT_PROFILE_MAP_STORAGE_KEY, closeProjectMenu, importProject, openMode, seedProfile, serializeFolderProject, stubProjectDirectory, waitForHydration } from "./support";
 
 // Review evidence, not desired-behavior regressions: assertions intentionally
 // characterize current friction. Replace them when the corresponding UX changes.
@@ -28,7 +28,7 @@ async function setup(page: Page, folder = false) {
   await page.setViewportSize({ width: 1440, height: 900 });
   await seedProfile(page, { instanceId: "daily-profile" });
   await page.addInitScript(({ key, id, requirement }) => localStorage.setItem(key, JSON.stringify({ [id]: { [requirement]: { profileId: "buffered", profileInstanceId: "daily-profile" } } })), { key: PROJECT_REQUIREMENT_PROFILE_MAP_STORAGE_KEY, id: project.projectId, requirement: project.defaults.target.connectionRequirementId });
-  if (folder) await stubProjectDirectory(page, { name: "daily-triage.inference-lens", files: { "project.json": serializeProjectFile(project) }, directories: ["traces", "experiments"] });
+  if (folder) await stubProjectDirectory(page, { name: "daily-triage.inference-lens", files: { "project.json": serializeFolderProject(project) }, directories: ["traces", "experiments"] });
   await page.goto("/"); await waitForHydration(page);
   if (folder) {
     await page.getByLabel("Project menu").click();
@@ -81,7 +81,7 @@ test("review: direct prompt reuse reaches a real request and remains discoverabl
   await capture(page, "07-imported-project-runs-history-disabled");
 });
 
-test("review: project Save explains its destination and export preserves a draft", async ({ page }) => {
+test("review: project Save explains its destination and export leaves out a draft", async ({ page }) => {
   await setup(page);
   await openMode(page, "Prompts");
   await page.getByLabel("Prompt content", { exact: true }).fill("PORTABLE DRAFT: keep this text.");
@@ -96,26 +96,26 @@ test("review: project Save explains its destination and export preserves a draft
   const download = page.waitForEvent("download");
   await page.getByRole("button", { name: "Export JSON copy…", exact: true }).click();
   await (await download).saveAs(`${OUT}/exported-project.json`);
-  await expect(page.locator(".brand")).toContainText("Unsaved");
-  const exported = sharedProjectAsActive(parseSharedProjectJson(await readFile(`${OUT}/exported-project.json`, "utf8")));
-  expect(chatTemplate(exported.promptTemplates[0]).draft!.messages[0]!.content).toBe("PORTABLE DRAFT: keep this text.");
+  // The draft is personal and held for the session; exports are v19 shared
+  // definitions, which leave it out (S2).
+  await expect(page.locator(".brand")).toContainText("Session only");
+  const exportedText = await readFile(`${OUT}/exported-project.json`, "utf8");
+  const exported = sharedProjectAsActive(parseSharedProjectJson(exportedText));
+  expect(chatTemplate(exported.promptTemplates[0]).draft).toBeUndefined();
+  expect(chatTemplate(exported.promptTemplates[0]).revisions[0]!.messages[0]!.content).toBe("SAVED PROMPT: investigate {{incident}}.");
   // Export leaves its menu open. Close it before the shared import driver.
   await page.getByLabel("Project menu").click();
-  await importProject(page, exported, exported.name, { replaceDirty: "discard" });
+  await importProject(page, exportedText, exported.name, { replaceDirty: "discard" });
   await openMode(page, "Prompts");
-  await expect(page.getByLabel("Prompt content", { exact: true })).toHaveValue("PORTABLE DRAFT: keep this text.");
-  await expect(page.locator(".brand")).not.toContainText("Unsaved");
-  await expect(page.locator(".template-editor")).toContainText(
-    "Draft kept in this session. Save the project to keep it after closing.",
-  );
-  await capture(page, "10-export-import-retained-draft");
+  await expect(page.getByLabel("Prompt content", { exact: true })).toHaveValue("SAVED PROMPT: investigate {{incident}}.");
+  await capture(page, "10-export-import-leaves-out-draft");
 });
 
 test("review: importing another project asks before replacing an unsaved prompt", async ({ page }) => {
   const original = await setup(page);
   await openMode(page, "Prompts");
   await page.getByLabel("Prompt content", { exact: true }).fill("UNSAVED WORK: do not discard silently.");
-  await expect(page.locator(".brand")).toContainText("Unsaved");
+  await expect(page.locator(".brand")).toContainText("Session only");
   await page.getByLabel("Project menu").click();
   await page.setInputFiles('.project-popover:not(.run-data-popover) input[type="file"]', {
     name: "other-project.json",
@@ -125,6 +125,7 @@ test("review: importing another project asks before replacing an unsaved prompt"
   const decision = page.getByRole("dialog", { name: "Save changes before switching projects?" });
   await expect(decision).toContainText(original.name);
   await expect(decision).toContainText("Other project");
+  await expect(decision).toContainText("1 unsaved draft is held only in this session");
   await decision.getByRole("button", { name: "Cancel", exact: true }).click();
   await expect(page.getByLabel("Prompt content", { exact: true })).toHaveValue("UNSAVED WORK: do not discard silently.");
   await page.setInputFiles('.project-popover:not(.run-data-popover) input[type="file"]', {
