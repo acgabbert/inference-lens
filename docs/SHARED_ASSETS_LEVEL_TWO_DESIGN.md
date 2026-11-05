@@ -1980,3 +1980,114 @@ reset removed it failed on its assertion: the editor showed the session's edit
 instead of the chosen draft. The two `recovery-view` cases for
 `changesActiveCopy` and `recoveryGuidance` failed on their assertions against
 stubs first.
+
+### Step 7 decisions (proposed November 5, 2026)
+
+Step 7 lifts R4: with the gate on, a repeated experiment may run the selected
+request draft or scratch. D12 left the plan's representation for review. This
+section proposes it. Nothing here is approved yet.
+
+#### What the code does at `ae0f7c4`
+
+An audit of the plan's readers changes D12's premise.
+
+- **The plan's identity is the run's identity, not a pin.** A repeated
+  plan's `commonInput` is `ResolvedRunInput` without `runId`
+  ([runner/repeated-start.ts](../packages/runner/src/repeated-start.ts)).
+  `ResolvedRunInput` requires `conversationId` and `conversationRevisionId`
+  in RunTrace as well. Single runs of local input already fill them with I3's
+  identity: a draft runs under its saved `conversationId` with a fresh
+  revision ID, and a scratch runs under its `localConversationId` with a fresh
+  revision ID ([local-chat-request.ts](../app/request/local-chat-request.ts)).
+  None of these revision IDs reach `project.json`.
+- **Nothing resolves a repeated plan's revision against the project.**
+  Materializing a cell copies `commonInput`. The controller, the history list
+  (`batchTitle`, `experiment-history.ts`) and the dialogs read only its
+  target, options, response mode and tools. Only the CLI's headless summary
+  echoes `conversationRevisionId`, and the CLI only plans from the project's
+  launch default, so it never writes a local-input plan.
+- **The plan holds what was sent.** `commonInput` freezes `messages`,
+  `templateResolutions` and `environment` when the batch starts. What it does
+  not say is that the input was unsaved, or which draft or scratch it came from.
+- **Cell traces carry no `branchedFrom`.** `ChatCellExecutor.trace` calls
+  `createRunTrace(state)` with no provenance. Under R3, every single run of an
+  unsaved scratch records its branch point. A batch would silently drop it.
+- **The plan codec is strict.** Any new field is a new ExperimentPlan version,
+  and older readers reject an unknown version outright, for every plan written
+  at it, not only the local ones.
+- **Scope is chat repeated experiments.** Decisions have no repeated plan
+  kind, and Q3 keeps suites on saved revisions. Step 7 changes neither.
+- **Repeated runs stay local by default.** The approved Git presets keep
+  `experiments/` and `traces/` untracked except under "Manage Git rules
+  myself".
+
+#### Decisions
+
+- **Y1. Whether the plan changes version.**
+  - *A. No new version (recommended).* A local-input plan records I3's
+    identity in `commonInput`, exactly as a single local run's trace does,
+    and stays ExperimentPlan v7. Nothing claims a saved revision that was not
+    run: the fresh revision ID points at no shared revision. Older builds
+    still open every batch. Final output keeps v8 as allocated. Cost: a plan
+    cannot say it ran unsaved input, or which draft or scratch. A reader can
+    only see that the revision is not in the project, which is also true of a
+    plan copied from another project. This reverses the wording of D12's "take
+    the next free ExperimentPlan version", for the reason above. Its approved
+    outcome stands: no false shared pins, and repeated runs of local input.
+  - *B. A new version with explicit provenance.* Add an optional
+    `localInput` to the repeated plan:
+    `{ kind: "request-draft"; baseConversationRevisionId }` or
+    `{ kind: "scratch"; parent?; branchedFrom? }`. It takes the next free
+    version at merge: v8 if it lands before final output's PR 2, which then
+    moves to v9 under the [allocation convention](FINAL_OUTPUT_CONTRACTS.md#d1-format-version-allocation).
+    Cost: every new plan is written at that version, so older builds reject
+    all new batches. A batch would also record more than its own runs, since
+    single local traces carry no such field. Making traces match would be a
+    RunTrace version as well.
+  - *C. An optional revision ID.* Rejected: the cells' traces need one, and
+    I3 already supplies it.
+- **Y2. `branchedFrom` on a scratch batch's cells (R3).**
+  - *A. Every cell's trace records the scratch's `branchedFrom`
+    (recommended).* The app passes it to the chat controller when the batch
+    starts, and `ChatCellExecutor` hands it to `createRunTrace`. This is
+    trace-only provenance in an existing optional field, so no format changes.
+    It needs no persistence, because a batch does not resume across a reload.
+    Evaluations and the CLI pass nothing and are unchanged.
+  - *B. Cells record none.* R3 then covers single runs only, and lineage
+    from a scratch batch is lost once the scratch is saved or discarded.
+- **Y3. Saying the input is unsaved.**
+  - *A. The confirmation dialog says it (recommended).* With a draft or
+    scratch selected, the repeated experiment dialog adds an "Input" line:
+    "Unsaved draft of *name*" or "Unsaved request". The history title is
+    unchanged, since under Y1-A nothing records it.
+  - *B. The history says it too.* This works only with Y1-B, because
+    deriving it later from an unresolved revision ID is unreliable.
+  - *C. Neither.*
+
+#### Taken with them
+
+These are decided under existing decisions rather than put to review.
+
+- **The batch freezes its input.** Editing, saving or discarding the draft
+  or scratch while the batch runs changes none of its cells, because
+  `createRepeatedExperimentPlan` clones the prepared input.
+- **Branching from a live cell follows R2.** The app notes every cell's run
+  ID with the record's branch parent, not only the discarded prepared run ID.
+  A draft batch's cells then hang on the draft's base revision, as a single
+  draft run's do. A saved cell trace follows R2's fallback, as a single trace
+  does.
+- **Nothing outside the gate changes.** With the gate off there is no draft
+  or scratch, and the repeat path is today's.
+
+#### Verification planned
+
+- Red first: a gated case in `tests/e2e/personal-workbench-request-drafts.spec.ts`
+  runs a repeated experiment on a request draft. Today it fails on the R4
+  message. Once fixed, it asserts that the plan's `commonInput` carries the
+  draft's `conversationId` and a revision ID absent from `project.json`, and
+  that `project.json` is byte-identical.
+- With Y2-A: a scratch batch case asserts each cell trace's `branchedFrom`,
+  and a runner unit test asserts the executor writes it and writes nothing
+  when given none.
+- With Y3-A: the dialog's Input line for a draft, a scratch and a saved
+  revision.
