@@ -2,7 +2,8 @@ import { readFile } from "node:fs/promises";
 import { expect, test, type Page } from "./support/test";
 
 import { INFERENCE_API_PATH } from "../../packages/contracts/src/inference";
-import { parseProjectJson, projectDraft } from "../../packages/core/src/project";
+import { projectDraft } from "../../packages/core/src/project";
+import { parseSharedProjectJson, sharedProjectAsActive } from "../../packages/core/src/shared-project";
 import { openMode, seedProfile, stubProjectDirectory, waitForHydration } from "./support";
 import { expectDocumentFitsViewport } from "./support/layout";
 
@@ -101,7 +102,8 @@ test("Evaluations offers the JSON save path when folder access is unavailable", 
   const downloading = page.waitForEvent("download");
   await empty.getByRole("button", { name: jsonAction }).click();
   const download = await downloading;
-  const saved = parseProjectJson(await readFile((await download.path())!, "utf8"));
+  // The download is v19 shared definitions.
+  const saved = sharedProjectAsActive(parseSharedProjectJson(await readFile((await download.path())!, "utf8")));
   expect(projectDraft(saved).messages.map(({ role, content }) => ({ role, content }))).toEqual([
     { role: "system", content: [{ type: "text", text: draft }] },
     { role: "user", content: [{ type: "text", text: userMessage }] },
