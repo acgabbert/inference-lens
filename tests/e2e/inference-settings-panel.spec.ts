@@ -35,10 +35,11 @@ test("project setting overrides are marked and revert one field at a time", asyn
 
   const collapsedPanel = page.locator('[aria-label="Run settings"]');
   await expect(collapsedPanel.locator(".inference-settings-fact").filter({ hasText: "2 overrides" })).toBeVisible();
-  // Collapsed, the header badge summarises where the panel saves.
+  // Collapsed, the header badge summarises where the panel saves: a project
+  // session keeps these choices as personal overrides (T2).
   await expect(
     collapsedPanel.locator(".inference-settings-header .inference-settings-scope"),
-  ).toHaveText("Project settings");
+  ).toHaveText("Your settings");
 
   const panel = await openInferenceSettings(page);
   // The composer's model field sits above the disclosure, too short to carry a
@@ -47,7 +48,7 @@ test("project setting overrides are marked and revert one field at a time", asyn
   // session preference, which the badge does not claim to describe.
   await expect(
     panel.locator(".inference-settings-header .inference-settings-scope"),
-  ).toHaveText("Project settings");
+  ).toHaveText("Your settings");
   await expect(
     panel.locator(".inference-settings-header .inference-settings-scope"),
   ).not.toHaveClass(/visually-hidden/);

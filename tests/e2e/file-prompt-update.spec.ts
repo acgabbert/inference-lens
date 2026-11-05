@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "./support/test";
-import { createProjectFile, parseProjectJson, serializeProjectFile } from "../../packages/core/src/project";
-import { BUFFERED_FIXTURE_ENDPOINT, importProject, openMode, seedProfile, stubSharedProjectDirectory, waitForHydration } from "./support";
+import { createProjectFile } from "../../packages/core/src/project";
+import { BUFFERED_FIXTURE_ENDPOINT, importProject, openMode, seedProfile, stubSharedProjectDirectory, waitForHydration, parseFolderProject, serializeFolderProject } from "./support";
 import { expectModalContract } from "./support/modal";
 import { expectLayoutFits } from "./support/layout";
 
@@ -75,7 +75,7 @@ test("a pull keeps an open draft, persists through reopen, and refuses a file th
   const original = createProjectFile({ name: "Persistent file updates", idSuffix: "persistent-file-updates", request: {
     provider: "openai-compatible", endpoint: BUFFERED_FIXTURE_ENDPOINT, model: "buffered-test-model", messages: [{ role: "user", content: "Existing instruction" }],
   } });
-  const directory = await stubSharedProjectDirectory(context, { name: "file-updates.inference-lens", files: { "project.json": serializeProjectFile(original) } });
+  const directory = await stubSharedProjectDirectory(context, { name: "file-updates.inference-lens", files: { "project.json": serializeFolderProject(original) } });
   await seedProfile(page);
   await page.goto("/");
   await waitForHydration(page);
@@ -89,7 +89,7 @@ test("a pull keeps an open draft, persists through reopen, and refuses a file th
   await importAgent(page, "Answer {{ $json.topic }}");
   await page.getByLabel("Prompt message 1 content", { exact: true }).fill("My draft about {{topic}}");
   await expect.poll(() => {
-    const draft = parseProjectJson(directory.read("project.json")!).promptTemplates[0]?.draft;
+    const draft = parseFolderProject(directory.read("project.json")!).promptTemplates[0]?.draft;
     return draft && "messages" in draft ? draft.messages[0]?.content : undefined;
   }).toBe("My draft about {{topic}}");
 
@@ -108,8 +108,8 @@ test("a pull keeps an open draft, persists through reopen, and refuses a file th
   await expect(page.getByRole("region", { name: "Revision diff" })).toContainText("vs Revision 2 (current)");
   await expect(page.getByRole("region", { name: "Revision diff" })).toContainText("My draft about");
 
-  await expect.poll(() => parseProjectJson(directory.read("project.json")!).externalImports.length).toBe(2);
-  const saved = parseProjectJson(directory.read("project.json")!);
+  await expect.poll(() => parseFolderProject(directory.read("project.json")!).externalImports.length).toBe(2);
+  const saved = parseFolderProject(directory.read("project.json")!);
   const template = saved.promptTemplates[0]!;
   if (template.kind !== "chat") throw new Error("Expected a chat prompt");
   expect(template.currentRevisionId).toBe(template.revisions[1]!.id);
@@ -132,7 +132,7 @@ test("a pull keeps an open draft, persists through reopen, and refuses a file th
   await expect(dialog.getByRole("button", { name: "Update from file", exact: true })).toBeDisabled();
   await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
   await expect(dialog).toBeHidden();
-  expect(parseProjectJson(directory.read("project.json")!).externalImports.length).toBe(2);
+  expect(parseFolderProject(directory.read("project.json")!).externalImports.length).toBe(2);
 });
 
 

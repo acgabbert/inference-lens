@@ -1,7 +1,7 @@
 import { expect, test } from "./support/test";
-import { createProjectFile, parseProjectJson, serializeProjectFile } from "../../packages/core/src/project";
+import { createProjectFile } from "../../packages/core/src/project";
 import { parseRunTraceJson } from "../../packages/core/src/run-trace";
-import { BUFFERED_FIXTURE_ENDPOINT, PROJECT_REQUIREMENT_PROFILE_MAP_STORAGE_KEY, importProject, openMode, seedProfile, stubSharedProjectDirectory, waitForHydration } from "./support";
+import { BUFFERED_FIXTURE_ENDPOINT, PROJECT_REQUIREMENT_PROFILE_MAP_STORAGE_KEY, importProject, openMode, seedProfile, stubSharedProjectDirectory, waitForHydration, parseFolderProject, serializeFolderProject } from "./support";
 import { expectModalContract } from "./support/modal";
 import { expectLayoutFits } from "./support/layout";
 
@@ -83,7 +83,7 @@ test("file receipts survive folder reopen and literal text reaches a real provid
   const original = createProjectFile({ name: "Persistent file prompts", idSuffix: "persistent-file-prompts", request: {
     provider: "openai-compatible", endpoint: BUFFERED_FIXTURE_ENDPOINT, model: "buffered-test-model", messages: [{ role: "user", content: "Existing instruction" }],
   } });
-  const directory = await stubSharedProjectDirectory(context, { name: "file-prompts.inference-lens", files: { "project.json": serializeProjectFile(original) } });
+  const directory = await stubSharedProjectDirectory(context, { name: "file-prompts.inference-lens", files: { "project.json": serializeFolderProject(original) } });
   await seedProfile(page, { instanceId: "file-profile" });
   await page.addInitScript(({ key, projectId, requirementId }) => {
     localStorage.setItem(key, JSON.stringify({ [projectId]: { [requirementId]: { profileId: "buffered", profileInstanceId: "file-profile" } } }));
@@ -106,8 +106,8 @@ test("file receipts survive folder reopen and literal text reaches a real provid
   ]);
   await dialog.getByRole("group", { name: "literal.md" }).getByLabel("Treat as plain text").check();
   await dialog.getByRole("button", { name: "Import 2 prompts" }).click();
-  await expect.poll(() => parseProjectJson(directory.read("project.json")!).externalImports.length).toBe(2);
-  const saved = parseProjectJson(directory.read("project.json")!);
+  await expect.poll(() => parseFolderProject(directory.read("project.json")!).externalImports.length).toBe(2);
+  const saved = parseFolderProject(directory.read("project.json")!);
   expect(saved.conversationRevisions).toEqual(original.conversationRevisions);
   expect(saved.defaults).toEqual(original.defaults);
   expect(saved.externalImports[0].authored[0].text).toBe(literalText);

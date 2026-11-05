@@ -374,7 +374,7 @@ export function RequestComposer({
                 modelInputRef={modelRef}
                 open={settingsOpen}
                 onOpenChange={setSettingsOpen}
-                scopeLabel={personalSettings ? "Your settings" : project ? "Project settings" : "Profile defaults"}
+                scopeLabel={personalSettings ? "Your settings" : "Profile defaults"}
               />
               {environmentSelector}
               {/* Outside the panel deliberately: how many tools accompany the
