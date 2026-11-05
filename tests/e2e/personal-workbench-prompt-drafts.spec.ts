@@ -118,7 +118,7 @@ test("a legacy folder opens with its prompt draft, but nothing is written to it"
   const manifest = serializeProjectFile(project);
   expect(JSON.parse(manifest).schemaVersion).toBe(18);
   await openFolder(page, manifest);
-  await expect(page.locator(".brand")).toContainText("Not saved — shared saves need this older-format folder upgraded");
+  await expect(page.locator(".brand")).toContainText("Not saved — folder needs upgrading");
 
   await openMode(page, "Prompts");
   const editor = page.locator(".template-editor");
