@@ -524,9 +524,10 @@ Slice 2b covers exactly that; later Level 2 slices add the rest of the arms.
 | Slice | Delivers | Record arms |
 | --- | --- | --- |
 | 2b | v19 codec and migration; personal selections and execution overrides; "Use as project launch default"; chat and decision template drafts; scratch requests and drafts of saved requests (both kinds), so running and branching stop writing shared definitions; publication intent | chat prompt, decision prompt, chat request, inline decision request, template-use decision request, selections |
-| 2c | Suite drafts and explicit suite save; tool and mock drafts, local mock activation; import staging | suite, tool, mock, import staging |
-| 2d | Typed editor buffers for invalid or incomplete input (decision JSON, checks, tool schemas) | buffer arms per editor |
-| 2e | Personal backup v1 and restore preview | backup envelope |
+| 2c | Suite drafts and explicit suite save; tool and mock drafts, local mock activation | suite, tool, mock |
+| 2d (parked) | Typed editor buffers for invalid or incomplete input (decision JSON, checks, tool schemas) | buffer arms per editor |
+| 2e (parked) | Personal backup v1 and restore preview | backup envelope |
+| Import staging (parked) | Staged imports not yet saved as assets | import staging |
 
 Until 2c, suite, tool and mock editors keep their current save behavior, and
 the migration preview must not claim they are separated. Until 2d, recovery
@@ -534,6 +535,18 @@ covers valid editor content only, as v15 drafts do today. Until 2e, no-folder
 and close/replace wording offers shared export only and says drafts are
 excluded. Each later slice adds arms to the workbench v1 codec only if it can do
 so without changing an existing arm; otherwise it versions the codec.
+
+### Level 2 scope trimmed (November 5, 2026)
+
+The user approved trimming the rest of Level 2. The project has a handful of
+users, so effort goes to what changes shared files, then to Level 3.
+
+- **2c is trimmed.** It keeps suite, tool and mock drafts with explicit saves.
+  Import staging leaves 2c.
+- **2d, 2e and import staging are parked.** They are not scheduled and are not
+  prerequisites for Level 3. The interim behavior above stays: recovery covers
+  valid editor content only, and no-folder and close/replace wording offers
+  shared export only. Picking one up again needs its own approval.
 
 ## Review and verification handoff
 

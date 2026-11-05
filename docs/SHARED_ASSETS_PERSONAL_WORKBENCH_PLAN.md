@@ -19,7 +19,8 @@ implemented, with no application caller. The 2b
 [integration decisions](SHARED_ASSETS_LEVEL_TWO_DESIGN.md#integration-decisions-approved-october-30-2026)
 were approved October 30, 2026, and the owner interfaces October 31. The
 integration slice was delivered November 5: the app writes v19, every session
-is personal, and the CLI reads v19. Personal backup (2e) remains open. Level 3
+is personal, and the CLI reads v19. A trimmed 2c remains; 2d, 2e and import
+staging are [parked](SHARED_ASSETS_LEVEL_TWO_DESIGN.md#level-2-scope-trimmed-november-5-2026). Level 3
 remains proposed. The product direction is agreed:
 Inference Lens is a personal workbench for potentially shared assets. Approved
 choices are distinguished from the remaining schema and recovery mechanics that
@@ -1328,9 +1329,9 @@ unresolved persistence, compatibility, or dependency policy during coding.
 | 2b, core foundation | Isolated v19/workbench v1 codecs and pure migration plan; app remains v15 (implemented October 26) | Core codecs; no workspace integration |
 | 2b, recovery-store foundation | Protected storage for existing prompt-draft and selections records (implemented October 26); app remains v15 | Core typed store; opt-in browser/native workspace adapters |
 | 2b, integration | Recovery store, migration, prompt/request drafts and scratch inputs, selections, explicit publication and launch defaults (delivered November 5) | Workspace adapters; personal-workbench, prompt, request, decision and execution-setting owners; compatible app/CLI loaders |
-| 2c | Suite/tool/mock drafts and import staging; explicit saves | Evaluation, tool and import feature owners |
-| 2d | Invalid or incomplete typed editor-buffer recovery | Editor owners and workbench codecs |
-| 2e | Personal backup and restore preview | Core backup codec and workspace persistence |
+| 2c | Suite/tool/mock drafts; explicit saves (trimmed November 5: import staging parked) | Evaluation and tool feature owners |
+| 2d (parked) | Invalid or incomplete typed editor-buffer recovery | Editor owners and workbench codecs |
+| 2e (parked) | Personal backup and restore preview | Core backup codec and workspace persistence |
 | 3a | Approved asset format, references, dependency graph and sharing policy | Core asset model and validated graph loader |
 | 3b | Cross-host file adapters, lossless migration and recoverable writes | Browser/native/Node storage owners |
 | 3c | Selection preview/export, dependency explanations and conflict UX | Asset selection/export owner composed into the UI |
@@ -1385,7 +1386,8 @@ and diff check, not a browser run.
 ## Remaining decisions for the design review
 
 Level 1's presets and Level 2's choices recorded above are resolved, and 2b is
-delivered. The next reviews cover the in-memory v19 label and slice 2c; Level 3
+delivered. The next reviews cover the in-memory v19 label and the trimmed slice
+2c; 2d, 2e and import staging are parked. Level 3 stays on the roadmap, and its
 decisions remain deferred.
 
 1. Approve the field-by-field classification and migration examples for prompts,
@@ -1394,7 +1396,7 @@ decisions remain deferred.
    Done: approved with the core slice and delivered in 2b.
 2. Settle the Level 2 contracts in the slice 2a checklist above. The
    [integration decisions](SHARED_ASSETS_LEVEL_TWO_DESIGN.md#integration-decisions-approved-october-30-2026)
-   (October 30) and owner interfaces (October 31) settle all but personal backup (2e).
+   (October 30) and owner interfaces (October 31) settle all but personal backup (2e), now parked.
 3. Choose Level 3 asset file granularity and discovery rules, reference/provenance closure,
    and how team sharing policy and personal asset exclusions interact.
 4. Approve Level 3 format transitions and recovery for interrupted multi-file
