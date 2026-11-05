@@ -2274,3 +2274,76 @@ These are decided under existing decisions rather than put to review.
 - 8b: the whole suite runs on one server, sharded in CI. Each rewritten case
   asserts the v19 behavior it now covers, not only the absence of the old
   one. With Z5-A, the native checklist is recorded as open.
+
+### Step 8a delivered (November 5, 2026)
+
+The audit's gaps are closed, with the gate still in place. Apart from the CLI,
+every change applies only with the gate on.
+
+- **The CLI reads v19 (Z2).** `openNodeProjectFolder` reads a v19 file with
+  the strict shared parser and an older one through the existing chain, in
+  memory, never upgrading it. `sharedProjectAsActive` and
+  `declaredProjectSchemaVersion` moved to
+  [shared-project.ts](../packages/core/src/shared-project.ts), so the app's
+  manifest boundary and the CLI share them. A v19 file carrying a template
+  draft is refused, not read as legacy.
+- **The replacement guard counts session-only work (Z3).** The controller's
+  `sessionOnlyWorkCount` counts drafts and scratch requests held with no
+  store, and memory-only Recovery copies. Queued writes to a folder are not
+  counted, because the outgoing session flushes them. The dialog says how many
+  drafts the session holds. "Save and switch" appears only when saving
+  chooses a folder. Implementation found that S2's carry-over did not survive
+  a switch: the replacement closed the new folder's controller before it
+  wrote, so the drafts never reached the folder. Saving before a switch now
+  writes the session's records into the new folder's workbench through
+  `persistSessionInto` and waits for them first.
+- **Export wording.** Under "Export JSON copy…" the Project menu says
+  "Exports leave out unsaved drafts.", and the download toast says it too. The
+  creation dialog's definitions preset says drafts stay in `.workbench/`. A
+  legacy session keeps today's wording.
+- **The switcher fits the header (Z4).** It now sits in the Chat and Decision
+  composer header lines and takes the remaining width, moving to its own line
+  only below 200px. Its labels have a class, because the global label rule
+  added a 16px margin that put the label above the select.
+- **The short-window layout.** The cause was the title bar, not the response
+  pane. "Not saved — shared saves need this older-format folder upgraded"
+  pushed the topbar's controls onto a second row at 1280px, and with the
+  upgrade banner below it a 560px window left the output 89px. The status now
+  reads "Not saved — folder needs upgrading", since the banner explains the
+  upgrade.
+
+Checks, red first unless noted: `tests/cli-project-folder.test.ts` (a v19
+folder opens and runs an evaluation with `project.json` byte-identical,
+refused before; a v15 folder still opens; a drafted v19 file is refused). The
+gated `tests/e2e/personal-workbench-replacement.spec.ts`: three cases, all
+failing first on a dialog that never appeared. The Save-and-switch case then
+failed again on an empty `.workbench/drafts/`, which is how the carry-over gap
+was found. A gated case in `composer-header.spec.ts` (366.5 px, then 330 px
+from the label margin, then within budget), a gated export case in
+`personal-workbench-prompt-drafts.spec.ts` (no note), a gated one-row case in
+`personal-workbench-upgrade.spec.ts` (Project menu at y 65.5), and
+`project-creation-render.test.mjs` for the preset text. The
+`sessionOnlyWorkCount` unit case in `personal-workbench-controller.test.ts`
+was written after the code and was not run red. `evaluation-case-promotion.spec.ts`,
+run with the flag on through a scratch config, passes its layout audit.
+
+Not run: the whole suite with the flag on after these changes, the dark
+theme project and the desktop host. `personal-workbench-decision-drafts.spec.ts`'s
+scratch case and both `batch-live-progress.spec.ts` cases fail in this
+container under four workers with or without the gate, and pass alone.
+
+#### Native checklist (Z5)
+
+Before the next macOS release after 8b, someone with the desktop app runs
+these and records the outcome here:
+
+1. Open a v18 folder: the upgrade banner shows, and shared saves are refused.
+2. Upgrade it. `project.json` is v19, the source backup and `.workbench/`
+   exist, and a draft edited before the upgrade survives.
+3. Draft a prompt, quit and reopen: the draft is still there. Create a
+   revision: `project.json` gains it and the draft file goes.
+4. Save a scratch request. Run a repeated experiment on a request draft.
+5. Leave a competing draft in Recovery and settle it with "Use this one".
+6. Run `inference-lens run` on the upgraded folder.
+
+8b removes the gate.
