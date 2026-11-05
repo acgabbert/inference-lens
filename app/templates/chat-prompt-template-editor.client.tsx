@@ -64,6 +64,8 @@ export interface CompatibleEvaluationSuite {
 
 export interface ChatPromptTemplateEditorProps {
   externalImports?: ExternalImportReceipt[];
+  /** The Recovery notice for this prompt (2b step 6b-2, X3), composed by the route. */
+  recoveryNotice?: ReactNode;
   template: ChatPromptTemplate;
   /** The whole library, for duplicate-name warnings. */
   templates: readonly PromptTemplate[];
@@ -152,6 +154,7 @@ function currentRevision(template: ChatPromptTemplate) {
 
 export function ChatPromptTemplateEditor({
   externalImports = [],
+  recoveryNotice,
   template,
   templates,
   connectionRequirements = [],
@@ -704,6 +707,7 @@ export function ChatPromptTemplateEditor({
             {/* One scroll region for the editor and its diff, so an open diff
                 in focus mode scrolls with the content instead of squeezing it. */}
             <div className="template-editor-scroll">
+            {recoveryNotice}
             {candidateSourceRevisionId && candidateSourceRevisionId !== selected.currentRevisionId && !sessionOwned && <p className="template-draft-source-notice" role="status">
               This draft started from {promptRevisionLabel(selected, candidateSourceRevisionId)}; the current revision is {promptRevisionLabel(selected, selected.currentRevisionId)}.{" "}
               <button className="text-button" type="button" onClick={() => {

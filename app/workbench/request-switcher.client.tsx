@@ -9,6 +9,8 @@ interface RequestSwitcherProps {
   menu: RequestMenu;
   /** Why switching is unavailable now, such as a run in progress. */
   disabledReason?: string;
+  /** X3: `request:<id>` and `scratch:<id>` keys that have Recovery items. */
+  marked?: ReadonlySet<string>;
   onSelect(target: RequestMenuTarget): void;
 }
 
@@ -19,7 +21,7 @@ interface RequestSwitcherProps {
  * local requests have their own group. Switching moves only the personal
  * selection, never the launch default.
  */
-export function RequestSwitcher({ noun, menu, disabledReason, onSelect }: RequestSwitcherProps) {
+export function RequestSwitcher({ noun, menu, disabledReason, marked, onSelect }: RequestSwitcherProps) {
   const selectedRequest = menu.selectedKey?.startsWith("request:")
     ? menu.requests.find(({ requestId }) => `request:${requestId}` === menu.selectedKey)
     : undefined;
@@ -51,6 +53,7 @@ export function RequestSwitcher({ noun, menu, disabledReason, onSelect }: Reques
                   {request.name}
                   {request.launchDefault ? " (launch default)" : ""}
                   {request.draft ? " · unsaved changes" : ""}
+                  {marked?.has(`request:${request.requestId}`) ? " · needs recovery" : ""}
                 </option>
               ))}
             </optgroup>
@@ -58,7 +61,10 @@ export function RequestSwitcher({ noun, menu, disabledReason, onSelect }: Reques
           {menu.scratches.length > 0 && (
             <optgroup label="On this device">
               {menu.scratches.map(({ scratchId, label }) => (
-                <option key={scratchId} value={`scratch:${scratchId}`}>{label}</option>
+                <option key={scratchId} value={`scratch:${scratchId}`}>
+                  {label}
+                  {marked?.has(`scratch:${scratchId}`) ? " · needs recovery" : ""}
+                </option>
               ))}
             </optgroup>
           )}

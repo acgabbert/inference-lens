@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import type { DecisionInput } from "../packages/core/src/decision";
 import type { DecisionTemplateEvaluationRetargetPreview } from "../packages/core/src/decision-template-evaluation";
 import { discoverDecisionVariables } from "../packages/core/src/decision-variables";
@@ -38,7 +39,9 @@ type SaveDecisionTemplate = (
 ) => Promise<PromptTemplateRevisionId | undefined>;
 
 export interface ProjectTemplatesPaneProps
-  extends Omit<ChatPromptTemplateEditorProps, "template" | "templates"> {
+  extends Omit<ChatPromptTemplateEditorProps, "template" | "templates" | "recoveryNotice"> {
+  /** The Recovery marks and notice (2b step 6b-2, X3), keyed `prompt:<templateId>`. */
+  recovery?: { marked: ReadonlySet<string>; notice(key: string | undefined): ReactNode; generation: number };
   templates: PromptTemplate[];
   usageCounts: ReadonlyMap<PromptTemplateId, number>;
   n8nImportDisabledReason?: string;
@@ -252,6 +255,7 @@ export function ProjectTemplatesPane(props: ProjectTemplatesPaneProps) {
                 {describeEntry(template)} · {props.usageCounts.get(template.id) ?? 0} uses
               </span>
               {template.recommendedTarget && <span>Recommended model: {template.recommendedTarget.model}</span>}
+              {props.recovery?.marked.has(`prompt:${template.id}`) && <span className="template-list-recovery">Needs recovery</span>}
               {(() => {
                 const state = props.linkedSources?.stateFor(template.id);
                 // A quiet library: only drift and problems are worth a line.
@@ -267,18 +271,22 @@ export function ProjectTemplatesPane(props: ProjectTemplatesPaneProps) {
       {selected?.kind === "chat" ? (
         <ChatPromptTemplateEditor
           {...props}
-          key={selected.id}
+          // A Recovery action may activate another draft; remount to read it.
+          key={`${selected.id}:${props.recovery?.generation ?? 0}`}
           template={selected}
           templates={templates}
+          recoveryNotice={props.recovery?.notice(`prompt:${selected.id}`)}
           focusRequested={false}
           onArchive={archive}
           onRestore={restore}
         />
       ) : selected?.kind === "decision" ? (
         <DecisionPromptTemplateEditor
-          key={selected.id}
+          // A Recovery action may activate another draft; remount to read it.
+          key={`${selected.id}:${props.recovery?.generation ?? 0}`}
           template={selected}
           templates={templates}
+          recoveryNotice={props.recovery?.notice(`prompt:${selected.id}`)}
           memory={memory}
           initialRevisionId={navigationTarget?.templateId === selected.id ? navigationTarget.revisionId : undefined}
           connectionRequirements={props.connectionRequirements}

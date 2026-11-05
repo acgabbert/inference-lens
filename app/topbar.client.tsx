@@ -6,6 +6,7 @@ import type { ProjectStorageState } from "./use-project-workspace.client";
 import { ModeStrip } from "./modes/mode-strip.client";
 import type { AppMode, ModeIndicator } from "./modes/app-mode";
 import type { ComposePrimary } from "./compose/use-compose.client";
+import type { RecoveryChipProps } from "./workbench/use-recovery.client";
 
 interface TopbarProps {
   profiles: StoredInferenceProfile[];
@@ -67,6 +68,8 @@ interface TopbarProps {
   onOpenRunLink?(): void;
   onStopExperiment(): void;
   onStartEvaluation(): void;
+  /** The personal workbench's Recovery chip (2b step 6b-2, X1); absent when nothing needs it. */
+  recovery?: RecoveryChipProps;
 }
 
 /**
@@ -96,6 +99,7 @@ export function Topbar({
   onImportRunTrace,
   onOpenRunHistory,
   onOpenRunLink,
+  recovery,
 }: TopbarProps) {
   const topbarRef = useRef<HTMLElement>(null);
   const targetProfile = decisionConnection ? decisionConnection.profile : activeProfile;
@@ -173,6 +177,11 @@ export function Topbar({
       <div className="brand"><span className="brand-mark" aria-hidden="true">IL</span><div><h1>Inference Lens</h1><p>Inspect every model run · {projectName ? <><strong>{projectName}</strong>{projectDirty ? " · Unsaved" : ""}{projectStorageLabel ? ` · ${projectStorageLabel}` : ""}</> : "No project open"}</p></div></div>
       <ModeStrip value={mode} onChange={onModeChange} {...(modeIndicators ? { indicators: modeIndicators } : {})} />
       <div className="header-actions">
+        {recovery && (
+          <button aria-haspopup="dialog" className="button secondary recovery-chip" type="button" onClick={recovery.onOpen}>
+            {recovery.label}
+          </button>
+        )}
         {/* The active Compose kind supplies its own connection chooser. A
             decision choice never remaps the project's chat requirement. */}
         <details className="header-menu target-menu">

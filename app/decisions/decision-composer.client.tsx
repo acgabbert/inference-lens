@@ -47,6 +47,8 @@ export interface DecisionComposerProps {
   unsavedDetail?: string;
   /** A personal session's local request: Save, Discard and a name (2b step 4). */
   localRequest?: LocalRequestState;
+  /** The Recovery notice for the request being edited (2b step 6b-2, X3). */
+  recoveryNotice?: ReactNode;
   /** A personal session's request switcher (2b step 5, T1). */
   requestSwitcher?: ReactNode;
   /** A saved request other than the decision launch default is selected (T4). */
@@ -414,7 +416,7 @@ export function DecisionInputEditor({
 
 export const DECISION_NEW_SUITE_REASON_ID = "decision-new-suite-reason";
 
-export function DecisionComposer({ modelInputRef, kindSwitch, draft: handle, target, blockers, locked, unsaved, unsavedDetail, localRequest, requestSwitcher, launchDefault, onOpenConnections, newSuite, pinned, capture }: DecisionComposerProps) {
+export function DecisionComposer({ modelInputRef, kindSwitch, draft: handle, target, blockers, locked, unsaved, unsavedDetail, localRequest, recoveryNotice, requestSwitcher, launchDefault, onOpenConnections, newSuite, pinned, capture }: DecisionComposerProps) {
   const { draft } = handle;
   const discovery = target.discovery;
   return (
@@ -449,6 +451,7 @@ export function DecisionComposer({ modelInputRef, kindSwitch, draft: handle, tar
             />
           </div>
         )}
+        {recoveryNotice}
         {localRequest && <LocalRequestNotice state={localRequest} />}
         {launchDefault && <LaunchDefaultNotice state={launchDefault} />}
         {requestSwitcher}

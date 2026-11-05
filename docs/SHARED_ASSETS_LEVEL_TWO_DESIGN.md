@@ -1909,3 +1909,58 @@ left open. All of them apply only with the gate on.
   window's copy in a record conflict, an orphaned draft and a publication
   conflict's edits. Discarding a migration candidate only records `discarded`,
   and the backup keeps it, so it acts at once.
+
+### Step 6b-2 delivered (November 5, 2026)
+
+The Recovery chip, drawer and pane marks, behind the gate. With the gate off
+the personal workbench is off, so none of them renders.
+
+- **Owner.** [use-recovery.client.tsx](../app/workbench/use-recovery.client.tsx)
+  owns whether the drawer is open and on what, and builds the chip, the pane
+  marks and the in-pane notice. Reconciliation stays with the personal
+  workbench (6b-1). The page composes it: the topbar gets the chip, the
+  Prompts mode and both composers get the marks and the notice, and the page
+  renders the drawer.
+  [recovery-view.ts](../app/workbench/recovery-view.ts) holds the pure parts:
+  the X1 chip state, the keys the marks use, each item's subject, the X4
+  confirmation rule, the X2 diff and the W3 removal details.
+- **Drawer.** [recovery-drawer.client.tsx](../app/workbench/recovery-drawer.client.tsx)
+  lists each item with its subject, kind, message, path and V4 actions, then
+  the migration backups. Compare shows the two sides as a folded line diff;
+  long lines wrap, so the drawer content stays its one scroll area. Save as
+  new asks for a name inline. Unreadable items show their path and message
+  only. A backup reads "Remove migration backup…" once removable,
+  "Finish removing backup" after an interrupted removal, and otherwise says
+  what it waits for.
+- **Marks.** The Templates list row reads "Needs recovery". The request
+  switcher's entry, saved or local, reads "· needs recovery", in Chat and
+  Decision Compose. The prompt editor and both composers show a "Needs
+  recovery" notice among their notices, with "Open Recovery".
+
+Implementation choices inside the approved decisions:
+
+- **The prompt editor reloads after a Recovery action.** It holds its own
+  copy of the draft, read when it mounts, so "Use this one" left it showing the
+  replaced draft. The owner counts settled actions, and the Templates pane keys
+  the editor on that count. Keying on the draft's ID instead would remount the
+  editor when a first edit creates a draft.
+- **A focused drawer lists only that asset's items** and hides the backups.
+  "Show all" lifts the focus. When the asset's items are all settled and others
+  remain, it says so and offers "Show all".
+- **The chip is a header button** with the advisory tint, before the
+  connection menu.
+
+Not changed in 6b-2: nothing outside the gate. The decision prompt editor gets
+the notice and the remount key, but no gated e2e spec covers it. Its editor
+memory store may still restore an older invalid edit after a remount.
+
+Checks: `tests/recovery-view.test.ts` (five cases) was run against a stub
+first and failed on its assertions; a sixth case for `recoveryMenuKey` was
+written with the helper, so it was never shown failing. The gated
+`tests/e2e/personal-workbench-recovery.spec.ts` covers a competing prompt
+draft (mark, notice, Compare, "Use this one", the replaced copy and its
+confirmed Discard), an orphaned request draft (switcher mark, Save as new) and
+a selections candidate after an upgrade (Discard without confirmation, then
+"Remove migration backup"). All three failed first because no chip existed.
+With the drawer built, the first failed again with the editor still showing
+the replaced draft, which the remount key fixed.

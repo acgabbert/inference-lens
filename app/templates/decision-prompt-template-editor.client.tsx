@@ -36,6 +36,8 @@ type SaveDecisionTemplate = (
 ) => Promise<PromptTemplateRevisionId | undefined>;
 
 interface Props extends DecisionPromptEvaluationActions {
+  /** The Recovery notice for this prompt (2b step 6b-2, X3), composed by the route. */
+  recoveryNotice?: ReactNode;
   template: DecisionPromptTemplate;
   /** The whole library, for duplicate-name warnings. */
   templates: readonly PromptTemplate[];
@@ -370,6 +372,7 @@ function DecisionTemplateContent(
           Another prompt has this name. IDs keep the two definitions distinct.
         </div>
       )}
+      {props.recoveryNotice}
       <div className="template-editor-body">
         <div className="decision-content">
           <PaneTabs

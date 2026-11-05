@@ -1,5 +1,7 @@
 "use client";
 
+import type { ReactNode } from "react";
+
 import type { DecisionComposeHandle } from "../decisions/use-decision-compose.client";
 import type { ProjectFile } from "../../packages/core/src/project";
 import type { PromptTemplateId } from "../../packages/core/src/run-kernel";
@@ -37,6 +39,8 @@ interface PromptsModeProps {
   onReturn(): void;
   onRevisionEvaluationStarted(): void;
   onEvaluationSuiteOpened(): void;
+  /** The Recovery marks and notice (2b step 6b-2, X3). */
+  recovery?: { marked: ReadonlySet<string>; notice(key: string | undefined): ReactNode; generation: number };
 }
 
 function compatibleEvaluationSuitesByTemplate(
@@ -80,6 +84,7 @@ export function PromptsMode({
   onReturn,
   onRevisionEvaluationStarted,
   onEvaluationSuiteOpened,
+  recovery,
 }: PromptsModeProps) {
   const { target } = navigation;
   // Mounted only while the Prompts mode is open, so opening it reads linked files.
@@ -89,6 +94,7 @@ export function PromptsMode({
       <ProjectTemplatesPane
         key={`${project?.projectId ?? "unsaved-project"}:${target?.key ?? 0}`}
         modelCatalog={modelCatalog}
+        {...(recovery ? { recovery } : {})}
         templates={templates.libraryTemplates ?? project?.promptTemplates ?? []}
         sessionTemplateIds={templates.sessionTemplateIds ?? new Set<PromptTemplateId>()}
         connectionRequirements={project?.connectionRequirements ?? []}
