@@ -378,8 +378,8 @@ export function useProjectTemplates(input: UseProjectTemplatesInput): ProjectTem
     input.replaceProjectDraft(authoredDraft(project, contextFor(project, overrides)));
   }
   /**
-   * One revision edit, wherever the composer's request lives. A `personal`
-   * session applies it to the local record's items; a legacy session to the
+   * One revision edit, wherever the composer's request lives. A project
+   * session applies it to the local record's items; without one, to the
    * active revision, forking one that has run (`projectForTemplateMutation`).
    */
   function applyRevisionEdit(

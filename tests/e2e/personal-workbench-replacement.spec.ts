@@ -1,5 +1,5 @@
 /**
- * Shared assets 2b step 8a, behind the gate (Z3): replacing a session counts
+ * Shared assets 2b step 8a (Z3): replacing a session counts
  * the personal work held only in memory, so a no-folder session or a
  * pre-v19 folder cannot lose its drafts to an import or open without a
  * dialog (docs/SHARED_ASSETS_LEVEL_TWO_DESIGN.md, "Step 8 decisions").
@@ -18,8 +18,6 @@ import {
   stubProjectDirectory,
   waitForHydration,
 } from "./support";
-
-test.use({ personalWorkbench: true });
 
 function project(name: string, content: string): ProjectFile {
   const slug = name.toLowerCase().replaceAll(" ", "-");

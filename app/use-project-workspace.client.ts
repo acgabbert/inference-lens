@@ -5,7 +5,6 @@ import { hasRunLinkFragment, RUN_LINK_CLEARED_EVENT } from "./run/run-link-url.c
 import type { ChangeEvent } from "react";
 import {
   projectDraft,
-  updateProjectDraft,
   updateProjectTools,
 } from "../packages/core/src/project.ts";
 import type {
@@ -16,7 +15,6 @@ import type {
 } from "../packages/core/src/project.ts";
 import {
   createProjectFolder,
-  currentProjectSessionMode,
   downloadProjectFile,
   projectWorkspaceManifest,
   SharedSaveBlockedError,
@@ -37,7 +35,7 @@ import type {
   WorkspaceResumeOutcome,
 } from "./project-workspace.client.ts";
 import { LEGACY_FOLDER_SAVE_BLOCKED_MESSAGE, readProjectManifest } from "./workbench/project-manifest.ts";
-import type { ProjectManifestFormat, ProjectSessionMode } from "./workbench/project-manifest.ts";
+import type { ProjectManifestFormat } from "./workbench/project-manifest.ts";
 import type { WorkbenchPromptDraftV1 } from "../packages/core/src/personal-workbench.ts";
 import type { UpgradeCarry } from "./workbench/personal-workbench-controller.ts";
 import {
@@ -77,7 +75,7 @@ export type ProjectStorageState =
   | { kind: "error"; displayPath: string }
   /** Another tab of this app is the project's editor; this one does not save. */
   | { kind: "secondary"; displayPath: string }
-  /** A legacy folder in a personal session takes no shared saves (S1). */
+  /** A legacy folder takes no shared saves (S1). */
   | { kind: "blocked"; displayPath: string; reason: string };
 
 /**
@@ -121,11 +119,10 @@ export type SharedWriteOutcome =
   | { kind: "conflict" | "failed" | "blocked"; message: string };
 
 /**
- * The open document's shared-assets session, sampled once per adoption (D2).
+ * The open document's shared-assets session, set once per adoption.
  * `adoption` matches `projectAdoption`, so the personal owner reopens on it.
  */
 export interface ProjectSession {
-  mode: ProjectSessionMode;
   projectId: ProjectFile["projectId"];
   adoption: number;
   /** The folder's manifest; absent without a folder. */
@@ -141,7 +138,7 @@ export interface ProjectWorkspaceHandleState {
   /** Absent until a document is adopted. */
   projectSession?: ProjectSession;
   /**
-   * A `personal` session on a legacy folder blocks shared saves (D4, S1).
+   * A legacy folder blocks shared saves (D4, S1).
    * Viewing, running, evidence writes and session-only edits still work.
    */
   sharedSaveBlockedReason?: string;
@@ -275,11 +272,6 @@ export function useProjectWorkspace(input: {
    * settles its selection for the document here, before the draft exists.
    */
   resolutionContextForAdoption(project: ProjectFile, adoption: ProjectDocumentAdoption): TemplateResolutionContext;
-  /**
-   * Writes the decision editor's draft into a document being saved (D42). The
-   * decision feature owns its draft, as the chat request owns `currentDraft`.
-   */
-  withDecisionDraft(project: ProjectFile): ProjectFile;
   /** Read from commands and saves, after the feature owners have rendered. */
   getUnsavedDraftReason(): string | undefined;
   /** Personal work a replacement would lose; read from commands, like the reason above. */
@@ -306,7 +298,6 @@ export function useProjectWorkspace(input: {
     createProject,
     currentDraft,
     onApplyDraft,
-    withDecisionDraft,
     getUnsavedDraftReason,
     getSessionOnlyWorkCount,
     persistSessionWork,
@@ -328,11 +319,10 @@ export function useProjectWorkspace(input: {
   const [mappedProfileIds, setMappedProfileIds] = useState<Record<string, string>>({});
   const [projectChangeVersion, setProjectChangeVersion] = useState(0);
   const [projectAdoption, setProjectAdoption] = useState(0);
-  // Sampled with each adoption and fixed for the session's life (D2).
+  // Set with each adoption and fixed for the session's life.
   const [projectSession, setProjectSession] = useState<Omit<ProjectSession, "adoption">>();
-  const sessionModeRef = useRef<ProjectSessionMode>("legacy");
   const sharedSaveBlockedReason =
-    projectWorkspace && projectSession?.mode === "personal" && projectSession.format?.kind === "legacy"
+    projectWorkspace && projectSession?.format?.kind === "legacy"
       ? LEGACY_FOLDER_SAVE_BLOCKED_MESSAGE
       : undefined;
   const [pendingProjectReplacement, setPendingProjectReplacement] =
@@ -539,9 +529,6 @@ export function useProjectWorkspace(input: {
    */
   async function writeShared(update: (current: ProjectFile) => ProjectFile): Promise<SharedWriteOutcome> {
     const workspace = projectWorkspaceRef.current;
-    if (sessionModeRef.current !== "personal") {
-      return { kind: "blocked", message: "Publication needs a personal workbench session." };
-    }
     let written: ProjectFile | undefined;
     if (workspace) {
       try {
@@ -769,9 +756,8 @@ export function useProjectWorkspace(input: {
 
   function materializeProject(): ProjectFile {
     const project = currentProjectDocument();
-    // A session document starts its own shared-assets session (D2).
-    sessionModeRef.current = currentProjectSessionMode();
-    setProjectSession({ mode: sessionModeRef.current, projectId: project.projectId, personalSeeds: [] });
+    // A session document starts its own shared-assets session.
+    setProjectSession({ projectId: project.projectId, personalSeeds: [] });
     advanceProjectChangeVersion();
     setProjectFile(project);
     setCurrentWorkspace(null, project.projectId);
@@ -864,11 +850,10 @@ export function useProjectWorkspace(input: {
 
   function currentProjectDocument(): ProjectFile {
     const project = projectFile ?? createProject();
-    // A personal session folds only the direct shared writes 2b does not
-    // separate (D15). Revision items, `defaults` and the decision draft reach
-    // the shared file only through publication.
-    if (sessionModeRef.current === "personal") return updateProjectTools(project, currentDraft());
-    return withDecisionDraft(updateProjectDraft(project, currentDraft()));
+    // Fold only the direct shared writes 2b does not separate (D15). Revision
+    // items, `defaults` and the decision draft reach the shared file only
+    // through publication.
+    return updateProjectTools(project, currentDraft());
   }
 
   function requireSavableDraft(): void {
@@ -893,8 +878,7 @@ export function useProjectWorkspace(input: {
     const adoption = options?.keepTabRole ? "refresh" : "replace";
     const manifest = workspace
       ? projectWorkspaceManifest(workspace)
-      : sessionManifest ?? { mode: currentProjectSessionMode(), personalSeeds: [] };
-    sessionModeRef.current = manifest.mode;
+      : sessionManifest ?? { personalSeeds: [] };
     const draft = projectDraft(project, input.resolutionContextForAdoption(project, adoption));
     const baseRequirementId = project.defaults.target.connectionRequirementId;
     const resolvedMappings = profileId
@@ -912,7 +896,6 @@ export function useProjectWorkspace(input: {
     advanceProjectChangeVersion();
     setProjectAdoption((current) => current + 1);
     setProjectSession({
-      mode: manifest.mode,
       projectId: project.projectId,
       ...(workspace && manifest.format ? { format: manifest.format } : {}),
       personalSeeds: manifest.personalSeeds,
@@ -991,7 +974,7 @@ export function useProjectWorkspace(input: {
 
   useEffect(() => {
     if (!projectWorkspace || !projectFile || !projectDirty) return;
-    // A legacy folder in a personal session takes no shared writes (S1).
+    // A legacy folder takes no shared writes (S1).
     if (sharedSaveBlockedReason) return;
     // Only the editor tab schedules writes; a secondary tab's would all fail.
     if (tabRole !== "editor" && tabRole !== "uncoordinated") return;
@@ -1167,7 +1150,7 @@ export function useProjectWorkspace(input: {
         );
         onSaved?.({ name: opened.project.name, destination: "folder" });
       } else {
-        downloadProjectFile(project, sessionModeRef.current);
+        downloadProjectFile(project);
         setProjectFile(project);
         setProjectDirty(false);
         setUnsavedDraftReason(undefined);
@@ -1321,7 +1304,7 @@ export function useProjectWorkspace(input: {
         }
         return;
       }
-      downloadProjectFile(project, sessionModeRef.current);
+      downloadProjectFile(project);
       setProjectFile(project);
       setProjectDirty(false);
       setUnsavedDraftReason(undefined);
@@ -1335,7 +1318,7 @@ export function useProjectWorkspace(input: {
   function exportProject(): void {
     try {
       requireSavableDraft();
-      downloadProjectFile(currentProjectDocument(), sessionModeRef.current);
+      downloadProjectFile(currentProjectDocument());
       setProjectError(undefined);
     } catch (error) {
       projectFailure(error, "Could not export the project.");
@@ -1346,14 +1329,13 @@ export function useProjectWorkspace(input: {
     const file = event.target.files?.[0];
     if (!file) return;
     try {
-      // A personal session opens a legacy import with its template drafts
-      // lifted into session-only personal drafts (S2).
-      const mode = currentProjectSessionMode();
-      const { project: imported, personalSeeds } = readProjectManifest(await file.text(), mode);
+      // A legacy import opens with its template drafts lifted into
+      // session-only personal drafts (S2).
+      const { project: imported, personalSeeds } = readProjectManifest(await file.text());
       requestProjectReplacement(imported.name, {
         fallbackError: "Could not import the project.",
         async perform() {
-          applyProjectDocument(imported, null, undefined, undefined, { mode, personalSeeds });
+          applyProjectDocument(imported, null, undefined, undefined, { personalSeeds });
         },
       });
     } catch (error) {

@@ -38,14 +38,13 @@ export interface ChatBranchSource {
 }
 
 /**
- * Which record the composer edits in a `personal` session: a clean saved
+ * Which record the composer edits in a project session: a clean saved
  * revision, its request draft, or a scratch (I4; docs/SHARED_ASSETS_LEVEL_TWO_DESIGN.md,
  * "Step 3 decisions"). Composer edits become a draft or scratch update, Save
  * publishes it, and a branch creates a scratch. `usePendingBranch` keeps only
- * the legacy session's run provenance.
+ * the session-less path's run provenance.
  *
- * Disabled in a legacy session or without a project: every caller then takes
- * today's path.
+ * Disabled without a project: every caller then takes the session-less path.
  */
 export interface ChatRequestRecordHandle {
   enabled: boolean;

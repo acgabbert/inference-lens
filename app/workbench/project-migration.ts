@@ -18,9 +18,9 @@ import type { ProjectId } from "../../packages/core/src/run-kernel/types.ts";
 import { planSharedProjectMigration } from "../../packages/core/src/shared-project-migration.ts";
 
 /**
- * The migration owner's protocol (I2), apart from React. It is the only caller
- * of migration completion while the gate is on, and runs only in a `personal`
- * session (docs/SHARED_ASSETS_LEVEL_TWO_DESIGN.md, "Step 6 decisions").
+ * The migration owner's protocol (I2), apart from React. It is the only
+ * application caller of migration completion
+ * (docs/SHARED_ASSETS_LEVEL_TWO_DESIGN.md, "Step 6 decisions").
  *
  * Nothing here reopens the project or touches personal records: the owner
  * reports what happened and the workspace reopens the folder.

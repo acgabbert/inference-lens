@@ -23,8 +23,8 @@ export interface UseProjectEnvironmentsInput {
    */
   applyEnvironment(environmentId: EnvironmentId | undefined, project?: ProjectFile): void;
   /**
-   * A personal session's choice (2b step 5): `chat.execution.environmentId`
-   * over the launch default. Absent in a legacy session.
+   * A project session's choice (2b step 5): `chat.execution.environmentId`
+   * over the launch default. Absent without a project.
    */
   personal?: { selectedId: EnvironmentId | undefined; select(environmentId: EnvironmentId | undefined): void };
 }

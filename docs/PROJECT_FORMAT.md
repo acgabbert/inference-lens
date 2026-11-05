@@ -2,8 +2,16 @@
 
 Inference Lens projects use a visible `<name>.inference-lens/` directory bundle
 containing one canonical, portable JSON document named `project.json`. New
-saves use schema version 18. The parser also opens versions 10, 11, 12, 13, 14,
-15, 16 and 17 and upgrades them on load. From v10, the protocol it kept on each connection
+saves use schema version 19: the shared definitions of v18, with no prompt
+`draft`. Drafts, scratch requests and selections are personal records in the
+bundle's `.workbench/` folder, which `project.json` never holds
+([Level 2 design](SHARED_ASSETS_LEVEL_TWO_DESIGN.md)). The app reads a v10–v18
+folder but saves no shared change to it until **Upgrade project…** rewrites it
+as v19 and moves its drafts into `.workbench/`; a v10–v18 JSON import opens
+with its drafts held for the session only. The CLI opens v19 and, in memory
+without writing, v10–v18. In memory the app still labels the document v18,
+and the parser opens versions 10, 11, 12, 13, 14, 15, 16 and 17 and upgrades
+them on load. From v10, the protocol it kept on each connection
 requirement (always chat completions) moves onto every execution target that
 names that requirement — the project default and each suite's
 `execution.target` — and the requirement loses the field. See
@@ -54,12 +62,13 @@ baseline pins, case-source annotations, and future artifact directories by
 default. Opening a clone with just the manifest and policy needs no run history;
 running creates local evidence without registering trace paths in the manifest.
 
-**Everything in `project.json` is shared**, including persisted prompt drafts,
-saved input/default values, tools, mock fixtures, imports, and historical or
-archived revisions. Evidence copied into a saved asset also becomes authored
-content in the manifest. This preset does not yet separate personal drafts and
-experimental settings from reusable definitions. See the
-[shared-assets plan](SHARED_ASSETS_PERSONAL_WORKBENCH_PLAN.md) for that later work.
+**Everything in `project.json` is shared**, including saved input/default
+values, tools, mock fixtures, imports, and historical or archived revisions.
+Evidence copied into a saved asset also becomes authored content in the
+manifest. From v19, drafts stay in `.workbench/`, which this preset excludes.
+Suites, tools, mocks and environments are still edited in `project.json`
+directly. See the [shared-assets plan](SHARED_ASSETS_PERSONAL_WORKBENCH_PLAN.md)
+for that later work.
 
 The browser and native adapters write the selected policy before project
 content. The policy is creation-only workspace metadata, outside the project document;
@@ -598,7 +607,8 @@ The schema and serializer do not know about paths or platform handles.
 
 - A supported browser asks the user for a directory and reads or writes the
   manifest directly through the File System Access API.
-- Other browsers use explicit JSON import and export.
+- Other browsers use explicit JSON import and export. An export is v19 shared
+  definitions and leaves out unsaved drafts.
 - Tauri opens a native directory picker and keeps authorized paths in Rust.
   The webview receives an opaque workspace ID, never a writable path.
 

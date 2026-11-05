@@ -68,7 +68,7 @@ export function useProjectMigration(input: {
   reopen(upgrade?: UpgradeCarry, expectedManifest?: string): Promise<boolean>;
 }): ProjectMigrationHandle {
   const { session, workspace, editable } = input;
-  const personal = session?.mode === "personal" && workspace ? session : undefined;
+  const personal = workspace ? session : undefined;
   const available = Boolean(personal && personal.format?.kind === "legacy" && editable);
   // Each piece of state names the adoption or project it belongs to, so a
   // later adoption hides it while rendering rather than resetting it in an effect.

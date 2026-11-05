@@ -82,6 +82,12 @@ the rule that whichever lands first takes the next number. This feature
 therefore takes **RunTrace v11 and ExperimentPlan v8**; Project v19 is
 unchanged. No version is skipped.
 
+**Revised 2026-11-05: Project v20.** The shared format landed first: the app
+writes [Project v19](SHARED_ASSETS_LEVEL_TWO_DESIGN.md#step-8-decisions-approved-november-5-2026),
+the shared definitions without prompt drafts. This feature therefore takes
+**Project v20**, derived from v19. RunTrace v11 and ExperimentPlan v8 are
+unchanged. No version is skipped.
+
 ### D2. Where the adopted message's attribution lives
 
 The agreed policy materializes a "clearly attributed" assistant message when a

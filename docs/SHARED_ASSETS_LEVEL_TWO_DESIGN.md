@@ -2347,3 +2347,16 @@ these and records the outcome here:
 6. Run `inference-lens run` on the upgraded folder.
 
 8b removes the gate.
+
+#### Decided for 8b (November 5, 2026)
+
+The user approved both before 8b started.
+
+- **The in-memory label stays v18 for now.** 8b makes v19 the only format the
+  app writes and says so in `PROJECT_FORMAT.md`. `PROJECT_SCHEMA_VERSION`, the
+  core parser chain, the v19 shared parser and the CLI's legacy path all
+  depend on the in-memory label being 18, so moving it is a follow-up slice
+  with its own review. The manifest boundary keeps relabeling until then.
+- **One pull request.** 8a was never opened as its own PR, so 8a and 8b land
+  together, with 8b in its own commits. Reverting those commits rolls back
+  8b alone, as Z1-A intended.

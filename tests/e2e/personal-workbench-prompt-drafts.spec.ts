@@ -1,5 +1,5 @@
 /**
- * Shared assets 2b step 2, behind the gate (D2): prompt drafts live in the
+ * Shared assets 2b step 2: prompt drafts live in the
  * folder's `.workbench/`, and only Save writes `project.json`
  * (docs/SHARED_ASSETS_LEVEL_TWO_DESIGN.md, "Step 2 decisions").
  */
@@ -21,8 +21,6 @@ import {
   stubProjectDirectory,
   waitForHydration,
 } from "./support";
-
-test.use({ personalWorkbench: true });
 
 function fixtureProject(): ProjectFile {
   const project = createProjectFile({
@@ -78,7 +76,7 @@ const draftFiles = (files: Record<string, string>) =>
   Object.entries(files).filter(([path]) => path.startsWith(".workbench/drafts/"));
 
 test("a prompt edit is a personal draft until Save publishes it to project.json", async ({ page }) => {
-  const manifest = serializeProjectManifest(fixtureProject(), "personal");
+  const manifest = serializeProjectManifest(fixtureProject());
   await openFolder(page, manifest);
   await openMode(page, "Prompts");
   const editor = page.locator(".template-editor");
@@ -123,7 +121,7 @@ test("a legacy folder opens with its prompt draft, but nothing is written to it"
   await openMode(page, "Prompts");
   const editor = page.locator(".template-editor");
   await expect(editor.getByLabel("Prompt content")).toHaveValue("Triage {{incident}} from the legacy draft.");
-  await editor.getByLabel("Prompt content").fill("Triage {{incident}} edited in a gated session.");
+  await editor.getByLabel("Prompt content").fill("Triage {{incident}} edited in a personal session.");
   // Session-only: no .workbench/, and project.json keeps its v18 bytes.
   await page.waitForTimeout(1_500);
   const files = await folderFiles(page);
@@ -132,7 +130,7 @@ test("a legacy folder opens with its prompt draft, but nothing is written to it"
 });
 
 test("export says unsaved drafts are not included, and the copy carries none (step 8a)", async ({ page }) => {
-  const manifest = serializeProjectManifest(fixtureProject(), "personal");
+  const manifest = serializeProjectManifest(fixtureProject());
   await openFolder(page, manifest);
   await openMode(page, "Prompts");
   await page.locator(".template-editor").getByLabel("Prompt content").fill("Triage {{incident}} in a draft.");

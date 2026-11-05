@@ -69,7 +69,7 @@ export type {
  * (docs/SHARED_ASSETS_LEVEL_TWO_DESIGN.md, "Delivery inside the gate").
  */
 export interface PersonalWorkbenchHandle {
-  /** False in a legacy session: every owner takes today's path. */
+  /** False until a project session exists: without one, every owner takes its session-less path. */
   enabled: boolean;
   status: PersonalWorkbenchStatus;
   /** Counts the controller's changes, for a view that reads a record outside render, such as Compare. */
@@ -186,7 +186,7 @@ export function usePersonalWorkbench(input: {
     writeSharedRef.current = input.writeShared;
   });
 
-  const personalSession = input.session?.mode === "personal" ? input.session : undefined;
+  const personalSession = input.session;
   const sessionRef = useRef(personalSession);
   useEffect(() => {
     sessionRef.current = personalSession;

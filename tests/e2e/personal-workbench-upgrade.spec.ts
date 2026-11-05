@@ -1,5 +1,5 @@
 /**
- * Shared assets 2b step 6a, behind the gate (D2): a pre-v19 folder upgrades
+ * Shared assets 2b step 6a: a pre-v19 folder upgrades
  * through a preview, stages its source and drafts in `.workbench/migrations/`,
  * writes v19 and reopens as a shared session. Edits made to the lifted drafts
  * before the upgrade carry over (V2)
@@ -24,8 +24,6 @@ import {
   stubProjectDirectory,
   waitForHydration,
 } from "./support";
-
-test.use({ personalWorkbench: true });
 
 function legacyProject(): ProjectFile {
   const project = createPromptTemplate(createProjectFile({
