@@ -16,6 +16,7 @@ import type { ProjectFile } from "../../packages/core/src/project";
 import { serializeProjectManifest } from "../../app/workbench/project-manifest";
 import {
   BUFFERED_FIXTURE_ENDPOINT,
+  importProject,
   openMode,
   seedProfile,
   stubProjectDirectory,
@@ -144,4 +145,18 @@ test("export says unsaved drafts are not included, and the copy carries none (st
   expect(exported.schemaVersion).toBe(19);
   expect(exported.promptTemplates[0].draft).toBeUndefined();
   expect(exported.promptTemplates[0].revisions[0].messages[0].content).toBe("Triage {{incident}}.");
+});
+
+test("importing the project's JSON over its folder shows the imported text, not the folder's draft", async ({ page }) => {
+  const manifest = serializeProjectManifest(fixtureProject());
+  await openFolder(page, manifest);
+  await openMode(page, "Prompts");
+  const editor = page.locator(".template-editor");
+  await editor.getByLabel("Prompt content").fill("Triage {{incident}} in the folder's draft.");
+  await expect.poll(async () => draftFiles(await folderFiles(page)).length).toBe(1);
+
+  // The draft is in the folder's .workbench/, which the import does not have.
+  await importProject(page, fixtureProject(), "Personal drafts fixture");
+  await expect(page.locator(".brand")).toContainText("Session only");
+  await expect(editor.getByLabel("Prompt content")).toHaveValue("Triage {{incident}}.");
 });

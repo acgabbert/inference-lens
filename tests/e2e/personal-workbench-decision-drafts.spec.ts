@@ -59,7 +59,7 @@ function fixtureProject(withRequest: boolean): ProjectFile {
   });
 }
 
-async function openFolder(page: Page, manifest: string, extraFiles: Record<string, string> = {}): Promise<void> {
+async function seedDecisionProfiles(page: Page): Promise<void> {
   await seedProfiles(page, [
     { id: "buffered", instanceId: "buffered-instance", name: "Buffered fixture", endpoint: BUFFERED_FIXTURE_ENDPOINT },
     {
@@ -71,6 +71,10 @@ async function openFolder(page: Page, manifest: string, extraFiles: Record<strin
       systemOne: true,
     },
   ], "buffered");
+}
+
+async function openFolder(page: Page, manifest: string, extraFiles: Record<string, string> = {}): Promise<void> {
+  await seedDecisionProfiles(page);
   await stubProjectDirectory(page, { name: "personal-decisions", files: { "project.json": manifest, ...extraFiles }, directories: ["traces"] });
   await page.goto("/");
   await waitForHydration(page);
@@ -288,4 +292,36 @@ test("Replace with example loads the example over an invalid edit", async ({ pag
   await pane.getByRole("tab", { name: "JSON" }).first().click();
   await expect(editor).not.toHaveValue("{ not json");
   expect(Object.keys(JSON.parse(await editor.inputValue()).questions)).toEqual(["intent", "severity", "is_spam"]);
+});
+
+test("a decision authored before any project is open survives the first save to a folder", async ({ page }) => {
+  await seedDecisionProfiles(page);
+  await stubProjectDirectory(page, { name: "Projects", files: {} });
+  await page.goto("/");
+  await waitForHydration(page);
+  await page.getByRole("radio", { name: "Decision" }).click();
+  const pane = decisionPane(page);
+  await pane.getByRole("tab", { name: "JSON" }).first().click();
+  const editor = page.getByLabel("Decision input (state and questions)");
+  await editor.fill(JSON.stringify(templated, null, 2));
+  const variables = pane.getByRole("region", { name: "Variables" });
+  await variables.getByLabel("{{ticket}}").fill(capturedValues.ticket);
+  await variables.getByLabel("{{plan}}").fill(capturedValues.plan);
+
+  // No personal record exists yet, so the first save writes the authored
+  // request into the new project, as it does the chat request.
+  await page.getByLabel("Project menu").click();
+  await page.getByRole("button", { name: /^Save project to folder…/ }).click();
+  await page.getByRole("dialog", { name: "Save this project" })
+    .getByRole("button", { name: "Save to folder…", exact: true }).click();
+  await expect(page.locator(".brand")).toContainText("Saved to");
+
+  await pane.getByRole("tab", { name: "JSON" }).first().click();
+  expect(JSON.parse(await editor.inputValue())).toEqual(templated);
+  await expect(variables.getByLabel("{{ticket}}")).toHaveValue(capturedValues.ticket);
+  const files = await folderFiles(page);
+  const [, manifest] = Object.entries(files).find(([path]) => path.endsWith("project.json"))!;
+  const saved = JSON.parse(manifest);
+  expect(saved.decisionRequestRevisions).toHaveLength(1);
+  expect(saved.decisionRequestRevisions[0]).toMatchObject({ kind: "inline", decision: templated, values: capturedValues });
 });

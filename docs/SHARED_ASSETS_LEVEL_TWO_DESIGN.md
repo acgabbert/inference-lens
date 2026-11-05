@@ -2404,6 +2404,26 @@ code, each fixed with a case that failed first:
   without them. Found by `ui-ux-workflow-review.spec.ts`, which failed on the
   error overlay.
 
+Review of the pull request found two more, each fixed with a case that failed
+first:
+
+- **The first save of a session with no project lost its decision request.**
+  Removing the decision fold left nothing to hold a request authored before
+  any project existed, so the save's adoption reset the editor to the empty
+  starter. A document created from a session with no project now folds the
+  decision draft again, as it takes the chat request; once a project is open
+  the draft still reaches `project.json` only through publication. New case
+  in `personal-workbench-decision-drafts.spec.ts`.
+- **Importing JSON over a folder showed the folder's prompt draft.** Render
+  reads keep a folder session's controller until the next one opens, so the
+  prompt editor, remounted for the import, copied a draft the imported session
+  does not have, and nothing remounted it once the session-only controller
+  opened. The personal owner now says whether its controller is the one
+  opened for the current session (`current`), and Prompts treats a stale one
+  as still loading. Reads stay as they were, since hiding a folder session's
+  controller from every owner is what reset the composer during a link
+  handoff. New case in `personal-workbench-prompt-drafts.spec.ts`.
+
 Rewritten cases, by the v19 behavior they now assert:
 
 - **Folders seed v19.** A new `serializeFolderProject` / `parseFolderProject`

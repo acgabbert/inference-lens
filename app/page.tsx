@@ -304,6 +304,8 @@ function HomeContent() {
       const environment = document.environments.find(({ id }) => id === environmentId);
       return environment ? { environment } : {};
     },
+    // Only for a save with no project open; see `withDecisionDraft`.
+    withDecisionDraft(document) { return decision.project.fold(document); },
     getUnsavedDraftReason() { return decision.project.saveBlockedReason; },
     // The personal owner is declared below and read only from commands (Z3).
     getSessionOnlyWorkCount() { return personalWorkbench.sessionOnlyWorkCount(); },
@@ -1781,8 +1783,10 @@ function HomeContent() {
             updateProfile,
           }}
           // The prompt editor copies its draft when it mounts, so it remounts
-          // once a folder's personal records finish loading.
-          key={`${project.projectAdoption}:${personalWorkbench.status.kind === "loading" ? "loading" : "loaded"}`}
+          // once this session's personal records finish loading. Until its
+          // controller opens, reads may still answer from the previous
+          // session's folder, such as the one a JSON import replaced.
+          key={`${project.projectAdoption}:${!personalWorkbench.current || personalWorkbench.status.kind === "loading" ? "loading" : "loaded"}`}
           {...(projectFile ? { project: projectFile } : {})}
           templates={projectTemplates}
           decision={decision}

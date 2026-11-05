@@ -72,6 +72,12 @@ export interface PersonalWorkbenchHandle {
   /** False until a project session exists: without one, every owner takes its session-less path. */
   enabled: boolean;
   status: PersonalWorkbenchStatus;
+  /**
+   * False from an adoption's first render until the controller opened for it
+   * replaces the previous one. Until then reads may still answer from the
+   * previous session, so a view that copies a draft once on mount waits.
+   */
+  current: boolean;
   /** Counts the controller's changes, for a view that reads a record outside render, such as Compare. */
   revision: number;
   /** One active draft per asset (D6). */
@@ -177,9 +183,10 @@ export function usePersonalWorkbench(input: {
   writeShared(update: (current: ProjectFile) => ProjectFile): Promise<SharedWriteOutcome>;
 }): PersonalWorkbenchHandle {
   const [controller, setController] = useState<PersonalWorkbenchController | null>(null);
-  // The session key the controller was opened for. A new adoption renders
-  // before the effect below replaces the controller.
-  const [controllerKey, setControllerKey] = useState<string>();
+  // The session key and folder the controller was opened for. A new adoption
+  // renders before the effect below replaces the controller.
+  const [opened, setOpened] = useState<{ key: string; storage: WorkbenchStorage | null }>();
+  const controllerKey = opened?.key;
   const [revision, setRevision] = useState(0);
   const controllerRef = useRef<PersonalWorkbenchController | null>(null);
   const sharedRef = useRef(input.shared);
@@ -208,7 +215,7 @@ export function usePersonalWorkbench(input: {
     if (!personal) {
       controllerRef.current = null;
       setController(null);
-      setControllerKey(undefined);
+      setOpened(undefined);
       if (previous) void previous.flush().finally(() => previous.close());
       return;
     }
@@ -229,7 +236,7 @@ export function usePersonalWorkbench(input: {
     });
     controllerRef.current = next;
     setController(next);
-    setControllerKey(sessionKey);
+    setOpened({ key: sessionKey!, storage });
     let cancelled = false;
     void (async () => {
       // The outgoing session's queued writes land before the new one reads.
@@ -273,6 +280,7 @@ export function usePersonalWorkbench(input: {
   return {
     enabled: Boolean(personalSession),
     status: live?.status ?? OFF,
+    current: !personalSession || (controllerKey === sessionKey && opened?.storage === storage),
     revision,
     draftFor: (asset) => live?.draftFor(asset),
     unsavedDrafts: live?.unsavedDrafts ?? [],

@@ -279,6 +279,14 @@ export function useProjectWorkspace(input: {
    * settles its selection for the document here, before the draft exists.
    */
   resolutionContextForAdoption(project: ProjectFile, adoption: ProjectDocumentAdoption): TemplateResolutionContext;
+  /**
+   * Writes the decision editor's draft into the document a save creates when
+   * no project is open (D42). There is no personal record to hold it yet, so
+   * it becomes the new project's request, as the chat request does. Once a
+   * project is open the draft reaches the shared file only through
+   * publication.
+   */
+  withDecisionDraft(project: ProjectFile): ProjectFile;
   /** Read from commands and saves, after the feature owners have rendered. */
   getUnsavedDraftReason(): string | undefined;
   /** Personal work a replacement would lose; read from commands, like the reason above. */
@@ -305,6 +313,7 @@ export function useProjectWorkspace(input: {
     createProject,
     currentDraft,
     onApplyDraft,
+    withDecisionDraft,
     getUnsavedDraftReason,
     getSessionOnlyWorkCount,
     persistSessionWork,
@@ -856,11 +865,13 @@ export function useProjectWorkspace(input: {
   }
 
   function currentProjectDocument(): ProjectFile {
-    const project = projectFile ?? createProject();
+    // A document created from a session with no project takes what is on
+    // screen, the decision request included: nothing else holds it yet.
+    if (!projectFile) return withDecisionDraft(updateProjectTools(createProject(), currentDraft()));
     // Fold only the direct shared writes 2b does not separate (D15). Revision
     // items, `defaults` and the decision draft reach the shared file only
     // through publication.
-    return updateProjectTools(project, currentDraft());
+    return updateProjectTools(projectFile, currentDraft());
   }
 
   function requireSavableDraft(): void {
