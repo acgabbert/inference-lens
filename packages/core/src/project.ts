@@ -1118,20 +1118,20 @@ const sourceRootRequirementSchema: z.ZodType<SourceRootRequirement> = z
 
 /** v18 and v19 differ only in their version and whether a template may hold a draft. */
 const projectFileFields = {
-    projectId: entityId("project"),
-    name: z.string().trim().min(1),
-    connectionRequirements: z.array(connectionRequirementSchema).min(1),
-    conversations: z.array(projectConversationSchema).min(1),
-    conversationRevisions: z.array(projectConversationRevisionSchema).min(1),
-    tools: z.array(toolDefinitionSchema),
-    toolMocks: z.array(toolMockSchema),
-    externalImports: z.array(externalImportReceiptSchema),
-    evaluationSuites: z.array(evaluationSuiteSchema),
-    decisionRequests: z.array(decisionRequestSchema),
-    decisionRequestRevisions: z.array(decisionRequestRevisionSchema),
-    environments: z.array(projectEnvironmentSchema),
-    sourceRoots: z.array(sourceRootRequirementSchema),
-    defaults: projectDefaultsSchema,
+  projectId: entityId("project"),
+  name: z.string().trim().min(1),
+  connectionRequirements: z.array(connectionRequirementSchema).min(1),
+  conversations: z.array(projectConversationSchema).min(1),
+  conversationRevisions: z.array(projectConversationRevisionSchema).min(1),
+  tools: z.array(toolDefinitionSchema),
+  toolMocks: z.array(toolMockSchema),
+  externalImports: z.array(externalImportReceiptSchema),
+  evaluationSuites: z.array(evaluationSuiteSchema),
+  decisionRequests: z.array(decisionRequestSchema),
+  decisionRequestRevisions: z.array(decisionRequestRevisionSchema),
+  environments: z.array(projectEnvironmentSchema),
+  sourceRoots: z.array(sourceRootRequirementSchema),
+  defaults: projectDefaultsSchema,
 };
 const refineProjectFile = (project: ProjectFileV18 | ProjectFileV19, context: z.RefinementCtx) => {
   validateProjectReferences(project, context);
