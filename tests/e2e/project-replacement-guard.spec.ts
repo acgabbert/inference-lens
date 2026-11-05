@@ -10,7 +10,6 @@ import {
   importProject,
   openMode,
   seedProfile,
-  serializeFolderProject,
   stubProjectDirectory,
   waitForHydration,
 } from "./support";
@@ -98,7 +97,7 @@ test("open and new use the same replacement guard", async ({ page }) => {
   await seedProfile(page);
   await stubProjectDirectory(page, {
     name: "folder-replacement.inference-lens",
-    files: { "project.json": serializeFolderProject(replacement) },
+    files: { "project.json": serializeProjectFile(replacement) },
   });
   await page.goto("/");
   await waitForHydration(page);
@@ -135,7 +134,7 @@ test("a folder's prompt draft survives switching without a question", async ({ p
   await seedProfile(page);
   await stubProjectDirectory(page, {
     name: "folder-original.inference-lens",
-    files: { "project.json": serializeFolderProject(original) },
+    files: { "project.json": serializeProjectFile(original) },
   });
   await page.goto("/");
   await waitForHydration(page);
@@ -208,7 +207,7 @@ test("a failed save keeps the current project and replacement decision", async (
   await seedProfile(page);
   await stubProjectDirectory(page, {
     name: "failing-folder.inference-lens",
-    files: { "project.json": serializeFolderProject(original) },
+    files: { "project.json": serializeProjectFile(original) },
     writeError: "Fixture refused the write.",
   });
   await page.goto("/");
@@ -246,7 +245,7 @@ test("the replacement guard follows the modal contract", async ({ page }) => {
   await seedProfile(page);
   await stubProjectDirectory(page, {
     name: "folder-replacement.inference-lens",
-    files: { "project.json": serializeFolderProject(replacement) },
+    files: { "project.json": serializeProjectFile(replacement) },
   });
   await page.goto("/");
   await waitForHydration(page);

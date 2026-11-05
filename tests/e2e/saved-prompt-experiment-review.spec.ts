@@ -1,11 +1,11 @@
 import { readFile } from "node:fs/promises";
-import { parseSharedProjectJson, sharedProjectAsActive } from "../../packages/core/src/shared-project";
 import { expect, test } from "./support/test";
 import {
   appendPromptTemplateRevision,
   createProjectFile,
   createPromptTemplate,
   insertPromptTemplateUse,
+  parseProjectJson,
 } from "../../packages/core/src/project";
 import {
   BUFFERED_FIXTURE_ENDPOINT,
@@ -102,7 +102,7 @@ test("review: a composite prompt suite retains named value combinations across e
   await page.getByRole("button", { name: "Export JSON copy…", exact: true }).click();
   const path = testInfo.outputPath("project.json");
   await (await download).saveAs(path);
-  const saved = sharedProjectAsActive(parseSharedProjectJson(await readFile(path, "utf8")));
+  const saved = parseProjectJson(await readFile(path, "utf8"));
   const suite = saved.evaluationSuites[0]!;
   expect(suite.input.kind).toBe("conversation-revision");
   if (suite.input.kind !== "conversation-revision") throw new Error("Expected a chat suite");

@@ -9,10 +9,9 @@ import { expect, test } from "./support/test";
 import {
   createProjectFile,
   createPromptTemplate,
-  serializeProjectFile,
-  updatePromptTemplateDraft,
 } from "../../packages/core/src/project";
 import type { ProjectFile } from "../../packages/core/src/project";
+import { serializeLegacyProjectFile, withLegacyPromptDraft } from "../legacy-project-helpers";
 import { serializeProjectManifest } from "../../app/workbench/project-manifest";
 import {
   BUFFERED_FIXTURE_ENDPOINT,
@@ -108,13 +107,12 @@ test("a prompt edit is a personal draft until Save publishes it to project.json"
 });
 
 test("a legacy folder opens with its prompt draft, but nothing is written to it", async ({ page }) => {
-  const project = updatePromptTemplateDraft(fixtureProject(), {
-    templateId: "template_triage",
+  const project = withLegacyPromptDraft(fixtureProject(), "template_triage", {
     sourceRevisionId: "template-revision_triage-1",
     messages: [{ role: "user", content: "Triage {{incident}} from the legacy draft." }],
     variableDefaults: { incident: "timeout" },
   });
-  const manifest = serializeProjectFile(project);
+  const manifest = serializeLegacyProjectFile(project);
   expect(JSON.parse(manifest).schemaVersion).toBe(18);
   await openFolder(page, manifest);
   await expect(page.locator(".brand")).toContainText("Not saved — folder needs upgrading");

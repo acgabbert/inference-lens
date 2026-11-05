@@ -1,8 +1,8 @@
 import { readFileSync } from "node:fs";
 import { expect, test } from "./support/test";
-import { createProjectFile, createPromptTemplate, setPromptTemplateRecommendedTarget, type ProjectFile } from "../../packages/core/src/project";
+import { createProjectFile, createPromptTemplate, setPromptTemplateRecommendedTarget, type ProjectFile, serializeProjectFile } from "../../packages/core/src/project";
 import { createDecisionPromptTemplate, appendDecisionPromptTemplateRevision } from "../../packages/core/src/decision-template";
-import { BUFFERED_FIXTURE_ENDPOINT, SYSTEM_ONE_FIXTURE_ORIGIN, importProject, openMode, seedProfile, seedProfiles, stubProjectDirectory, waitForHydration, serializeFolderProject } from "./support";
+import { BUFFERED_FIXTURE_ENDPOINT, SYSTEM_ONE_FIXTURE_ORIGIN, importProject, openMode, seedProfile, seedProfiles, stubProjectDirectory, waitForHydration } from "./support";
 
 const capture = JSON.parse(readFileSync(new URL("../fixtures/system-one/llamacpp-all-types.json", import.meta.url), "utf8")).request;
 const decision = { state: "{{ticket}}", questions: capture.questions };
@@ -120,7 +120,7 @@ test("pinned revisions run through capture replay, review updates, detach and re
     { id: "buffered", instanceId: "buffered", name: "Buffered fixture", endpoint: BUFFERED_FIXTURE_ENDPOINT },
     { id: "decisions", instanceId: "decisions", name: "Decision fixture", endpoint: `${SYSTEM_ONE_FIXTURE_ORIGIN}/llamacpp/v1`, systemOne: true },
   ], "buffered");
-  await stubProjectDirectory(page, { name: "saved-decisions.inference-lens", files: { "project.json": serializeFolderProject(fixture()) } });
+  await stubProjectDirectory(page, { name: "saved-decisions.inference-lens", files: { "project.json": serializeProjectFile(fixture()) } });
   await page.goto("/");
   await waitForHydration(page);
   await page.getByLabel("Project menu").click();
@@ -231,7 +231,7 @@ test("Compose capture retains tokens and values, and invalid request replacement
 
 test("captured defaults stay in a session draft until the author chooses to save", async ({ page }) => {
   await seedProfile(page);
-  await stubProjectDirectory(page, { name: "capture-review.inference-lens", files: { "project.json": serializeFolderProject(fixture()) } });
+  await stubProjectDirectory(page, { name: "capture-review.inference-lens", files: { "project.json": serializeProjectFile(fixture()) } });
   await page.goto("/");
   await waitForHydration(page);
   await page.getByLabel("Project menu").click();
