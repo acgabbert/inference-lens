@@ -1885,3 +1885,27 @@ inventory is unavailable". The Rust tests
 `native_recovery_paths_live_beside_records_and_keep_migration_inventory_readable`
 and the two backup-removal tests failed against a stub. The link-refusal test
 passed against the stub as well, so it was never shown failing.
+
+### Step 6b-2 decisions (approved November 5, 2026)
+
+The user approved four answers about the drawer's surface, which D8, V4 and W4
+left open. All of them apply only with the gate on.
+
+- **X1. The chip sits in the topbar's header actions.** It reads
+  "Recovery · N" while N items are pending, and "Migration backup" when
+  nothing is pending but a backup can be removed or its removal finished. It
+  is hidden otherwise. Removing a backup therefore stays reachable after the
+  last item is settled.
+- **X2. Compare is a JSON line diff.** Each side is stable-formatted JSON,
+  shown as a line diff with the existing folded diff view. One code path
+  serves every item kind: drafts, selections, scratch and saved revisions.
+- **X3. Pane marks link to the drawer.** A marked prompt's row in the
+  Templates list carries a "Needs recovery" line, and a marked request's entry
+  in the request switcher reads "· needs recovery". The affected editor shows a
+  notice at the top of its scroll area with "Open Recovery", which opens the
+  drawer on that asset's items.
+- **X4. Discard confirms when it deletes the only copy.** It asks first for a
+  session copy held in memory, a replaced or stored competing draft, this
+  window's copy in a record conflict, an orphaned draft and a publication
+  conflict's edits. Discarding a migration candidate only records `discarded`,
+  and the backup keeps it, so it acts at once.
