@@ -251,7 +251,6 @@
   margin: 0;
   padding: 0 var(--space-sm) var(--space-xs);
   color: var(--text-muted);
-  font-size: var(--type-metadata);
 }
 
 .menu-separator {
