@@ -2,8 +2,8 @@ import { readFileSync } from "node:fs";
 import { expect, test, type Page } from "./support/test";
 import { createDecisionPromptTemplate } from "../../packages/core/src/decision-template";
 import { updateDecisionRequestDraft } from "../../packages/core/src/decision-request";
-import { createProjectFile, serializeProjectFile, type ProjectFile } from "../../packages/core/src/project";
-import { SYSTEM_ONE_FIXTURE_ORIGIN, openMode, primaryAction, seedProfiles, stubProjectDirectory, waitForHydration } from "./support";
+import { createProjectFile, type ProjectFile } from "../../packages/core/src/project";
+import { SYSTEM_ONE_FIXTURE_ORIGIN, openMode, primaryAction, seedProfiles, stubProjectDirectory, waitForHydration, serializeFolderProject } from "./support";
 import { expectModalContract } from "./support/modal";
 
 const capture = JSON.parse(readFileSync(new URL("../fixtures/system-one/llamacpp-all-types.json", import.meta.url), "utf8")).request;
@@ -19,7 +19,7 @@ function fixture() {
 async function open(page: Page, project = fixture()) {
   await seedProfiles(page, [{ id: "decisions", instanceId: "decisions", name: "Decision fixture", endpoint, model: "all-types", systemOne: true }], "decisions");
   await page.setViewportSize({ width: 1440, height: 900 });
-  await stubProjectDirectory(page, { name: "prompt-eval.inference-lens", files: { "project.json": serializeProjectFile(project) } });
+  await stubProjectDirectory(page, { name: "prompt-eval.inference-lens", files: { "project.json": serializeFolderProject(project) } });
   await page.goto("/");
   await waitForHydration(page, "Decision fixture");
   await page.getByLabel("Project menu").click();

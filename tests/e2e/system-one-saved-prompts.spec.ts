@@ -1,8 +1,8 @@
 import { readFileSync } from "node:fs";
 import { expect, test } from "./support/test";
-import { createProjectFile, createPromptTemplate, serializeProjectFile, setPromptTemplateRecommendedTarget, type ProjectFile } from "../../packages/core/src/project";
+import { createProjectFile, createPromptTemplate, setPromptTemplateRecommendedTarget, type ProjectFile } from "../../packages/core/src/project";
 import { createDecisionPromptTemplate, appendDecisionPromptTemplateRevision } from "../../packages/core/src/decision-template";
-import { BUFFERED_FIXTURE_ENDPOINT, SYSTEM_ONE_FIXTURE_ORIGIN, importProject, openMode, seedProfile, seedProfiles, stubProjectDirectory, waitForHydration } from "./support";
+import { BUFFERED_FIXTURE_ENDPOINT, SYSTEM_ONE_FIXTURE_ORIGIN, importProject, openMode, seedProfile, seedProfiles, stubProjectDirectory, waitForHydration, serializeFolderProject } from "./support";
 
 const capture = JSON.parse(readFileSync(new URL("../fixtures/system-one/llamacpp-all-types.json", import.meta.url), "utf8")).request;
 const decision = { state: "{{ticket}}", questions: capture.questions };
@@ -120,7 +120,7 @@ test("pinned revisions run through capture replay, review updates, detach and re
     { id: "buffered", instanceId: "buffered", name: "Buffered fixture", endpoint: BUFFERED_FIXTURE_ENDPOINT },
     { id: "decisions", instanceId: "decisions", name: "Decision fixture", endpoint: `${SYSTEM_ONE_FIXTURE_ORIGIN}/llamacpp/v1`, systemOne: true },
   ], "buffered");
-  await stubProjectDirectory(page, { name: "saved-decisions.inference-lens", files: { "project.json": serializeProjectFile(fixture()) } });
+  await stubProjectDirectory(page, { name: "saved-decisions.inference-lens", files: { "project.json": serializeFolderProject(fixture()) } });
   await page.goto("/");
   await waitForHydration(page);
   await page.getByLabel("Project menu").click();
@@ -178,18 +178,24 @@ test("pinned revisions run through capture replay, review updates, detach and re
   await pane.getByRole("region", { name: "Variables" }).getByLabel("{{plan}}").fill("premium");
   await pane.getByRole("button", { name: "Detach", exact: true }).click();
   await expect(pane.getByLabel("State text")).toBeEnabled();
+  // Using the prompt started a local request; Save names it after the prompt (Q2).
+  await pane.getByRole("status").filter({ hasText: "Local request" }).getByRole("button", { name: "Save as request…" }).click();
+  await expect(pane.getByLabel("Request name")).toHaveValue("Ticket decision");
+  await pane.getByRole("button", { name: "Save", exact: true }).click();
   await expect.poll(async () => (await savedProject(page)).decisionRequestRevisions.at(-1)?.kind).toBe("inline");
   const saved = await savedProject(page);
+  expect(saved.decisionRequests.map(({ name }) => name)).toEqual(["Ticket decision"]);
   const detached = saved.decisionRequestRevisions.at(-1)!;
   expect(detached.kind === "inline" && detached.decision.state).toBe("Changed {{ticket}} / {{plan}}");
   expect(detached.kind === "inline" && detached.values).toEqual({ ticket: "Override ticket", plan: "premium" });
-  expect(saved.decisionRequestRevisions.some((revision) => revision.kind === "template-use" && revision.templateRevisionId === saved.promptTemplates[1]!.revisions[0]!.id)).toBe(true);
   const reopened = await browser.newPage();
   await seedProfile(reopened);
   await reopened.goto("/");
   await waitForHydration(reopened);
-  await importProject(reopened, saved, "Saved decisions");
+  await importProject(reopened, JSON.stringify(saved), "Saved decisions");
   await reopened.getByRole("radio", { name: "Decision", exact: true }).click();
+  await reopened.getByRole("region", { name: "Decision request", exact: true }).getByRole("combobox", { name: "Decision request", exact: true })
+    .selectOption({ label: "Ticket decision" });
   await expect(reopened.getByLabel("State text")).toHaveValue("Changed {{ticket}} / {{plan}}");
   await expect(reopened.getByLabel("{{ticket}}", { exact: true })).toHaveValue("Override ticket");
   await reopened.close();
@@ -225,7 +231,7 @@ test("Compose capture retains tokens and values, and invalid request replacement
 
 test("captured defaults stay in a session draft until the author chooses to save", async ({ page }) => {
   await seedProfile(page);
-  await stubProjectDirectory(page, { name: "capture-review.inference-lens", files: { "project.json": serializeProjectFile(fixture()) } });
+  await stubProjectDirectory(page, { name: "capture-review.inference-lens", files: { "project.json": serializeFolderProject(fixture()) } });
   await page.goto("/");
   await waitForHydration(page);
   await page.getByLabel("Project menu").click();
@@ -235,7 +241,8 @@ test("captured defaults stay in a session draft until the author chooses to save
   await page.getByRole("tablist", { name: "Decision editor", exact: true }).getByRole("tab", { name: "JSON", exact: true }).click();
   await page.getByLabel("Decision input (state and questions)").fill(JSON.stringify(decision));
   await page.getByLabel("{{ticket}}", { exact: true }).fill("Trial value to review");
-  await expect.poll(async () => (await savedProject(page)).decisionRequestRevisions.length).toBe(1);
+  // The request is a local scratch until saved (2b step 4, Q2).
+  await expect(page.getByRole("region", { name: "Decision request", exact: true }).getByRole("status").filter({ hasText: "Local request" })).toBeVisible();
   await page.getByRole("button", { name: "Save as decision prompt" }).click();
   await expect(page.getByLabel("Default for ticket")).toHaveValue("Trial value to review");
   // Wait beyond autosave so this checks the persisted boundary, not the
@@ -247,7 +254,8 @@ test("captured defaults stay in a session draft until the author chooses to save
   await expect.poll(async () => (await savedProject(page)).promptTemplates.length).toBe(3);
   const saved = await savedProject(page);
   expect(saved.promptTemplates[2]!.revisions[0]!.variableDefaults).toEqual({});
-  expect(saved.decisionRequestRevisions[0]!.kind).toBe("inline");
+  // Saving the prompt does not save the local request it was captured from.
+  expect(saved.decisionRequestRevisions).toEqual([]);
 });
 
 test("decision authoring works before a project or decision connection exists, including a narrow layout", async ({ page }, testInfo) => {
