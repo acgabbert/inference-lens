@@ -177,6 +177,9 @@ export function usePersonalWorkbench(input: {
   writeShared(update: (current: ProjectFile) => ProjectFile): Promise<SharedWriteOutcome>;
 }): PersonalWorkbenchHandle {
   const [controller, setController] = useState<PersonalWorkbenchController | null>(null);
+  // The session key the controller was opened for. A new adoption renders
+  // before the effect below replaces the controller.
+  const [controllerKey, setControllerKey] = useState<string>();
   const [revision, setRevision] = useState(0);
   const controllerRef = useRef<PersonalWorkbenchController | null>(null);
   const sharedRef = useRef(input.shared);
@@ -205,11 +208,14 @@ export function usePersonalWorkbench(input: {
     if (!personal) {
       controllerRef.current = null;
       setController(null);
+      setControllerKey(undefined);
       if (previous) void previous.flush().finally(() => previous.close());
       return;
     }
     // A session saved into a folder keeps the drafts it made meanwhile (S2).
-    const carried = previous && previous.status.kind === "session" && previous.projectId === personal.projectId
+    // Any other adoption of the same project, such as a re-import after
+    // "Discard and switch", starts from that document's own records.
+    const carried = personal.carriesSessionWork && previous && previous.status.kind === "session" && previous.projectId === personal.projectId
       ? previous.allRecords
       : [];
     const seeds: WorkbenchRecordV1[] = [...carried, ...personal.personalSeeds];
@@ -223,6 +229,7 @@ export function usePersonalWorkbench(input: {
     });
     controllerRef.current = next;
     setController(next);
+    setControllerKey(sessionKey);
     let cancelled = false;
     void (async () => {
       // The outgoing session's queued writes land before the new one reads.
@@ -257,12 +264,17 @@ export function usePersonalWorkbench(input: {
     return () => window.removeEventListener("beforeunload", warnBeforeUnload);
   }, [unsaved]);
 
+  // Until then, render reads skip the previous session's controller: its
+  // records belong to a document this adoption replaced, unless the session
+  // was saved into a folder and carries them (S2).
+  const live = controller && (controllerKey === sessionKey || personalSession?.carriesSessionWork) ? controller : null;
+
   return {
     enabled: Boolean(personalSession),
-    status: controller?.status ?? OFF,
+    status: live?.status ?? OFF,
     revision,
-    draftFor: (asset) => controller?.draftFor(asset),
-    unsavedDrafts: controller?.unsavedDrafts ?? [],
+    draftFor: (asset) => live?.draftFor(asset),
+    unsavedDrafts: live?.unsavedDrafts ?? [],
     sessionOnlyWorkCount: () => controllerRef.current?.sessionOnlyWorkCount ?? 0,
     async persistSessionInto(target) {
       // Snapshot now, before the save's adoption renders a new controller.
@@ -286,8 +298,8 @@ export function usePersonalWorkbench(input: {
         writer.close();
       }
     },
-    recovery: controller?.recovery ?? [],
-    migrationBackups: controller?.migrationBackups ?? [],
+    recovery: live?.recovery ?? [],
+    migrationBackups: live?.migrationBackups ?? [],
     reconcile: {
       async compare(id) {
         const current = controllerRef.current;
@@ -333,10 +345,10 @@ export function usePersonalWorkbench(input: {
     async flush() {
       await controllerRef.current?.flush();
     },
-    chatSelection: controller?.chatSelection,
-    scratches: controller?.scratches ?? [],
-    scratch: (scratchId) => controller?.scratch(scratchId),
-    draftById: (draftId) => controller?.draftById(draftId),
+    chatSelection: live?.chatSelection,
+    scratches: live?.scratches ?? [],
+    scratch: (scratchId) => live?.scratch(scratchId),
+    draftById: (draftId) => live?.draftById(draftId),
     selectChat(selection) {
       controllerRef.current?.selectChat(selection);
     },
@@ -367,7 +379,7 @@ export function usePersonalWorkbench(input: {
       if (!current || !shared) return { kind: "blocked", message: "Open a project before saving a request." };
       return current.publishScratch(scratchId, shared, (update) => writeSharedRef.current(update), name);
     },
-    decisionSelection: controller?.decisionSelection,
+    decisionSelection: live?.decisionSelection,
     selectDecision(selection) {
       controllerRef.current?.selectDecision(selection);
     },
@@ -389,7 +401,7 @@ export function usePersonalWorkbench(input: {
       if (!current || !shared) return { kind: "blocked", message: "Open a project before saving a request." };
       return current.publishDecisionRequestDraft(decisionRequestId, shared, (update) => writeSharedRef.current(update));
     },
-    chatExecution: controller?.chatExecution,
+    chatExecution: live?.chatExecution,
     updateChatExecution(update) {
       const current = controllerRef.current;
       current?.setChatExecution(update(current.chatExecution));

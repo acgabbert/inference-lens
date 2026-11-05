@@ -135,7 +135,8 @@ test("file receipts survive folder reopen and literal text reaches a real provid
   const trace = parseRunTraceJson(directory.writes.find(({ path }) => path.startsWith("traces/"))!.contents);
   const exchange = Object.values(trace.exchanges)[0];
   expect(JSON.parse(exchange.request!.body!).messages.map(({ content }: { content: string }) => content)).toEqual(["Existing instruction", literalText, "Explain file imports"]);
-  expect(directory.writes.every(({ path }) => path === "project.json" || path.startsWith("traces/"))).toBe(true);
+  // Personal records go to `.workbench/`; nothing else is written.
+  expect(directory.writes.map(({ path }) => path).filter((path) => path !== "project.json" && !path.startsWith("traces/") && !path.startsWith(".workbench/"))).toEqual([]);
   await openMode(page, "Prompts");
   await page.locator(".template-list-item").filter({ hasText: "expression" }).click();
   await page.getByLabel("Prompt content", { exact: true }).fill("Edited {{local}} and {{topic}}");

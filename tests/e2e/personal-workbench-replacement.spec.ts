@@ -96,6 +96,25 @@ test("a session-only prompt draft stops an import, and Cancel keeps it", async (
   await expect(page.getByLabel("Prompt content", { exact: true })).toHaveValue("Replacement saved prompt");
 });
 
+test("Discard and switch to the same project drops the session draft", async ({ page }) => {
+  const original = project("Session same", "Original saved prompt");
+  await seedProfile(page);
+  await page.goto("/");
+  await waitForHydration(page);
+  await importProject(page, original, original.name);
+  await openMode(page, "Prompts");
+  const prompt = page.getByLabel("Prompt content", { exact: true });
+  await prompt.fill("A draft the user chose to discard");
+
+  // The same file again: only a save into a folder carries session drafts (S2).
+  await importOver(page, original);
+  await expect(decision(page)).toContainText("1 unsaved draft is held only in this session");
+  await decision(page).getByRole("button", { name: "Discard and switch", exact: true }).click();
+  await expect(decision(page)).toHaveCount(0);
+  await openMode(page, "Prompts");
+  await expect(page.getByLabel("Prompt content", { exact: true })).toHaveValue("Original saved prompt");
+});
+
 test("Save and switch writes a session draft into the new folder's workbench", async ({ page }) => {
   const original = project("Saved original", "Original saved prompt");
   await seedProfile(page);

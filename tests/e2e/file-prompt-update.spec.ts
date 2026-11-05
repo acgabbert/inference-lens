@@ -84,14 +84,17 @@ test("a pull keeps an open draft, persists through reopen, and refuses a file th
     await page.getByRole("button", { name: "Open project folder…", exact: true }).click();
     await expect(page.locator(".brand")).toContainText("Saved to file-updates.inference-lens");
   };
+  /** The prompt's personal draft record in `.workbench/drafts/`, which `project.json` never holds. */
+  const promptDraft = () => {
+    const path = [...directory.writes].reverse().find((write) => write.path.startsWith(".workbench/drafts/"))?.path;
+    const contents = path && directory.read(path);
+    return contents ? JSON.parse(contents) : undefined;
+  };
   await openFolder();
   await openMode(page, "Prompts");
   await importAgent(page, "Answer {{ $json.topic }}");
   await page.getByLabel("Prompt message 1 content", { exact: true }).fill("My draft about {{topic}}");
-  await expect.poll(() => {
-    const draft = parseFolderProject(directory.read("project.json")!).promptTemplates[0]?.draft;
-    return draft && "messages" in draft ? draft.messages[0]?.content : undefined;
-  }).toBe("My draft about {{topic}}");
+  await expect.poll(() => promptDraft()?.edited.messages[0]?.content).toBe("My draft about {{topic}}");
 
   await page.getByRole("button", { name: "Update from file…" }).click();
   const dialog = page.getByRole("dialog", { name: "Update “agent” from file" });
@@ -114,7 +117,12 @@ test("a pull keeps an open draft, persists through reopen, and refuses a file th
   if (template.kind !== "chat") throw new Error("Expected a chat prompt");
   expect(template.currentRevisionId).toBe(template.revisions[1]!.id);
   expect(template.revisions[1]!.messages).toEqual([{ role: "system", content: "Answer {{topic}}\nbriefly" }]);
-  expect(template.draft).toMatchObject({ sourceRevisionId: template.revisions[0]!.id, messages: [{ role: "system", content: "My draft about {{topic}}" }] });
+  expect(template).not.toHaveProperty("draft");
+  expect(promptDraft()).toMatchObject({
+    asset: { kind: "chat-prompt", id: template.id },
+    base: { revisionId: template.revisions[0]!.id },
+    edited: { messages: [{ role: "system", content: "My draft about {{topic}}" }] },
+  });
   expect(saved.conversationRevisions).toEqual(original.conversationRevisions);
 
   await page.reload();

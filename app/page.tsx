@@ -1780,7 +1780,9 @@ function HomeContent() {
             prepareCredentialForProfile: credential.prepareForProfile,
             updateProfile,
           }}
-          key={project.projectAdoption}
+          // The prompt editor copies its draft when it mounts, so it remounts
+          // once a folder's personal records finish loading.
+          key={`${project.projectAdoption}:${personalWorkbench.status.kind === "loading" ? "loading" : "loaded"}`}
           {...(projectFile ? { project: projectFile } : {})}
           templates={projectTemplates}
           decision={decision}

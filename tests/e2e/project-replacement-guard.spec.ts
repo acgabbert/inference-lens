@@ -10,6 +10,7 @@ import {
   importProject,
   openMode,
   seedProfile,
+  serializeFolderProject,
   stubProjectDirectory,
   waitForHydration,
 } from "./support";
@@ -97,7 +98,7 @@ test("open and new use the same replacement guard", async ({ page }) => {
   await seedProfile(page);
   await stubProjectDirectory(page, {
     name: "folder-replacement.inference-lens",
-    files: { "project.json": serializeProjectFile(replacement) },
+    files: { "project.json": serializeFolderProject(replacement) },
   });
   await page.goto("/");
   await waitForHydration(page);
@@ -127,14 +128,14 @@ test("open and new use the same replacement guard", async ({ page }) => {
   await expect(page.locator(".brand")).toContainText("Folder replacement");
 });
 
-test("save and switch persists the draft before importing", async ({ page }) => {
+test("a folder's prompt draft survives switching without a question", async ({ page }) => {
   const original = project("Folder original", "Original saved prompt");
   const replacement = project("Imported replacement", "Replacement saved prompt");
 
   await seedProfile(page);
   await stubProjectDirectory(page, {
     name: "folder-original.inference-lens",
-    files: { "project.json": serializeProjectFile(original) },
+    files: { "project.json": serializeFolderProject(original) },
   });
   await page.goto("/");
   await waitForHydration(page);
@@ -142,8 +143,9 @@ test("save and switch persists the draft before importing", async ({ page }) => 
   await page.getByRole("button", { name: "Open project folder…", exact: true }).click();
   await expect(page.locator(".brand")).toContainText("Folder original");
   await openMode(page, "Prompts");
-  await page.getByLabel("Prompt content", { exact: true }).fill("Saved before switching");
+  await page.getByLabel("Prompt content", { exact: true }).fill("Kept in the folder's workbench");
 
+  // The draft is already in .workbench/, so replacing the session loses nothing.
   await page.getByLabel("Project menu").click();
   await page.setInputFiles(
     '.project-popover:not(.run-data-popover) input[type="file"]',
@@ -154,16 +156,15 @@ test("save and switch persists the draft before importing", async ({ page }) => 
     },
   );
   await closeProjectMenu(page);
-  const decision = page.getByRole("dialog", { name: "Save changes before switching projects?" });
-  await decision.getByRole("button", { name: "Save and switch", exact: true }).click();
   await expect(page.locator(".brand")).toContainText("Imported replacement");
+  await expect(page.getByRole("dialog", { name: "Save changes before switching projects?" })).toHaveCount(0);
 
   await page.getByLabel("Project menu").click();
   await page.getByRole("button", { name: "Open project folder…", exact: true }).click();
   await expect(page.locator(".brand")).toContainText("Folder original");
   await openMode(page, "Prompts");
   await expect(page.getByLabel("Prompt content", { exact: true })).toHaveValue(
-    "Saved before switching",
+    "Kept in the folder's workbench",
   );
 });
 
@@ -207,7 +208,7 @@ test("a failed save keeps the current project and replacement decision", async (
   await seedProfile(page);
   await stubProjectDirectory(page, {
     name: "failing-folder.inference-lens",
-    files: { "project.json": serializeProjectFile(original) },
+    files: { "project.json": serializeFolderProject(original) },
     writeError: "Fixture refused the write.",
   });
   await page.goto("/");
@@ -215,8 +216,11 @@ test("a failed save keeps the current project and replacement decision", async (
   await page.getByLabel("Project menu").click();
   await page.getByRole("button", { name: "Open project folder…", exact: true }).click();
   await expect(page.locator(".brand")).toContainText("Failing folder");
-  await openMode(page, "Prompts");
-  await page.getByLabel("Prompt content", { exact: true }).fill("Unsaved after failure");
+  // Suites are still written to project.json directly (D15), so this edit
+  // is unsaved project work once its autosave fails.
+  await openMode(page, "Evaluations");
+  await page.getByRole("button", { name: "Create evaluation suite" }).click();
+  await expect(page.locator(".brand")).toContainText("Unsaved");
 
   await page.getByLabel("Project menu").click();
   await page.setInputFiles(
@@ -242,7 +246,7 @@ test("the replacement guard follows the modal contract", async ({ page }) => {
   await seedProfile(page);
   await stubProjectDirectory(page, {
     name: "folder-replacement.inference-lens",
-    files: { "project.json": serializeProjectFile(replacement) },
+    files: { "project.json": serializeFolderProject(replacement) },
   });
   await page.goto("/");
   await waitForHydration(page);

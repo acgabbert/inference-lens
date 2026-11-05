@@ -81,8 +81,10 @@ test("folder-backed edits expose saving and save-failure states", async ({ page 
 
   const brand = page.locator(".brand");
   await expect(brand).toContainText("Saved to storage-clarity.inference-lens");
-  await openMode(page, "Prompts");
-  await page.getByLabel("Prompt content", { exact: true }).fill("This write will fail.");
+  // A prompt edit is a personal draft; suites are still written to
+  // project.json directly (D15), so creating one autosaves the folder.
+  await openMode(page, "Evaluations");
+  await page.getByRole("button", { name: "Create evaluation suite" }).click();
   await expect(brand).toContainText("Saving to storage-clarity.inference-lens…");
   await expect(brand).toContainText("Save failed — retry from Project", { timeout: 5_000 });
 });

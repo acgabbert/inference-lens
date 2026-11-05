@@ -131,6 +131,13 @@ export interface ProjectSession {
   personalSeeds: readonly WorkbenchPromptDraftV1[];
   /** Set when an upgrade reopened the folder, so carried drafts settle against it (V2). */
   upgrade?: UpgradeCarry;
+  /**
+   * Set when this adoption saved the outgoing session into a folder or
+   * reopened the same folder in place, so the personal owner keeps the
+   * session's records (S2). A replacement, such as an import of the same
+   * project after "Discard and switch", starts empty.
+   */
+  carriesSessionWork?: true;
 }
 
 export interface ProjectWorkspaceHandleState {
@@ -465,7 +472,7 @@ export function useProjectWorkspace(input: {
   function setCurrentWorkspace(
     workspace: ProjectWorkspaceHandle | null,
     projectId?: ProjectFile["projectId"],
-    options?: { keepTabRole: true },
+    options?: { keepTabRole?: true },
   ): void {
     if (!options?.keepTabRole) coordinateTabs(workspace, projectId);
     if (workspace && tabCoordinatorRef.current) {
@@ -872,7 +879,7 @@ export function useProjectWorkspace(input: {
     project: ProjectFile,
     workspace: ProjectWorkspaceHandle | null,
     profileId?: string,
-    options?: { keepTabRole: true; upgrade?: UpgradeCarry },
+    options?: { keepTabRole?: true; upgrade?: UpgradeCarry; carrySession?: true },
     sessionManifest?: Omit<ProjectWorkspaceManifest, "format"> & { format?: ProjectManifestFormat },
   ): void {
     const adoption = options?.keepTabRole ? "refresh" : "replace";
@@ -900,6 +907,8 @@ export function useProjectWorkspace(input: {
       ...(workspace && manifest.format ? { format: manifest.format } : {}),
       personalSeeds: manifest.personalSeeds,
       ...(options?.upgrade ? { upgrade: options.upgrade } : {}),
+      // An in-place reopen keeps the session's records, as a save does.
+      ...(options?.carrySession || options?.keepTabRole ? { carriesSessionWork: true as const } : {}),
     });
     setProjectFile(project);
     setCurrentWorkspace(workspace, project.projectId, options);
@@ -1147,6 +1156,7 @@ export function useProjectWorkspace(input: {
           opened.handle,
           mappedProfileIds[project.defaults.target.connectionRequirementId] ??
             activeProfile.id,
+          { carrySession: true },
         );
         onSaved?.({ name: opened.project.name, destination: "folder" });
       } else {
@@ -1299,6 +1309,7 @@ export function useProjectWorkspace(input: {
             opened.project,
             opened.handle,
             mappedProfileIds[project.defaults.target.connectionRequirementId] ?? activeProfile.id,
+            { carrySession: true },
           );
           onSaved?.({ name: opened.project.name, destination: "folder" });
         }
