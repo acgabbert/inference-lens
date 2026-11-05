@@ -254,6 +254,19 @@ test("records carried from a session into a new folder are written there", async
   assert.deepEqual(instance.unsavedDrafts.map(({ persisted }) => persisted), [true]);
 });
 
+test("only work with no folder counts as what a replacement would lose (Z3)", async () => {
+  const session = controller(null, { seeds: [seed] });
+  await session.instance.open(shared);
+  assert.equal(session.instance.sessionOnlyWorkCount, 1);
+
+  // A folder's queued write is not counted: the outgoing session flushes it.
+  const storage = new MemoryStorage();
+  const folder = controller(storage);
+  await folder.instance.open(shared);
+  folder.instance.updatePromptDraft(asset, base, edited("Queued."));
+  assert.equal(folder.instance.sessionOnlyWorkCount, 0);
+});
+
 test("a workbench that belongs to another project blocks the controller", async () => {
   const storage = new MemoryStorage();
   storage.files.set("selections.json", JSON.stringify({ schemaVersion: 1, kind: "selections", projectId: "project_other" }));

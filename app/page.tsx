@@ -306,6 +306,15 @@ function HomeContent() {
     },
     withDecisionDraft(document) { return decision.project.fold(document); },
     getUnsavedDraftReason() { return decision.project.saveBlockedReason; },
+    // The personal owner is declared below and read only from commands (Z3).
+    getSessionOnlyWorkCount() { return personalWorkbench.sessionOnlyWorkCount(); },
+    persistSessionWork(opened) {
+      return personalWorkbench.persistSessionInto({
+        project: opened.project,
+        storage: opened.handle.storage.workbench,
+        migrations: opened.handle.storage.migration,
+      });
+    },
     onApplyDecisionRequest(document, adoption) {
       if (adoption === "refresh") decision.project.refresh(document);
       else { promptNavigation.reset(); decision.project.adopt(document); }

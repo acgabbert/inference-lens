@@ -77,6 +77,19 @@ export interface PersonalWorkbenchHandle {
   /** One active draft per asset (D6). */
   draftFor(asset: WorkbenchAssetRef): WorkbenchDraftV1 | undefined;
   unsavedDrafts: UnsavedDraftSummary[];
+  /** Drafts and scratch requests that replacing the session would lose (Z3). Read from commands. */
+  sessionOnlyWorkCount(): number;
+  /**
+   * Writes this session's records into a folder it was just saved to, and
+   * resolves once they are on disk (S2, Z3). "Save and switch" waits for it:
+   * the session's own carry-over runs after the next render, which the switch
+   * would overtake.
+   */
+  persistSessionInto(target: {
+    project: ProjectFile;
+    storage: WorkbenchStorage;
+    migrations: { read(): Promise<MigrationSnapshot> };
+  }): Promise<void>;
   /** D8: everything the Recovery drawer lists, each with the actions it offers (V4). */
   recovery: readonly RecoveryEntry[];
   /** Migration backups, for "Remove migration backup" (D7, W3). */
@@ -250,6 +263,29 @@ export function usePersonalWorkbench(input: {
     revision,
     draftFor: (asset) => controller?.draftFor(asset),
     unsavedDrafts: controller?.unsavedDrafts ?? [],
+    sessionOnlyWorkCount: () => controllerRef.current?.sessionOnlyWorkCount ?? 0,
+    async persistSessionInto(target) {
+      // Snapshot now, before the save's adoption renders a new controller.
+      const records = controllerRef.current?.allRecords ?? [];
+      if (!records.some((record) => record.kind !== "selections")) return;
+      const writer = new PersonalWorkbenchController({
+        projectId: target.project.projectId,
+        storage: target.storage,
+        migrations: target.migrations,
+        seeds: records,
+        onChange: () => undefined,
+      });
+      try {
+        await writer.open(target.project);
+        if (writer.status.kind !== "ready" || writer.hasUnpersistedWork) {
+          throw new Error(writer.status.kind === "blocked"
+            ? writer.status.message
+            : "Could not write this session's drafts to the new folder.");
+        }
+      } finally {
+        writer.close();
+      }
+    },
     recovery: controller?.recovery ?? [],
     migrationBackups: controller?.migrationBackups ?? [],
     reconcile: {

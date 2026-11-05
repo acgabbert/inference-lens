@@ -210,6 +210,12 @@ export interface PendingProjectReplacement {
   currentProjectName: string;
   nextProjectName: string;
   saveNeedsLocation: boolean;
+  /**
+   * Personal drafts and scratch requests held only in this session (Z3).
+   * Saving keeps them only by choosing a folder, which carries them into its
+   * workbench (S2); otherwise the dialog offers no save.
+   */
+  sessionOnlyWork: number;
   saving: boolean;
   error?: string;
 }
@@ -276,6 +282,10 @@ export function useProjectWorkspace(input: {
   withDecisionDraft(project: ProjectFile): ProjectFile;
   /** Read from commands and saves, after the feature owners have rendered. */
   getUnsavedDraftReason(): string | undefined;
+  /** Personal work a replacement would lose; read from commands, like the reason above. */
+  getSessionOnlyWorkCount?(): number;
+  /** Writes that work into a folder the session was just saved to, before a switch (Z3). */
+  persistSessionWork?(opened: OpenedProjectWorkspace): Promise<void>;
   /** Hands a newly applied document's active decision request to its owner. */
   onApplyDecisionRequest(project: ProjectFile, adoption: ProjectDocumentAdoption): void;
   /**
@@ -298,6 +308,8 @@ export function useProjectWorkspace(input: {
     onApplyDraft,
     withDecisionDraft,
     getUnsavedDraftReason,
+    getSessionOnlyWorkCount,
+    persistSessionWork,
     onApplyDecisionRequest,
     onSaved,
   } = input;
@@ -1066,7 +1078,9 @@ export function useProjectWorkspace(input: {
     nextProjectName: string,
     replacement: QueuedProjectReplacement,
   ): void {
-    const hasRisk = replacement.linkedIntent ? latestRef.current.hasUnsavedChanges() : projectDirty || Boolean(getUnsavedDraftReason());
+    const sessionOnlyWork = getSessionOnlyWorkCount?.() ?? 0;
+    const hasRisk = sessionOnlyWork > 0 ||
+      (replacement.linkedIntent ? latestRef.current.hasUnsavedChanges() : projectDirty || Boolean(getUnsavedDraftReason()));
     if (!projectFile || !hasRisk) {
       void performProjectReplacement(replacement);
       return;
@@ -1077,6 +1091,7 @@ export function useProjectWorkspace(input: {
       currentProjectName: projectFile.name,
       nextProjectName,
       saveNeedsLocation: folderAccessAvailable && !projectWorkspace && !getUnsavedDraftReason(),
+      sessionOnlyWork,
       saving: false,
     });
   }
@@ -1142,6 +1157,8 @@ export function useProjectWorkspace(input: {
           );
           return;
         }
+        // The switch below would overtake the session's own carry-over (Z3).
+        await persistSessionWork?.(opened);
         applyProjectDocument(
           opened.project,
           opened.handle,
