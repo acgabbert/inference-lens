@@ -2360,3 +2360,74 @@ The user approved both before 8b started.
 - **One pull request.** 8a was never opened as its own PR, so 8a and 8b land
   together, with 8b in its own commits. Reverting those commits rolls back
   8b alone, as Z1-A intended.
+
+### Step 8b delivered (November 5, 2026)
+
+The gate is gone. The app writes Project v19, every project session is
+personal, and the migration owner is the application's caller of migration
+completion.
+
+- **Removed (Z1).** `personal-workbench-gate.ts`, its Vite define, the
+  `legacy` session mode and its manifest path, the second e2e server and the
+  `personalWorkbench` fixture. `readProjectManifest` and
+  `serializeProjectManifest` take no mode. A pre-v19 folder still opens and
+  refuses shared saves until **Upgrade project…** (S1).
+- **Wording.** The export note, the download toast and the definitions preset
+  now always describe drafts in `.workbench/`. The composer's "Project
+  settings" label, which only a legacy session could reach, is gone.
+- **Format numbers.** `PROJECT_FORMAT.md` says new saves are v19, how a v10–v18
+  folder or import opens, and that the in-memory label is still v18 (decided
+  above). Final output takes Project v20 in
+  [FINAL_OUTPUT_CONTRACTS.md](FINAL_OUTPUT_CONTRACTS.md).
+
+Running every spec against personal sessions found three defects in the gated
+code, each fixed with a case that failed first:
+
+- **"Discard and switch" kept the draft.** The personal owner carried a
+  session's records into any adoption of the same project, so re-importing the
+  file after choosing to discard brought the draft back, and personal
+  overrides survived a re-import. Records now carry only when the adoption
+  saved the session into a folder or reopened it in place
+  (`carriesSessionWork`). Until the next controller opens, render reads also
+  skip a previous session that held its records only in memory. A folder
+  session's records are on disk, so it stays readable: hiding it reset the
+  composer during a link handoff. New case in
+  `personal-workbench-replacement.spec.ts`; `request-settings-ownership.spec.ts`
+  now expects a re-import to restore the launch defaults.
+- **A folder reopened while Prompts was showing lost its draft on screen.**
+  The prompt editor copies its draft when it mounts, so it kept the saved text
+  after the folder's records loaded. Prompts now remounts once they finish
+  loading. New case in `project-replacement-guard.spec.ts`.
+- **Filling a variable of a prompt inserted into a request draft crashed the
+  page.** `authoredDraft` resolved the launch revision with run overrides that
+  named the draft's own template uses. The launch revision now resolves
+  without them. Found by `ui-ux-workflow-review.spec.ts`, which failed on the
+  error overlay.
+
+Rewritten cases, by the v19 behavior they now assert:
+
+- **Folders seed v19.** A new `serializeFolderProject` / `parseFolderProject`
+  pair in `tests/e2e/support`; `importProject` also takes a file's exact
+  text, so a v19 export can be re-imported as it was written.
+- **Prompt and request edits are personal.** Where a case needed
+  `project.json` autosave or an unsaved project, it now drives a suite edit,
+  which is still a direct shared write (D15): tab coordination (15 cases),
+  storage clarity, the failed-save guard, and Save and switch behind a link.
+- **Drafts.** The title bar says "Session only" for session drafts, the
+  replacement dialog counts them, exports leave them out, a folder's draft
+  survives a switch without a question, and file-prompt drafts are read from
+  `.workbench/drafts/`.
+- **Requests.** A branch is a Local request scratch, not the Pending branch
+  notice. Decision edits and prompt uses are local until Save, and Save never
+  moves the launch default (D11). Settings and protocol scope say they are
+  yours.
+
+Checks: lint, typecheck, `test:core` (1959), the render and interaction tests,
+and the build with the standalone server tests. The full e2e suite ran in
+Chromium light (520 passed, 7 skipped, 1 failed) and the dark project (all
+passed on rerun). The one light failure, the repeat dialog's modal contract,
+also fails 3 times in 8 on the 8a commit, so it predates this step.
+
+Not run: the desktop host. The native checklist above stays open, and the next
+macOS release waits for it. Moving the in-memory label to v19 is the next
+format step.
