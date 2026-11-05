@@ -11,12 +11,11 @@ import { expect, test } from "./support/test";
 import {
   createProjectFile,
   createPromptTemplate,
-  serializeProjectFile,
-  updatePromptTemplateDraft,
 } from "../../packages/core/src/project";
 import { planSharedProjectMigration } from "../../packages/core/src/shared-project-migration";
 import { serializeWorkbenchRecord } from "../../packages/core/src/personal-workbench";
-import type { ProjectFile } from "../../packages/core/src/project";
+import { serializeLegacyProjectFile, withLegacyPromptDraft } from "../legacy-project-helpers";
+import type { LegacyProject } from "../legacy-project-helpers";
 import {
   BUFFERED_FIXTURE_ENDPOINT,
   openMode,
@@ -25,7 +24,7 @@ import {
   waitForHydration,
 } from "./support";
 
-function legacyProject(): ProjectFile {
+function legacyProject(): LegacyProject {
   const project = createPromptTemplate(createProjectFile({
     name: "Upgrade fixture",
     request: {
@@ -44,8 +43,7 @@ function legacyProject(): ProjectFile {
     revisionIdSuffix: "triage-1",
     createdAt: "2026-11-04T12:00:01.000Z",
   });
-  return updatePromptTemplateDraft(project, {
-    templateId: "template_triage",
+  return withLegacyPromptDraft(project, "template_triage", {
     sourceRevisionId: "template-revision_triage-1",
     messages: [{ role: "user", content: "Triage {{incident}} from the legacy draft." }],
     variableDefaults: { incident: "timeout" },
@@ -84,7 +82,7 @@ const activeDrafts = (files: Record<string, string>) =>
   Object.entries(files).filter(([path]) => path.startsWith(".workbench/drafts/"));
 
 test("Upgrade writes v19, keeps the source, and carries a draft edited before it", async ({ page }) => {
-  const manifest = serializeProjectFile(legacyProject());
+  const manifest = serializeLegacyProjectFile(legacyProject());
   expect(JSON.parse(manifest).schemaVersion).toBe(18);
   await openFolder(page, manifest);
   await expect(page.locator(".brand")).toContainText("Not saved — folder needs upgrading");
@@ -136,7 +134,7 @@ test("Upgrade writes v19, keeps the source, and carries a draft edited before it
 });
 
 test("Cancel leaves the folder untouched and shared saves still blocked", async ({ page }) => {
-  const manifest = serializeProjectFile(legacyProject());
+  const manifest = serializeLegacyProjectFile(legacyProject());
   await openFolder(page, manifest);
   await page.getByRole("status").filter({ hasText: "older project format" })
     .getByRole("button", { name: "Upgrade project…" }).click();
@@ -148,7 +146,7 @@ test("Cancel leaves the folder untouched and shared saves still blocked", async 
 });
 
 test("Check again keeps saves blocked when the upgraded manifest diverged", async ({ page }) => {
-  await openFolder(page, serializeProjectFile(legacyProject()));
+  await openFolder(page, serializeLegacyProjectFile(legacyProject()));
   await page.evaluate(async () => {
     const state = window as unknown as {
       showDirectoryPicker(): Promise<import("../../app/project-directory.client").FileSystemDirectoryHandleLike>;
@@ -203,7 +201,7 @@ test("Check again keeps saves blocked when the upgraded manifest diverged", asyn
 });
 
 test("Upgrade preserves existing personal selections when session settings collide", async ({ page }) => {
-  const manifest = serializeProjectFile(legacyProject());
+  const manifest = serializeLegacyProjectFile(legacyProject());
   const { selections } = planSharedProjectMigration(new TextEncoder().encode(manifest));
   selections.chat!.execution!.target!.model = "existing-personal-model";
   const contents = serializeWorkbenchRecord(selections);
@@ -217,7 +215,7 @@ test("Upgrade preserves existing personal selections when session settings colli
 });
 
 test("Check again after a write that never landed reopens the old file and offers Upgrade again", async ({ page }) => {
-  const manifest = serializeProjectFile(legacyProject());
+  const manifest = serializeLegacyProjectFile(legacyProject());
   await openFolder(page, manifest);
   await openMode(page, "Prompts");
   const editor = page.locator(".template-editor");
@@ -271,7 +269,7 @@ test("Check again after a write that never landed reopens the old file and offer
 
 test("a pre-v19 folder's title-bar status leaves the topbar on one row (step 8a)", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 560 });
-  await openFolder(page, serializeProjectFile(legacyProject()));
+  await openFolder(page, serializeLegacyProjectFile(legacyProject()));
   await expect(page.locator('[data-app-banner="project-upgrade"]')).toBeVisible();
   const brand = await page.locator(".brand").boundingBox();
   const projectMenu = await page.getByLabel("Project menu").boundingBox();

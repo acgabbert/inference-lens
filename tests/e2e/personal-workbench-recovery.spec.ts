@@ -11,7 +11,6 @@ import { expect, test } from "./support/test";
 import {
   createProjectFile,
   createPromptTemplate,
-  serializeProjectFile,
 } from "../../packages/core/src/project";
 import type { ProjectFile } from "../../packages/core/src/project";
 import { createDecisionPromptTemplate } from "../../packages/core/src/decision-template";
@@ -19,6 +18,7 @@ import type { DecisionInput } from "../../packages/core/src/decision";
 import { parseWorkbenchRecord, serializeWorkbenchRecord } from "../../packages/core/src/personal-workbench";
 import type { WorkbenchRecordV1 } from "../../packages/core/src/personal-workbench";
 import { planSharedProjectMigration } from "../../packages/core/src/shared-project-migration";
+import { serializeLegacyProjectFile } from "../legacy-project-helpers";
 import { serializeProjectManifest } from "../../app/workbench/project-manifest";
 import {
   BUFFERED_FIXTURE_ENDPOINT,
@@ -287,8 +287,7 @@ test("an orphaned request draft is marked in the switcher and saved as a new req
 test("a migration candidate is discarded at once and its backup removed after a confirmation", async ({ page }) => {
   // A v18 folder whose personal selections already exist: the upgrade's own
   // selections stay a pending candidate (W2: Compare and Discard only).
-  const legacy = fixtureProject();
-  const manifest = serializeProjectFile(legacy);
+  const manifest = serializeLegacyProjectFile(fixtureProject());
   const { selections } = planSharedProjectMigration(new TextEncoder().encode(manifest));
   selections.chat!.execution!.target!.model = "existing-personal-model";
   await openFolder(page, {

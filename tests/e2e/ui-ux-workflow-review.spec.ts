@@ -1,9 +1,8 @@
 import { chatTemplate } from "../project-kind-helpers";
-import { parseSharedProjectJson, sharedProjectAsActive } from "../../packages/core/src/shared-project";
 import { expect, test, type Page } from "./support/test";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { createProjectFile, createPromptTemplate, serializeProjectFile } from "../../packages/core/src/project";
-import { BUFFERED_FIXTURE_ENDPOINT, PROJECT_REQUIREMENT_PROFILE_MAP_STORAGE_KEY, closeProjectMenu, importProject, openMode, seedProfile, serializeFolderProject, stubProjectDirectory, waitForHydration } from "./support";
+import { createProjectFile, createPromptTemplate, parseProjectJson, serializeProjectFile } from "../../packages/core/src/project";
+import { BUFFERED_FIXTURE_ENDPOINT, PROJECT_REQUIREMENT_PROFILE_MAP_STORAGE_KEY, closeProjectMenu, importProject, openMode, seedProfile, stubProjectDirectory, waitForHydration } from "./support";
 
 // Review evidence, not desired-behavior regressions: assertions intentionally
 // characterize current friction. Replace them when the corresponding UX changes.
@@ -28,7 +27,7 @@ async function setup(page: Page, folder = false) {
   await page.setViewportSize({ width: 1440, height: 900 });
   await seedProfile(page, { instanceId: "daily-profile" });
   await page.addInitScript(({ key, id, requirement }) => localStorage.setItem(key, JSON.stringify({ [id]: { [requirement]: { profileId: "buffered", profileInstanceId: "daily-profile" } } })), { key: PROJECT_REQUIREMENT_PROFILE_MAP_STORAGE_KEY, id: project.projectId, requirement: project.defaults.target.connectionRequirementId });
-  if (folder) await stubProjectDirectory(page, { name: "daily-triage.inference-lens", files: { "project.json": serializeFolderProject(project) }, directories: ["traces", "experiments"] });
+  if (folder) await stubProjectDirectory(page, { name: "daily-triage.inference-lens", files: { "project.json": serializeProjectFile(project) }, directories: ["traces", "experiments"] });
   await page.goto("/"); await waitForHydration(page);
   if (folder) {
     await page.getByLabel("Project menu").click();
@@ -100,8 +99,8 @@ test("review: project Save explains its destination and export leaves out a draf
   // definitions, which leave it out (S2).
   await expect(page.locator(".brand")).toContainText("Session only");
   const exportedText = await readFile(`${OUT}/exported-project.json`, "utf8");
-  const exported = sharedProjectAsActive(parseSharedProjectJson(exportedText));
-  expect(chatTemplate(exported.promptTemplates[0]).draft).toBeUndefined();
+  const exported = parseProjectJson(exportedText);
+  expect(JSON.parse(exportedText).promptTemplates[0]).not.toHaveProperty("draft");
   expect(chatTemplate(exported.promptTemplates[0]).revisions[0]!.messages[0]!.content).toBe("SAVED PROMPT: investigate {{incident}}.");
   // Export leaves its menu open. Close it before the shared import driver.
   await page.getByLabel("Project menu").click();

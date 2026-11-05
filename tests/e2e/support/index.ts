@@ -11,22 +11,6 @@ import type { BrowserContext, Locator, Page } from "@playwright/test";
 
 import { serializeProjectFile } from "../../../packages/core/src/project";
 import type { ProjectFile } from "../../../packages/core/src/project";
-import { parseSharedProjectJson, sharedProjectAsActive } from "../../../packages/core/src/shared-project";
-import { serializeProjectManifest } from "../../../app/workbench/project-manifest";
-
-/**
- * A project folder's `project.json` as the app writes it: v19 shared
- * definitions. Seed a folder with this unless the spec is about a pre-v19
- * folder, which the app opens but saves no shared change to until upgraded.
- */
-export function serializeFolderProject(project: ProjectFile): string {
-  return serializeProjectManifest(project);
-}
-
-/** Reads a folder's v19 `project.json` back as the app's in-memory document. */
-export function parseFolderProject(contents: string): ProjectFile {
-  return sharedProjectAsActive(parseSharedProjectJson(contents));
-}
 
 export const PROFILE_STORAGE_KEY = "inference-lens:inference-profiles:v1";
 export const STREAMING_STORAGE_KEY = "inference-lens:streaming-preference:v1";
@@ -370,7 +354,7 @@ export async function closeProjectMenu(page: Page): Promise<void> {
  */
 export async function importProject(
   page: Page,
-  /** A document to import as v18, or a file's exact text, such as a v19 export. */
+  /** A document to import, written as v19, or a file's exact text, such as an export. */
   project: ProjectFile | string,
   expectedName: string,
   options?: { replaceDirty: "discard" },
@@ -415,7 +399,7 @@ export interface ProjectDirectoryFixture {
  * and `FileSystemFileHandleLike` shapes in app/project-directory.client.ts, so
  * the real application code runs against these objects.
  *
- * Generate contents with `serializeFolderProject` / `serializeRunTrace` rather
+ * Generate contents with `serializeProjectFile` / `serializeRunTrace` rather
  * than hand-written JSON, so the page validates real artifacts. Including one
  * deliberately damaged file is usually the interesting case: the assertion is
  * that it is disclosed without hiding the good ones.

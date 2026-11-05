@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { createProjectFile, parseProjectJson } from "../packages/core/src/project.ts";
+import { createProjectFile, parseLegacyProjectJson } from "../packages/core/src/project.ts";
+import { serializeLegacyProjectFile } from "./legacy-project-helpers.ts";
 import type { ProjectFile } from "../packages/core/src/project.ts";
 import { setProjectDefaultEnvironment, setProjectEnvironment } from "../packages/core/src/environment.ts";
 import { planSharedProjectMigration } from "../packages/core/src/shared-project-migration.ts";
@@ -17,7 +18,7 @@ import { resolveProviderCapabilities } from "../packages/core/src/types.ts";
 
 const projectId = "project_shared-assets-example";
 const example = (name: string) => readFileSync(new URL(`../docs/examples/shared-assets-level-two/${name}`, import.meta.url));
-const legacy = parseProjectJson(example("project-v15.json").toString());
+const legacy = parseLegacyProjectJson(example("project-v15.json").toString());
 const chatParent = legacy.conversationRevisions.find(({ id }) => id === "revision_chat-1")!;
 const chatChild = legacy.conversationRevisions.find(({ id }) => id === "revision_chat-2")!;
 const inlineRevision = legacy.decisionRequestRevisions.find(({ id }) => id === "decision-revision_inline")!;
@@ -312,9 +313,9 @@ function projectWithEnvironment(defaultEnvironment: boolean): ProjectFile {
 }
 
 test("migration seeds the personal environment choice from the launch default", () => {
-  const seeded = planSharedProjectMigration(Buffer.from(JSON.stringify(projectWithEnvironment(true))));
+  const seeded = planSharedProjectMigration(Buffer.from(serializeLegacyProjectFile(projectWithEnvironment(true))));
   assert.equal(seeded.selections.chat?.execution?.environmentId, "environment_staging");
   assert.equal(seeded.shared.defaults.environmentId, "environment_staging");
-  const unseeded = planSharedProjectMigration(Buffer.from(JSON.stringify(projectWithEnvironment(false))));
+  const unseeded = planSharedProjectMigration(Buffer.from(serializeLegacyProjectFile(projectWithEnvironment(false))));
   assert.equal(unseeded.selections.chat?.execution && "environmentId" in unseeded.selections.chat.execution, false);
 });

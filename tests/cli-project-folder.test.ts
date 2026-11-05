@@ -9,16 +9,15 @@ import { openNodeProjectFolder, ProjectFolderError } from "../packages/cli/src/p
 import { createInProcessTransport } from "../packages/cli/src/transport.ts";
 import { serializeProjectFile } from "../packages/core/src/project.ts";
 import type { ProjectFile } from "../packages/core/src/project.ts";
-import { serializeSharedProjectFile } from "../packages/core/src/shared-project.ts";
 import { planSharedProjectMigration } from "../packages/core/src/shared-project-migration.ts";
 import { headlessProject } from "./fixtures/headless/project.ts";
 import { recordingProvider } from "./fixtures/headless/recording-provider.ts";
 
 const KEY_VARIABLE = "INFERENCE_LENS_CONNECTION_HEADLESS_DEFAULT_API_KEY";
 
-/** The v19 file the app writes when it upgrades this project (step 8, Z2). */
+/** The v19 file the app writes for this project (step 8, Z2). */
 function upgraded(project: ProjectFile): string {
-  return serializeSharedProjectFile(planSharedProjectMigration(new TextEncoder().encode(serializeProjectFile(project))).shared);
+  return serializeProjectFile(project);
 }
 
 async function folderWith(contents: string): Promise<string> {
@@ -59,12 +58,25 @@ test("a headless evaluation runs on a v19 folder and leaves project.json byte-id
   assert.equal(await readFile(path.join(directory, "project.json"), "utf8"), before);
 });
 
-test("a pre-v19 folder still opens, in memory, without being upgraded", async () => {
+test("a pre-v19 folder opens through the migration plan, in memory, without its drafts or an upgrade", async () => {
   const contents = await example("project-v15.json");
+  assert.ok(JSON.parse(contents).promptTemplates.some((template: { draft?: unknown }) => template.draft));
   const directory = await folderWith(contents);
   const folder = await openNodeProjectFolder(directory);
-  assert.equal(folder.project.projectId, JSON.parse(contents).projectId);
+  assert.deepEqual(folder.project, planSharedProjectMigration(new TextEncoder().encode(contents)).shared);
+  assert.ok(folder.project.promptTemplates.every((template) => !("draft" in template)));
   assert.equal(await readFile(path.join(directory, "project.json"), "utf8"), contents);
+});
+
+test("a newer project is refused with every version this build opens", async () => {
+  const shared = JSON.parse(await example("project-v19.proposed.json"));
+  const directory = await folderWith(`${JSON.stringify({ ...shared, schemaVersion: 20 }, null, 2)}\n`);
+  await assert.rejects(openNodeProjectFolder(directory), (error: unknown) => {
+    assert.ok(error instanceof ProjectFolderError);
+    assert.match(error.message, /opens schema v10, .*v18, and v19/);
+    assert.match(error.message, /newer Inference Lens/);
+    return true;
+  });
 });
 
 test("a v19 file carrying a template draft is refused, not read as legacy", async () => {

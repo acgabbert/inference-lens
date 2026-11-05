@@ -9,7 +9,6 @@ import {
   parseProjectJson,
   removePromptTemplateRevision,
   serializeProjectFile,
-  updatePromptTemplateDraft,
   type ChatPromptTemplate,
   type ProjectFile,
 } from "../packages/core/src/project.ts";
@@ -50,7 +49,7 @@ function local(project: ProjectFile, templateId: PromptTemplateId, content: stri
   return appendPromptTemplateRevision(project, { templateId, messages: [{ role: "system", content }], variableDefaults });
 }
 
-test("a pull reuses mapped names, allocates around local names, becomes current and leaves drafts, pins and defaults intact", async () => {
+test("a pull reuses mapped names, allocates around local names, becomes current and leaves pins and defaults intact", async () => {
   const start = await imported("Hi {{ $json.topic }}");
   const importedRevisionId = chat(start.project, start.templateId).currentRevisionId;
   let project = insertPromptTemplateUse(start.project, {
@@ -61,12 +60,6 @@ test("a pull reuses mapped names, allocates around local names, becomes current 
   });
   project = local(project, start.templateId, "Hi {{topic}} in {{style}}", { topic: "cats", style: "brief" });
   const localRevisionId = chat(project, start.templateId).currentRevisionId;
-  project = updatePromptTemplateDraft(project, {
-    templateId: start.templateId,
-    sourceRevisionId: importedRevisionId,
-    messages: [{ role: "system", content: "Draft {{topic}}" }],
-    variableDefaults: {},
-  });
   const before = serializeProjectFile(project);
 
   const input = file("Hello {{ $json.topic }} {{ $json.style }} {{ $json.extra }}");
@@ -92,7 +85,6 @@ test("a pull reuses mapped names, allocates around local names, becomes current 
   const pulled = template.revisions.at(-1)!;
   assert.deepEqual(pulled.messages, preview.messages);
   assert.deepEqual(pulled.variableDefaults, { topic: "cats" });
-  assert.deepEqual(template.draft, chat(project, start.templateId).draft);
   assert.deepEqual(reloaded.conversationRevisions, project.conversationRevisions);
   assert.deepEqual(copyFilePromptAsN8nText(pulled.messages, reloaded.externalImports.filter((receipt) =>
     receipt.projection.kind === "prompt-template" && receipt.projection.templateId === start.templateId)), {
@@ -180,4 +172,28 @@ test("names in retained revisions stay reserved after the receipt that mapped th
   assert.equal(project.externalImports.some(({ projection }) => projection.kind === "prompt-template" && projection.templateRevisionId === importedRevisionId), false);
   const preview = await plan(project, start.templateId, file("{{ $json.q.a }}"));
   assert.deepEqual(preview.messages, [{ role: "system", content: "{{a_2}}" }]);
+});
+
+test("names only personal work uses stay reserved: the prompt's draft and request items that use it", async () => {
+  const start = await imported("Hi {{ $json.topic }}");
+  const input = file("Hi {{ $json.topic }} {{ $json.tone }} {{ $json.audience }}");
+  const candidate = await createFilePromptCandidate(input);
+  const sharedOnly = planFilePromptUpdate(start.project, start.templateId, candidate);
+  assert.deepEqual(sharedOnly.variables.map(({ variableName }) => variableName), ["topic", "tone", "audience"]);
+
+  const personal = {
+    promptDraft: { messages: [{ role: "system" as const, content: "Draft {{tone}}" }] as [{ role: "system"; content: string }] },
+    requestItems: [[{
+      kind: "template-use" as const,
+      use: {
+        id: "template-use_personal" as never,
+        templateId: start.templateId,
+        templateRevisionId: chat(start.project, start.templateId).currentRevisionId,
+        values: { audience: "kids" },
+        outputMessageIds: [],
+      },
+    }]],
+  };
+  const preview = planFilePromptUpdate(start.project, start.templateId, candidate, personal as never);
+  assert.deepEqual(preview.variables.map(({ variableName }) => variableName), ["topic", "tone_2", "audience_2"]);
 });

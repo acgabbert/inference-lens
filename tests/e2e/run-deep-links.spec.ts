@@ -4,11 +4,11 @@ import type { DecisionRunTrace } from "../../packages/core/src/decision-trace";
 import { systemOneAdapter } from "../../packages/core/src/system-one";
 import { OPENAI_COMPATIBLE_CAPABILITIES } from "../../packages/core/src/types";
 import { DECISIONS_API_PATH, INFERENCE_API_PATH } from "../../packages/contracts/src";
-import { PROJECT_REQUIREMENT_PROFILE_MAP_STORAGE_KEY, parseFolderProject, serializeFolderProject } from "./support";
+import { PROJECT_REQUIREMENT_PROFILE_MAP_STORAGE_KEY } from "./support";
 import { parseSavedRunTraceJson, serializeDecisionRunTrace } from "../../packages/core/src/run-trace";
 import { importProject, openMode } from "./support";
 import { expect, test, type Page } from "./support/test";
-import { createProjectFile } from "../../packages/core/src/project";
+import { createProjectFile, parseProjectJson, serializeProjectFile } from "../../packages/core/src/project";
 import { RunCoordinator, createRunTrace } from "../../packages/core/src/run-kernel";
 import { createResolvedRunInput } from "../../packages/core/src/run-kernel/run-execution";
 import { serializeRunTrace } from "../../packages/core/src/run-trace";
@@ -28,7 +28,7 @@ function savedProject(suffix: string) {
   coordinator.accept({ type: "completed", finishReason: { normalized: "stop" }, source });
   coordinator.finishTurnStream();
   const trace = createRunTrace(coordinator.state);
-  return { project, trace, directory: { name: `${suffix}.inference-lens`, files: { "project.json": serializeFolderProject(project), [`traces/${trace.runId}.json`]: serializeRunTrace(trace) }, directories: ["traces", "experiments"] } };
+  return { project, trace, directory: { name: `${suffix}.inference-lens`, files: { "project.json": serializeProjectFile(project), [`traces/${trace.runId}.json`]: serializeRunTrace(trace) }, directories: ["traces", "experiments"] } };
 }
 async function openFolder(page: Page, name: string) {
   await page.getByLabel("Project menu").click();
@@ -572,7 +572,7 @@ test("a target folder changed during the replacement dialog cannot adopt stale e
     const root = await navigator.storage.getDirectory(); const folder = await root.getDirectoryHandle(name);
     const writable = await (await folder.getFileHandle("project.json")).createWritable();
     await writable.write(contents); await writable.close();
-  }, { name: target.directory.name, contents: serializeFolderProject(replacement.project) });
+  }, { name: target.directory.name, contents: serializeProjectFile(replacement.project) });
   await dialog.getByRole("button", { name: "Discard and switch", exact: true }).click();
   await expect(page.locator(".brand")).toContainText(original.project.name);
   await expect(page.getByRole("region", { name: "Saved run link" })).toContainText("different project");
@@ -608,7 +608,7 @@ test("Save and switch waits for a successful save before resolving the link", as
     const folder = await (await navigator.storage.getDirectory()).getDirectoryHandle(name);
     return (await (await folder.getFileHandle("project.json")).getFile()).text();
   }, original.directory.name);
-  expect(parseFolderProject(contents).evaluationSuites).toHaveLength(1);
+  expect(parseProjectJson(contents).evaluationSuites).toHaveLength(1);
 });
 
 test("a saved experiment member copies a standalone link without requiring its plan", async ({ page, context }) => {

@@ -36,13 +36,13 @@ approved October 30; exact owner interfaces come first in that slice.
 | Legacy defaults | Copy existing selections/settings into personal state; retain all legacy defaults in shared definitions. Migration preview does **not** offer demotion in this slice. | Offer selective demotion: needs optional-default semantics and a policy for a clone with no launch request/target. Design separately. |
 | Changing launch defaults | Only an explicit "Use as project launch default" action writes `defaults`, with a preview; branching, selecting and running never do. See [launch defaults](#changing-authored-launch-defaults). | No writer: defaults freeze at migration. Implicit writer: reintroduces the churn Level 2 removes. |
 | Local data | Typed asset drafts, scratch requests, selections and execution overrides; never a second complete project. Propose workbench schema v1. | A whole-project shadow is simpler initially but creates competing definitions and ambiguous publication. |
-| Delivery order | Slice 2b: template drafts (both kinds), selections/execution overrides, scratch and draft requests (both kinds), migration. Later slices: suite/tool/mock drafts, import staging, invalid-buffer recovery, personal backup. See [delivery order](#delivery-order). | All arms at once: one schema review, but the largest slice in the plan and most of it unrelated to what migration moves. |
+| Delivery order | Slice 2b: template drafts (both kinds), selections/execution overrides, scratch and draft requests (both kinds), migration. Next: suite/tool/mock drafts. Import staging, invalid-buffer recovery and personal backup are parked (November 5). See [delivery order](#delivery-order). | All arms at once: one schema review, but the largest slice in the plan and most of it unrelated to what migration moves. |
 | Recovery granularity | One record per draft/scratch request plus a selections record; protect the directory before writing any content. | One state file gives simpler writes but unrelated drafts conflict and one invalid file blocks all recovery. |
 | Workbench write safety | Best-effort detection: expected-content check before each write, read-back after it, and same-host coordination where the host offers it. No cross-host atomicity claim. See [concurrent writes](#layout-identity-and-concurrent-writes). | Write-once generations with parent pointers: closes the race, but adds head resolution, cleanup and a record format no other store uses; browsers offer no exclusive create to do better. |
 | Publication recovery | Record publication intent (intended revision ID and frozen content) in the draft record itself; no separate operation journal for ordinary saves. Migration keeps its journal. | A journal per publication: more general, but a second record to keep consistent with the draft it describes. |
-| Incomplete editors | Slice 2b recovers valid editor content, as v15 drafts do today. A later slice recovers typed editor buffers, including invalid decision JSON. | Buffers in 2b: protects more unfinished work, but needs per-editor buffer arms before the core separation ships. |
+| Incomplete editors | Slice 2b recovers valid editor content, as v15 drafts do today. Typed editor-buffer recovery, including invalid decision JSON, is parked with 2d. | Buffers in 2b: protects more unfinished work, but needs per-editor buffer arms before the core separation ships. |
 | Conflict recovery | Retain both sides, stop automatic writes to the affected record, and require explicit reconciliation; keep source snapshots for comparisons. | Automatic merge/rebase introduces new semantics, especially for ordered decision input. |
-| Personal backup | Later slice: separate versioned backup of personal records and required local dependencies; preview restore, never overwrite automatically. Evidence remains a separate export. | Full-folder archive carries evidence too, but obscures what is portable and greatly increases scope. |
+| Personal backup | Parked (2e; not a Level 3 prerequisite): separate versioned backup of personal records and required local dependencies; preview restore, never overwrite automatically. Evidence remains a separate export. | Full-folder archive carries evidence too, but obscures what is portable and greatly increases scope. |
 
 The first core-slice approval accepts v19 and v1 for the bounded contracts
 described below. The later recovery-store approval accepts the existing-record
@@ -494,7 +494,7 @@ candidate, extracted personal records and preview diagnostics.
 Existing v10–v15 JSON remains importable through the strict one-version chain;
 older unsupported formats stay unsupported. JSON imports have session-only
 recovery until a folder is chosen. Default export is v19 shared definitions;
-personal backup is explicitly selected. Do not silently down-export v15 by
+personal backup is deferred with 2e and would require explicit selection. Do not silently down-export v15 by
 reintroducing personal drafts. An old build must reject v19, not open it as an
 editable empty project. No-folder export wording must state that unsaved drafts
 are excluded, and offer personal backup before replacement/closing once
@@ -546,7 +546,13 @@ users, so effort goes to what changes shared files, then to Level 3.
 - **2d, 2e and import staging are parked.** They are not scheduled and are not
   prerequisites for Level 3. The interim behavior above stays: recovery covers
   valid editor content only, and no-folder and close/replace wording offers
-  shared export only. Picking one up again needs its own approval.
+  shared export only and explicitly excludes drafts. Picking one up again needs
+  its own approval. These deferrals do not remove existing Level 2 write safety.
+- **Level 3 is bounded separately.** The [approved delivery scope](SHARED_ASSETS_PERSONAL_WORKBENCH_PLAN.md#delivery-scope-approved-november-5-2026)
+  defers 3c, uses source-preserving conversion into a new folder, and requires
+  detectable incomplete saves with a documented recovery path rather than
+  automatic repair. Detailed contracts and a version distinct from reserved
+  Project v20 remain design work.
 
 ## Review and verification handoff
 
@@ -2468,7 +2474,7 @@ format step.
 ## In-memory v19 label (approved November 5, 2026)
 
 **Status: the user approved the recommended answer to each decision: L1-A,
-L2-A and L3-A. Implementation has not started.** Since 8b the app writes
+L2-A and L3-A. Delivered November 5; see below.** Since 8b the app writes
 only v19, but owners still hold `ProjectFile`, which is `ProjectFileV18`: it
 says `schemaVersion: 18` and its templates may carry a `draft`. The manifest
 boundary relabels on every read and write (I1). This slice makes the
@@ -2569,3 +2575,77 @@ user-visible, the e2e specs that save, import, upgrade or recover
 (`personal-workbench-*`, `project-replacement-guard`,
 `project-tab-coordination`, `file-prompt-*`, `linked-prompt-sources`) run locally, and CI runs the
 rest. No desktop change.
+
+### In-memory v19 label delivered (November 5, 2026)
+
+`ProjectFile` is the shared document, in memory as on disk.
+
+- **Core (L1-A, L2-A).** `PROJECT_SCHEMA_VERSION` is 19 and `ProjectFile` is
+  `ProjectFileV19`: v18's content, with templates that have no `draft`.
+  `parseProjectFile`, `parseProjectJson` and `serializeProjectFile` read and
+  write v19 only. They took over v19's two checks: a named refusal of a
+  template draft, and secret fields inside provider-option arrays.
+  `shared-project.ts` is gone, with `sharedProjectAsActive`;
+  `declaredProjectSchemaVersion` moved to `project.ts`. The v10→v18 chain is
+  `parseLegacyProjectFile`, marked internal, and only
+  `planSharedProjectMigration` calls it. Given a v10–v18 document,
+  `parseProjectFile` refuses it and says the app upgrades it. The draft writers
+  `updatePromptTemplateDraft` and `updateDecisionPromptTemplateDraft` are gone.
+- **Boundary.** `readProjectManifest` and `serializeProjectManifest` no longer
+  relabel. The CLI reads a legacy folder through the plan and drops its drafts
+  (Z2-A).
+- **App owners.** The editors read `PromptTemplateView`
+  ([prompt-template-view.ts](../app/templates/prompt-template-view.ts)): the
+  shared template plus the user's draft. The templates owner builds it from the
+  personal record, or from a session-only prompt's own state. A draft edit to
+  a project prompt always goes to the personal workbench. The two branches
+  that wrote a draft into the shared document are gone. The save fallbacks
+  that append a revision directly are still there, since they write no draft.
+- **Version message.** The message lists v10 to v19 and says this build
+  upgrades v10–v18 to v19. Its regression case is in `project-manifest.test.ts`
+  rather than `project.test.ts`, because the defect was reproduced through
+  `readProjectManifest`. It ran red on the v18-only list.
+- **Update from file.** `planFilePromptUpdate` and `applyFilePromptUpdate`
+  take `FilePromptPersonalUses`. That covers the prompt's personal draft and
+  the items of every chat request draft and scratch. The templates owner fills
+  it from the personal workbench. Apply takes it too, so the names it writes
+  match the preview. The case in `file-prompt-update.test.ts` ran red: names
+  that only a draft or a scratch used were reused.
+- **Fixtures (L3-A).** `serializeProjectFile` writes v19, so the specs that
+  seeded v18 by accident now seed v19 folders. `serializeFolderProject` and
+  `parseFolderProject` are folded into it. The test-only legacy writers are in
+  [legacy-project-helpers.ts](../tests/legacy-project-helpers.ts):
+  `serializeLegacyProjectFile`, `withLegacyPromptDraft` and
+  `openLegacyProject`. The upgrade, recovery, replacement and CLI legacy cases
+  use them. Chain tests open their input through the plan, so they run on the
+  same path as the app. Some legacy rejection cases matched only the generic
+  "Invalid Inference Lens project" prefix, which the new "older format"
+  refusal would also satisfy. They now open through the plan and match a
+  specific message.
+- **Formats.** No on-disk change. HEAD and this branch write byte-identical
+  `project.json` for:
+  - the v15 and v19 examples;
+  - the v15 example's lifted drafts and its migration journal files;
+  - the headless and linked-prompt fixtures, compared by rewriting this
+    branch's bytes with HEAD.
+
+  The one difference found is the intended one: a v7 file's refusal now
+  lists v19.
+
+Decided during implementation: the legacy writers live with the migration
+test helpers, not under `tests/e2e/support`. The message wording is as above.
+`applyFilePromptUpdate` takes the personal uses as an option.
+
+Checks: lint, typecheck, `test:core` (1963), and the render and interaction
+tests (226). The e2e specs ran in Chromium light, on the pinned build.
+
+- The planned set, `personal-workbench-*`, `project-replacement-guard`,
+  `project-tab-coordination`, `file-prompt-*` and `linked-prompt-sources`:
+  68 passed.
+- The other 34 specs that seed folders with `serializeProjectFile` or read
+  an export: 175 passed and 1 failed.
+- The failure, `run-deep-links.spec.ts` "a folder's branch stays in its
+  workbench when a link switches projects", fails at the same line on the
+  parent commit: 3 times in 6 there, 2 in 6 here. It predates this slice.
+
+Not run: the dark project, the rest of the suite, and the desktop host.

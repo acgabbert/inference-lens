@@ -3,14 +3,13 @@ import { readFileSync } from "node:fs";
 
 import { expect, test, type Page } from "./support/test";
 
-import { createProjectFile } from "../../packages/core/src/project";
+import { createProjectFile, serializeProjectFile } from "../../packages/core/src/project";
 import type { ProjectFile } from "../../packages/core/src/project";
 import { resolveProviderCapabilities } from "../../packages/core/src/types";
 import {
   BUFFERED_FIXTURE_ENDPOINT,
   SYSTEM_ONE_FIXTURE_ORIGIN,
   seedProfiles,
-  serializeFolderProject,
   stubProjectDirectory,
   waitForHydration,
 } from "./support";
@@ -41,7 +40,7 @@ const templated = {
 };
 
 function emptyProject(): string {
-  return serializeFolderProject(createProjectFile({
+  return serializeProjectFile(createProjectFile({
     name: "Decision requests",
     request: {
       provider: "openai-compatible",

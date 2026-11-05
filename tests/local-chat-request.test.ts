@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { insertPromptTemplateUse, parseProjectFile, removePromptTemplateUse } from "../packages/core/src/project.ts";
+import { insertPromptTemplateUse, removePromptTemplateUse } from "../packages/core/src/project.ts";
 import type { ProjectConversationItem, ProjectFile } from "../packages/core/src/project.ts";
 import { planSharedProjectMigration } from "../packages/core/src/shared-project-migration.ts";
 import type { WorkbenchChatRequestDraftV1, WorkbenchScratchV1 } from "../packages/core/src/personal-workbench.ts";
@@ -15,7 +15,7 @@ import {
 } from "../app/request/local-chat-request.ts";
 
 const plan = planSharedProjectMigration(readFileSync(new URL("../docs/examples/shared-assets-level-two/project-v15.json", import.meta.url)));
-const shared: ProjectFile = parseProjectFile({ ...plan.shared, schemaVersion: 18 });
+const shared: ProjectFile = plan.shared;
 const projectId = shared.projectId;
 const launch = shared.conversationRevisions.find(({ id }) => id === shared.defaults.conversationRevisionId)!;
 const older = shared.conversationRevisions.find(({ id }) => id !== launch.id)!;

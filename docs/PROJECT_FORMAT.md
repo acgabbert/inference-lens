@@ -9,9 +9,10 @@ bundle's `.workbench/` folder, which `project.json` never holds
 folder but saves no shared change to it until **Upgrade project…** rewrites it
 as v19 and moves its drafts into `.workbench/`; a v10–v18 JSON import opens
 with its drafts held for the session only. The CLI opens v19 and, in memory
-without writing, v10–v18. In memory the app still labels the document v18,
-and the parser opens versions 10, 11, 12, 13, 14, 15, 16 and 17 and upgrades
-them on load. From v10, the protocol it kept on each connection
+without writing, v10–v18, dropping their drafts. In memory the document is
+v19 too, and carries no draft. A v10–v18 document opens only through the
+migration plan, which upgrades it through each version in turn and lifts its
+drafts out. From v10, the protocol it kept on each connection
 requirement (always chat completions) moves onto every execution target that
 names that requirement — the project default and each suite's
 `execution.target` — and the requirement loses the field. See

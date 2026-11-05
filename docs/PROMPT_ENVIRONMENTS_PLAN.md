@@ -138,8 +138,8 @@ unknown field rather than dropping it. That stops data loss, but the old build
 reports a malformed file instead of a newer version. A version bump gives the
 explicit "newer version" refusal.
 
-The collision: [`shared-project.ts`](../packages/core/src/shared-project.ts)
-already claims 16 for the staged shared-assets format, which removes template
+The collision: `shared-project.ts` (folded into `project.ts` with the
+in-memory v19 label) already claims 16 for the staged shared-assets format, which removes template
 drafts. The app and CLI do not use it yet, and its remaining integration work
 is unscheduled.
 

@@ -3,12 +3,12 @@ import { expect, test } from "./support/test";
 import {
   createProjectFile,
   createPromptTemplate,
+  serializeProjectFile,
 } from "../../packages/core/src/project";
 import {
   importProject,
   openMode,
   seedProfile,
-  serializeFolderProject,
   stubProjectDirectory,
   waitForHydration,
 } from "./support";
@@ -71,7 +71,7 @@ test("folder-backed edits expose saving and save-failure states", async ({ page 
   await seedProfile(page);
   await stubProjectDirectory(page, {
     name: "storage-clarity.inference-lens",
-    files: { "project.json": serializeFolderProject(project()) },
+    files: { "project.json": serializeProjectFile(project()) },
     writeError: "Fixture refused the write.",
   });
   await page.goto("/");

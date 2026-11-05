@@ -8,6 +8,7 @@ import type { ExternalPromptCandidate } from "../packages/core/src/external-prom
 import { FilePromptImportDialog } from "./templates/file-prompt-import-dialog.client";
 import { priorFilePromptImports } from "../packages/core/src/file-prompt-import";
 import type { PromptTemplate, PromptTemplateMessages } from "../packages/core/src/project";
+import type { PromptTemplateView } from "./templates/prompt-template-view";
 import type { EvaluationSuiteId, PromptTemplateId, PromptTemplateRevisionId } from "../packages/core/src/run-kernel";
 import {
   ChatPromptTemplateEditor,
@@ -42,7 +43,8 @@ export interface ProjectTemplatesPaneProps
   extends Omit<ChatPromptTemplateEditorProps, "template" | "templates" | "recoveryNotice"> {
   /** The Recovery marks and notice (2b step 6b-2, X3), keyed `prompt:<templateId>`. */
   recovery?: Pick<RecoveryHandle, "marked" | "notice" | "generation">;
-  templates: PromptTemplate[];
+  /** Each with the user's draft, when there is one. */
+  templates: PromptTemplateView[];
   usageCounts: ReadonlyMap<PromptTemplateId, number>;
   n8nImportDisabledReason?: string;
   onOpenN8nImport(): void;

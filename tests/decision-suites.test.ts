@@ -16,6 +16,7 @@ import {
 } from "../packages/core/src/project.ts";
 import type { ProjectFile } from "../packages/core/src/project.ts";
 import { resolveProviderCapabilities } from "../packages/core/src/types.ts";
+import { openLegacyProject } from "./legacy-project-helpers.ts";
 
 const request = {
   provider: "openai-compatible" as const,
@@ -84,16 +85,16 @@ function preflight(project: ProjectFile) {
   return evaluationSuitePreflight(project, suite.id, project.defaults.conversationRevisionId);
 }
 
-test("project schema is v18, and a v13 document opens unchanged", () => {
-  assert.equal(PROJECT_SCHEMA_VERSION, 18);
+test("project schema is v19, and a v13 document opens unchanged", () => {
+  assert.equal(PROJECT_SCHEMA_VERSION, 19);
   const v13 = { ...legacyContent(withRequest()), schemaVersion: 13 };
-  const opened = parseProjectFile(v13);
-  assert.equal(opened.schemaVersion, 18);
+  const opened = openLegacyProject(v13);
+  assert.equal(opened.schemaVersion, 19);
   assert.deepEqual(opened.decisionRequestRevisions, withRequest().decisionRequestRevisions);
 });
 
 test("a v13 document cannot carry a decision suite or a decision check", () => {
-  assert.throws(() => parseProjectFile({ ...withSuite(), schemaVersion: 13 }), /Decision suites require project schema v14/);
+  assert.throws(() => openLegacyProject({ ...withSuite(), schemaVersion: 13 }), /Decision suites require project schema v14/);
   // A decision check smuggled into a v13 chat suite is vocabulary 5, which v13 never had.
   const chat = withRequest();
   const v13 = {
@@ -109,7 +110,7 @@ test("a v13 document cannot carry a decision suite or a decision check", () => {
       cases: [{ id: "evaluation-case_one", name: "One", values: {}, checks: [check({ kind: "decision-noul", questionId: "is_spam", comparator: "at-most", value: 0.5 })] }],
     }],
   };
-  assert.throws(() => parseProjectFile(v13), /requires check vocabulary version 5/);
+  assert.throws(() => openLegacyProject(v13), /requires check vocabulary version 5/);
 });
 
 test("a decision suite saves and reopens as authored", () => {

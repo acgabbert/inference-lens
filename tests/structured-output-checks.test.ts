@@ -23,6 +23,7 @@ import { MAX_SCHEMA_OUTPUT_CODE_UNITS } from "../packages/core/src/json-schema/l
 import { createProjectFile, parseProjectFile, PROJECT_SCHEMA_VERSION, type ProjectFile } from "../packages/core/src/project.ts";
 import type { CheckId } from "../packages/core/src/run-kernel/types.ts";
 import { OPENAI_COMPATIBLE_CAPABILITIES } from "../packages/core/src/types.ts";
+import { openLegacyProject } from "./legacy-project-helpers.ts";
 
 const checkId = "check_structured" as CheckId;
 const answerSchema = {
@@ -263,13 +264,13 @@ test("assessments accept vocabularies 3 to 5 and gate v4 constructs the same way
 });
 
 test("a v11 project opens as the current schema unless it carries a v4 construct", () => {
-  assert.equal(PROJECT_SCHEMA_VERSION, 18);
+  assert.equal(PROJECT_SCHEMA_VERSION, 19);
   const current = suiteProject([schemaCheckJson]);
-  assert.equal(current.schemaVersion, 18);
+  assert.equal(current.schemaVersion, 19);
 
   const v11 = { ...suiteProject([containsCheckJson]), schemaVersion: 11 };
-  assert.equal(parseProjectFile(v11).schemaVersion, PROJECT_SCHEMA_VERSION);
-  assert.throws(() => parseProjectFile({ ...current, schemaVersion: 11 }), /check vocabulary version 4/);
+  assert.equal(openLegacyProject(v11).schemaVersion, PROJECT_SCHEMA_VERSION);
+  assert.throws(() => openLegacyProject({ ...current, schemaVersion: 11 }), /check vocabulary version 4/);
   const policy = suiteProject([{ checkId: "check_json", kind: "valid-json", inputPolicy: "surrounding-fence" }]);
-  assert.throws(() => parseProjectFile({ ...policy, schemaVersion: 11 }), /check vocabulary version 4/);
+  assert.throws(() => openLegacyProject({ ...policy, schemaVersion: 11 }), /check vocabulary version 4/);
 });

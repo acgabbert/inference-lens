@@ -36,7 +36,7 @@ approved policy. The options are kept to explain the tradeoffs.
 Current active formats: Project v15, RunTrace v8, ExperimentPlan v5,
 ExperimentResult v6, check vocabulary 5. [Prompt environments](PROMPT_ENVIRONMENTS_PLAN.md#format-version)
 has claimed active Project v16 and RunTrace v9. The staged shared format is
-v17 (`packages/core/src/shared-project.ts`). Neither has landed in the active
+v17 (`packages/core/src/shared-project.ts`, since folded into `project.ts`). Neither has landed in the active
 formats. This feature needs a Project, RunTrace and ExperimentPlan bump.
 
 | Option | Cost | Risk |

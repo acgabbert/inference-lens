@@ -17,7 +17,7 @@ import type { SharedWriteOutcome } from "../app/use-project-workspace.client.ts"
 import type { ConversationId, DecisionRequestId, DecisionRequestRevisionId } from "../packages/core/src/run-kernel/types.ts";
 
 const plan = planSharedProjectMigration(readFileSync(new URL("../docs/examples/shared-assets-level-two/project-v15.json", import.meta.url)));
-const shared: ProjectFile = parseProjectFile({ ...plan.shared, schemaVersion: 18 });
+const shared: ProjectFile = plan.shared;
 const projectId = shared.projectId;
 const inline = shared.decisionRequestRevisions.find(({ id }) => id === "decision-revision_inline") as Extract<ProjectDecisionRequestRevision, { kind: "inline" }>;
 const use = shared.decisionRequestRevisions.find(({ id }) => id === "decision-revision_use") as Extract<ProjectDecisionRequestRevision, { kind: "template-use" }>;
