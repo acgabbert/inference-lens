@@ -321,6 +321,10 @@ export function RequestComposer({
               { id: "tools", label: "Tools", count: selectedToolCount },
             ]}
           />
+          {/* In the header line, not above the settings: it names what every
+              tab edits, and a row of its own cost the first message 40px
+              (docs/SHARED_ASSETS_LEVEL_TWO_DESIGN.md, Z4). */}
+          {requestSwitcher}
           {activeTab !== "messages" ? <div className="request-header-actions">
             {/* On every tab, not only Messages: a repeat sends whatever the
                 composer currently holds, and which tab is open does not change
@@ -364,7 +368,6 @@ export function RequestComposer({
       >
         {activeTab === "messages" ? (
           <>
-            {requestSwitcher}
             <div className="run-settings">
               <RequestSettings
                 {...settings}

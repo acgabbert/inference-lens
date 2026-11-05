@@ -432,6 +432,8 @@ export function DecisionComposer({ modelInputRef, kindSwitch, draft: handle, tar
             onChange={(value) => (value === "json" ? handle.showJson() : handle.showForm())}
             tabs={[{ id: "form", label: "Form" }, { id: "json", label: "JSON" }]}
           />
+          {/* In the header line, as in the chat composer (Z4). */}
+          {requestSwitcher}
         </>}
         scrollClassName="decision-scroll"
       >
@@ -454,7 +456,6 @@ export function DecisionComposer({ modelInputRef, kindSwitch, draft: handle, tar
         {recoveryNotice}
         {localRequest && <LocalRequestNotice state={localRequest} />}
         {launchDefault && <LaunchDefaultNotice state={launchDefault} />}
-        {requestSwitcher}
         {capture && (
           <div className="decision-new-suite">
             <button className="text-button" disabled={capture.disabled} type="button" onClick={capture.onCapture}>

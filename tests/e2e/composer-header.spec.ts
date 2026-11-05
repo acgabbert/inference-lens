@@ -171,3 +171,42 @@ test("focus mode leaves the Chat / Decision switch behind its scrim", async ({ p
   await dialog.getByRole("button", { name: "Exit request composer focus mode" }).click();
   await expect(page.getByRole("radiogroup", { name: "Request kind" })).toBeVisible();
 });
+
+test.describe("with the shared assets gate on (step 8a, Z4)", () => {
+  test.use({ personalWorkbench: true });
+
+  test("the request switcher fits in the header budget", async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    const project = createProjectFile({
+      name: "Switcher budget project",
+      request: {
+        provider: "openai-compatible",
+        endpoint: "http://127.0.0.1:24014/v1",
+        model: "buffered-test-model",
+        messages: [{ role: "user", content: "Check the header." }],
+      },
+      idSuffix: "switcher-budget",
+      createdAt: "2026-11-05T12:00:00.000Z",
+    });
+    const instanceId = "profile-instance-switcher-budget";
+    await seedProfile(page, { name: "Switcher budget fixture", instanceId });
+    await page.addInitScript(
+      ({ mapKey, projectId, instanceId }) => {
+        localStorage.setItem(
+          mapKey,
+          JSON.stringify({ [projectId]: { profileId: "buffered", profileInstanceId: instanceId } }),
+        );
+      },
+      { mapKey: PROJECT_PROFILE_MAP_STORAGE_KEY, projectId: project.projectId, instanceId },
+    );
+    await page.goto("/");
+    await waitForHydration(page, "Switcher budget fixture");
+    await importProject(page, project, "Switcher budget project");
+
+    const composer = page.getByRole("region", { name: "Request composer" });
+    await expect(composer.getByRole("combobox", { name: /^Request/ })).toBeVisible();
+    const box = await page.getByLabel("Message 1 content").boundingBox();
+    expect(box).not.toBeNull();
+    expect(box!.y).toBeLessThanOrEqual(BASELINE_FIRST_MESSAGE_TOP - MINIMUM_GAIN);
+  });
+});

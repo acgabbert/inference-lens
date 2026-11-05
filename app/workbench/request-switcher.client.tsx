@@ -30,7 +30,7 @@ export function RequestSwitcher({ noun, menu, disabledReason, marked, onSelect }
   const capitalized = noun.charAt(0).toUpperCase() + noun.slice(1);
   return (
     <div className={styles.switcher} title={disabledReason}>
-      <label>
+      <label className={styles.field}>
         {capitalized}
         <select
           disabled={disabled}
@@ -71,7 +71,7 @@ export function RequestSwitcher({ noun, menu, disabledReason, marked, onSelect }
         </select>
       </label>
       {showRevisions && (
-        <label>
+        <label className={styles.field}>
           Revision
           <select
             disabled={disabled}

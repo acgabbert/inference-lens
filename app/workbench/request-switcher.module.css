@@ -1,24 +1,31 @@
-/* The request switcher in Chat and Decision Compose (2b step 5, T1). */
+/* The request switcher in the Chat and Decision composer headers (2b step 5,
+   T1; step 8a, Z4). It takes the header line's remaining width and moves to
+   a line of its own only when that is narrower than its basis. */
 
 .switcher {
-  margin: 0 0 var(--space-sm);
+  flex: 1 1 200px;
+  min-width: 0;
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
   gap: var(--space-xs) var(--space-sm);
   font-size: var(--type-compact);
 }
 
-.switcher label {
+/* A class, not `label`: the global `label:not(.file-button)` has the same
+   specificity as `.switcher label` and adds a bottom margin. */
+.switcher .field {
+  margin: 0;
+  flex: 1 1 0;
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: var(--space-xs);
-  min-width: 0;
-  max-width: 100%;
   color: var(--text-secondary);
 }
 
 .switcher select {
+  margin: 0;
+  flex: 1 1 auto;
+  width: 100%;
   min-width: 0;
-  max-width: 100%;
 }
