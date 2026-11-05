@@ -9,6 +9,7 @@ import type { FileSystemDirectoryHandleLike, FileSystemFileHandleLike } from "..
 import { parseWorkbenchRecord, serializeWorkbenchRecord } from "../packages/core/src/personal-workbench.ts";
 import type { WorkbenchRecordV1 } from "../packages/core/src/personal-workbench.ts";
 import { openWorkbenchStore, workbenchRecordPath } from "../packages/core/src/workbench-store.ts";
+import type { WorkbenchDraftV1 } from "../packages/core/src/personal-workbench.ts";
 
 class FileHandle implements FileSystemFileHandleLike {
   readonly kind = "file";
@@ -20,7 +21,7 @@ class FileHandle implements FileSystemFileHandleLike {
   }
   async getFile(): Promise<File> {
     const contents = this.fs.files.get(this.path) ?? "";
-    return { text: async () => contents } as File;
+    return { text: async () => contents, arrayBuffer: async () => new TextEncoder().encode(contents).buffer } as File;
   }
   async createWritable() {
     let pending = "";
@@ -82,6 +83,12 @@ class Directory implements FileSystemDirectoryHandleLike {
   }
   async removeEntry(name: string) {
     const path = this.child(name);
+    if (this.directories.has(path)) {
+      if ([...this.files.keys(), ...this.directories].some(entry => entry.startsWith(`${path}/`))) throw new DOMException("not empty", "InvalidModificationError");
+      this.directories.delete(path);
+      this.writes.push(`rmdir:${path}`);
+      return;
+    }
     if (!this.files.delete(path)) throw new DOMException("missing", "NotFoundError");
     this.writes.push(`delete:${path}`);
     (this.root ?? this).afterWrite?.(path);
@@ -323,6 +330,7 @@ test("unreadable records remain individually unavailable and a failed inventory 
   const store = await openWorkbenchStore({
     async list() { return [{ path: "drafts/draft_unreadable.json", error: "permission denied" }]; },
     async mutate(path) { calls.push(path); return { kind: "written" }; },
+    async removeMigrationOperation() { throw new Error("must not remove"); },
   }, projectId);
   assert.deepEqual(store.unavailable, [{ path: "drafts/draft_unreadable.json", message: "permission denied" }]);
   assert.equal((await store.delete("drafts/draft_unreadable.json")).kind, "blocked");
@@ -330,6 +338,7 @@ test("unreadable records remain individually unavailable and a failed inventory 
   await assert.rejects(() => openWorkbenchStore({
     async list() { throw new Error("inventory unavailable"); },
     async mutate() { throw new Error("must not mutate"); },
+    async removeMigrationOperation() { throw new Error("must not remove"); },
   }, projectId), /inventory unavailable/);
 });
 
@@ -392,4 +401,79 @@ test("browser recovery writes, reloads and deletes scratch records in their own 
   assert.deepEqual(reopened.unavailable, []);
   assert.deepEqual(await reopened.delete("scratch/scratch_branch.json"), { kind: "deleted", path: "scratch/scratch_branch.json" });
   assert.equal(directory.files.has(".workbench/scratch/scratch_branch.json"), false);
+});
+
+const OPERATION = `migration_${"a".repeat(64)}`;
+const OTHER_OPERATION = `migration_${"b".repeat(64)}`;
+function someDraft(): WorkbenchDraftV1 {
+  return records().find((record): record is WorkbenchDraftV1 => record.kind === "draft")!;
+}
+
+test("replaced drafts load apart from active records and are written, reloaded and deleted in replaced/ (W1)", async () => {
+  const draft = someDraft();
+  const directory = new Directory();
+  const store = await openWorkbenchStore(browserWorkbenchStorage(directory), projectId);
+  const path = `replaced/${draft.draftId}.json`;
+  assert.deepEqual(await store.writeRecovery(path, serializeWorkbenchRecord(draft)), { kind: "saved", path });
+  assert.equal(directory.files.get(`.workbench/${path}`), serializeWorkbenchRecord(draft));
+  const reopened = await openWorkbenchStore(browserWorkbenchStorage(directory), projectId);
+  assert.deepEqual(reopened.records, []);
+  assert.deepEqual(reopened.unavailable, []);
+  assert.deepEqual(reopened.replaced.map(item => [item.path, item.record]), [[path, draft]]);
+  assert.deepEqual(await reopened.writeRecovery(path, null), { kind: "deleted", path });
+  assert.equal(directory.files.has(`.workbench/${path}`), false);
+  await assert.rejects(() => reopened.writeRecovery("drafts/draft_x.json", "{}"), /recovery path/i);
+  await assert.rejects(() => reopened.writeRecovery(`migrations/${OPERATION}/journal.json`, "{}"), /recovery path/i);
+});
+
+test("a replaced copy inside an operation keeps the migration inventory readable for later writes", async () => {
+  const draft = someDraft();
+  const directory = new Directory();
+  directory.seed(".workbench/.gitignore", "*\n");
+  const store = await openWorkbenchStore(browserWorkbenchStorage(directory), projectId);
+  const copy = `migrations/${OPERATION}/replaced/${draft.draftId}.json`;
+  assert.equal((await store.writeRecovery(copy, serializeWorkbenchRecord(draft))).kind, "saved");
+  assert.deepEqual(await store.save(draft), { kind: "saved", path: workbenchRecordPath(draft) });
+  const reopened = await openWorkbenchStore(browserWorkbenchStorage(directory), projectId);
+  assert.deepEqual(reopened.unavailable, []);
+  assert.deepEqual(reopened.replaced, [], "an operation's replaced copies belong to its resolutions, not to replaced/");
+});
+
+test("a failed write keeps its path blocked until refresh re-reads it", async () => {
+  const draft = someDraft();
+  const directory = new Directory();
+  const path = workbenchRecordPath(draft);
+  directory.failPath = `.workbench/${path}`;
+  const store = await openWorkbenchStore(browserWorkbenchStorage(directory), projectId);
+  assert.equal((await store.save(draft)).kind, "failed");
+  directory.failPath = undefined;
+  assert.equal((await store.save(draft)).kind, "blocked");
+  // The failed write left an empty file behind; refresh reports what is there.
+  assert.deepEqual(await store.refresh(path), { kind: "refreshed", path, contents: "" });
+  assert.deepEqual(await store.save(draft), { kind: "saved", path });
+});
+
+test("removing a migration backup needs its recorded intent, deletes resolutions last and leaves other operations", async () => {
+  const draft = someDraft();
+  const directory = new Directory();
+  directory.seed(".workbench/.gitignore", "*\n");
+  const root = `.workbench/migrations/${OPERATION}`;
+  for (const name of ["source.project.json", "journal.json", "shared.project.json", "candidates/selections.json", `replaced/${draft.draftId}.json`]) directory.seed(`${root}/${name}`, "{}");
+  directory.seed(`.workbench/migrations/${OTHER_OPERATION}/source.project.json`, "{}");
+  const resolutions = (extra: object) => JSON.stringify({ schemaVersion: 1, kind: "migration-resolutions", projectId, operationId: OPERATION, resolutions: [], ...extra });
+  directory.seed(`${root}/resolutions.json`, resolutions({}));
+  const store = await openWorkbenchStore(browserWorkbenchStorage(directory), projectId);
+  const refused = await store.removeMigrationOperation(OPERATION);
+  assert.equal(refused.kind, "blocked");
+  assert.equal(directory.files.has(`${root}/source.project.json`), true);
+
+  assert.equal((await store.writeRecovery(`migrations/${OPERATION}/resolutions.json`, resolutions({ backupRemovedAt: "2026-11-04T12:00:00.000Z" }))).kind, "saved");
+  directory.writes.length = 0;
+  assert.deepEqual(await store.removeMigrationOperation(OPERATION), { kind: "removed", operationId: OPERATION });
+  assert.equal([...directory.files.keys()].some(path => path.startsWith(`${root}/`)), false);
+  assert.equal(directory.directories.has(root), false);
+  const deletions = directory.writes.filter(entry => entry.startsWith("delete:"));
+  assert.equal(deletions.at(-1), `delete:${root}/resolutions.json`);
+  assert.equal(directory.files.has(`.workbench/migrations/${OTHER_OPERATION}/source.project.json`), true);
+  await assert.rejects(() => store.removeMigrationOperation("migration_../../x"), /operation/i);
 });

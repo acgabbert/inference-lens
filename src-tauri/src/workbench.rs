@@ -38,21 +38,61 @@ pub enum Mutation {
 }
 
 /// The record directories under `.workbench`, each holding one record kind.
-const RECORD_DIRECTORIES: [(&str, &str); 2] = [("drafts", "draft_"), ("scratch", "scratch_")];
+/// `replaced/` holds drafts that "Use this one" replaced outside a migration
+/// (W1); they are listed but never loaded as active.
+const RECORD_DIRECTORIES: [(&str, &str); 3] = [
+    ("drafts", "draft_"),
+    ("scratch", "scratch_"),
+    ("replaced", "draft_"),
+];
+
+/// `<prefix><id>.json` with a non-empty `[A-Za-z0-9_-]` ID.
+fn record_name(name: &str, prefix: &str) -> bool {
+    name.strip_prefix(prefix)
+        .and_then(|suffix| suffix.strip_suffix(".json"))
+        .is_some_and(|suffix| {
+            !suffix.is_empty()
+                && suffix
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || b"_-".contains(&byte))
+        })
+}
+
+fn operation_id(value: &str) -> bool {
+    value.strip_prefix("migration_").is_some_and(|hash| {
+        hash.len() == 64
+            && hash
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    })
+}
+
+/// Reconciliation's files inside an operation, as core's `isMigrationRecoveryPath`.
+fn valid_migration_recovery_path(path: &str) -> bool {
+    match path.split('/').collect::<Vec<_>>().as_slice() {
+        ["migrations", operation, "resolutions.json"] => operation_id(operation),
+        ["migrations", operation, "replaced", name] => {
+            operation_id(operation) && record_name(name, "draft_")
+        }
+        _ => false,
+    }
+}
 
 fn destination(directory: &Path, path: &str) -> Result<PathBuf, String> {
+    if valid_migration_recovery_path(path) {
+        let mut target = directory.join(".workbench");
+        reject_link(&target)?;
+        for part in path.split('/') {
+            target.push(part);
+            reject_link(&target)?;
+        }
+        return Ok(target);
+    }
     let safe = path == "selections.json"
         || RECORD_DIRECTORIES.iter().any(|(folder, prefix)| {
             path.strip_prefix(*folder)
                 .and_then(|rest| rest.strip_prefix('/'))
-                .and_then(|name| name.strip_prefix(*prefix))
-                .and_then(|suffix| suffix.strip_suffix(".json"))
-                .is_some_and(|suffix| {
-                    !suffix.is_empty()
-                        && suffix
-                            .bytes()
-                            .all(|byte| byte.is_ascii_alphanumeric() || b"_-".contains(&byte))
-                })
+                .is_some_and(|name| record_name(name, prefix))
         });
     if !safe {
         return Err("Invalid workbench record path.".into());
@@ -599,6 +639,290 @@ mod tests {
             assert!(fs::read_dir(&outside.0).unwrap().next().is_none());
         }
     }
+
+    const OPERATION: &str =
+        "migration_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    const OTHER_OPERATION: &str =
+        "migration_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+
+    fn resolutions(extra: &str) -> String {
+        format!(
+            r#"{{"schemaVersion":1,"kind":"migration-resolutions","projectId":"project_one","operationId":"{OPERATION}","resolutions":[]{extra}}}"#
+        )
+    }
+
+    #[test]
+    fn native_recovery_paths_live_beside_records_and_keep_migration_inventory_readable() {
+        let directory = Directory::new();
+        for path in [
+            "replaced/draft_one.json".to_string(),
+            format!("migrations/{OPERATION}/replaced/draft_one.json"),
+            format!("migrations/{OPERATION}/resolutions.json"),
+        ] {
+            assert_eq!(
+                mutate(&directory.0, &path, None, Some("{}"), "project_one").unwrap(),
+                Mutation::Written,
+                "{path}"
+            );
+        }
+        let files = list(&directory.0).unwrap();
+        assert!(
+            !files
+                .iter()
+                .any(|file| matches!(file, File::Unavailable { .. })),
+            "{files:?}"
+        );
+        assert!(files.iter().any(
+            |file| matches!(file, File::Read { path, .. } if path == "replaced/draft_one.json")
+        ));
+        assert_eq!(
+            mutate(
+                &directory.0,
+                "drafts/draft_two.json",
+                None,
+                Some("{}"),
+                "project_one"
+            )
+            .unwrap(),
+            Mutation::Written
+        );
+        for path in [
+            format!("migrations/{OPERATION}/journal.json"),
+            format!("migrations/{OPERATION}/replaced/selections.json"),
+            format!("migrations/{OPERATION}/replaced/draft_one.json/x.json"),
+            "migrations/migration_short/resolutions.json".to_string(),
+            "replaced/scratch_one.json".to_string(),
+        ] {
+            assert!(
+                mutate(&directory.0, &path, None, Some("{}"), "project_one").is_err(),
+                "accepted {path}"
+            );
+        }
+    }
+
+    #[test]
+    fn removing_a_migration_backup_needs_its_intent_and_deletes_resolutions_last() {
+        let directory = Directory::new();
+        directory.seed(".gitignore", IGNORE);
+        for name in [
+            "source.project.json",
+            "journal.json",
+            "shared.project.json",
+            "candidates/selections.json",
+            "replaced/draft_one.json",
+        ] {
+            directory.seed(&format!("migrations/{OPERATION}/{name}"), "{}");
+        }
+        directory.seed(
+            &format!("migrations/{OTHER_OPERATION}/source.project.json"),
+            "{}",
+        );
+        directory.seed(
+            &format!("migrations/{OPERATION}/resolutions.json"),
+            &resolutions(""),
+        );
+        let root = directory.0.join(".workbench/migrations").join(OPERATION);
+        assert!(matches!(
+            remove_migration_operation(&directory.0, OPERATION, "project_one").unwrap(),
+            Removal::Blocked {
+                reason: "not-removable",
+                ..
+            }
+        ));
+        assert!(root.join("source.project.json").exists());
+
+        directory.seed(
+            &format!("migrations/{OPERATION}/resolutions.json"),
+            &resolutions(r#","backupRemovedAt":"2026-11-04T12:00:00.000Z""#),
+        );
+        let mut deleted = Vec::new();
+        assert_eq!(
+            remove_migration_operation_with(&directory.0, OPERATION, "project_one", |path| {
+                deleted.push(path.to_string())
+            })
+            .unwrap(),
+            Removal::Removed
+        );
+        assert!(!root.exists());
+        assert_eq!(deleted.last().map(String::as_str), Some("resolutions.json"));
+        assert!(directory
+            .0
+            .join(".workbench/migrations")
+            .join(OTHER_OPERATION)
+            .join("source.project.json")
+            .exists());
+        assert!(
+            remove_migration_operation(&directory.0, "migration_../../x", "project_one").is_err()
+        );
+    }
+
+    #[test]
+    fn removing_a_migration_backup_keeps_it_when_an_entry_is_unexpected() {
+        let directory = Directory::new();
+        directory.seed(".gitignore", IGNORE);
+        directory.seed(&format!("migrations/{OPERATION}/source.project.json"), "{}");
+        directory.seed(&format!("migrations/{OPERATION}/notes.txt"), "mine");
+        directory.seed(
+            &format!("migrations/{OPERATION}/resolutions.json"),
+            &resolutions(r#","backupRemovedAt":"2026-11-04T12:00:00.000Z""#),
+        );
+        assert!(matches!(
+            remove_migration_operation(&directory.0, OPERATION, "project_one").unwrap(),
+            Removal::Blocked {
+                reason: "not-removable",
+                ..
+            }
+        ));
+        let root = directory.0.join(".workbench/migrations").join(OPERATION);
+        assert!(root.join("source.project.json").exists());
+        assert!(root.join("resolutions.json").exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn removing_a_migration_backup_refuses_links() {
+        use std::os::unix::fs::symlink;
+        let directory = Directory::new();
+        let outside = Directory::new();
+        outside.seed("draft_one.json", "outside");
+        directory.seed(".gitignore", IGNORE);
+        directory.seed(
+            &format!("migrations/{OPERATION}/resolutions.json"),
+            &resolutions(r#","backupRemovedAt":"2026-11-04T12:00:00.000Z""#),
+        );
+        let root = directory.0.join(".workbench/migrations").join(OPERATION);
+        symlink(outside.0.join(".workbench"), root.join("replaced")).unwrap();
+        assert!(!matches!(
+            remove_migration_operation(&directory.0, OPERATION, "project_one"),
+            Ok(Removal::Removed)
+        ));
+        assert!(outside.0.join(".workbench/draft_one.json").exists());
+        assert!(root.join("resolutions.json").exists());
+    }
+}
+
+#[derive(Debug, PartialEq, Serialize)]
+#[serde(
+    tag = "kind",
+    rename_all = "kebab-case",
+    rename_all_fields = "camelCase"
+)]
+pub enum Removal {
+    Removed,
+    Blocked {
+        reason: &'static str,
+        message: String,
+    },
+}
+
+pub fn remove_migration_operation(
+    directory: &Path,
+    operation_id: &str,
+    project_id: &str,
+) -> Result<Removal, String> {
+    remove_migration_operation_with(directory, operation_id, project_id, |_| {})
+}
+
+/// W3. Everything is checked before the first deletion: the recorded intent,
+/// identity, protection and the operation's fixed layout, with no links.
+/// `resolutions.json` goes last, so an interruption still reads as a removal
+/// to finish.
+fn remove_migration_operation_with(
+    directory: &Path,
+    operation: &str,
+    project_id: &str,
+    mut deleted: impl FnMut(&str),
+) -> Result<Removal, String> {
+    if !operation_id(operation) {
+        return Err("Invalid migration operation.".into());
+    }
+    let refused = |message: String| {
+        Ok(Removal::Blocked {
+            reason: "not-removable",
+            message,
+        })
+    };
+    let inventory = list(directory)?;
+    if foreign(&inventory, project_id) {
+        return Ok(Removal::Blocked {
+            reason: "foreign-project",
+            message: "Workbench belongs to a different project. Preserve it before reconciling."
+                .into(),
+        });
+    }
+    let workbench = directory.join(".workbench");
+    reject_link(&workbench)?;
+    if read(&workbench.join(".gitignore"))?.as_deref() != Some(IGNORE) {
+        return Ok(Removal::Blocked {
+            reason: "protection",
+            message: "Workbench .gitignore must contain exactly '*\\n' before personal content can be changed.".into(),
+        });
+    }
+    let migrations = workbench.join("migrations");
+    reject_link(&migrations)?;
+    let root = migrations.join(operation);
+    reject_link(&root)?;
+    let intent = read(&root.join("resolutions.json"))?
+        .and_then(|contents| serde_json::from_str::<serde_json::Value>(&contents).ok())
+        .is_some_and(|value| {
+            value.get("kind").and_then(|kind| kind.as_str()) == Some("migration-resolutions")
+                && value.get("operationId").and_then(|id| id.as_str()) == Some(operation)
+                && value.get("projectId").and_then(|id| id.as_str()) == Some(project_id)
+                && value
+                    .get("backupRemovedAt")
+                    .is_some_and(|at| at.is_string())
+        });
+    if !intent {
+        return refused("The removal of this backup was not recorded first.".into());
+    }
+    // Collect the fixed layout; anything else keeps the whole backup.
+    let mut files = Vec::new();
+    let mut folders = Vec::new();
+    for entry in fs::read_dir(&root).map_err(|error| error.to_string())? {
+        let entry = entry.map_err(|error| error.to_string())?;
+        let name = entry.file_name().to_string_lossy().into_owned();
+        let file_type = entry.file_type().map_err(|error| error.to_string())?;
+        if file_type.is_dir() && (name == "candidates" || name == "replaced") {
+            for child in fs::read_dir(entry.path()).map_err(|error| error.to_string())? {
+                let child = child.map_err(|error| error.to_string())?;
+                let child_name = child.file_name().to_string_lossy().into_owned();
+                let relative = format!("{name}/{child_name}");
+                let path = format!("migrations/{operation}/{relative}");
+                let child_type = child.file_type().map_err(|error| error.to_string())?;
+                if !child_type.is_file()
+                    || !(valid_migration_path(&path) || valid_migration_recovery_path(&path))
+                {
+                    return refused(format!(
+                        "{path} is not part of a migration backup, so the backup is kept."
+                    ));
+                }
+                files.push(relative);
+            }
+            folders.push(name);
+        } else {
+            let path = format!("migrations/{operation}/{name}");
+            if !file_type.is_file()
+                || !(valid_migration_path(&path) || valid_migration_recovery_path(&path))
+            {
+                return refused(format!(
+                    "{path} is not part of a migration backup, so the backup is kept."
+                ));
+            }
+            files.push(name);
+        }
+    }
+    files.sort_by_key(|name| name == "resolutions.json");
+    for name in &files {
+        fs::remove_file(root.join(name))
+            .map_err(|error| format!("Could not remove {name}: {error}"))?;
+        deleted(name);
+    }
+    for name in folders {
+        fs::remove_dir(root.join(&name))
+            .map_err(|error| format!("Could not remove {name}: {error}"))?;
+    }
+    fs::remove_dir(&root).map_err(|error| format!("Could not remove the backup: {error}"))?;
+    Ok(Removal::Removed)
 }
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -671,7 +995,10 @@ fn migration_files(directory: &Path) -> Result<Vec<ByteFile>, String> {
             let path = format!("{prefix}/{name}");
             // Symlinks are neither directories nor files here: retained as unexpected entries.
             let file_type = entry.file_type().map_err(|error| error.to_string())?;
-            if file_type.is_dir() && depth < 2 && (depth == 0 || name == "candidates") {
+            if file_type.is_dir()
+                && depth < 2
+                && (depth == 0 || name == "candidates" || name == "replaced")
+            {
                 collect(&entry.path(), &path, depth + 1, files)?;
             } else if file_type.is_file() {
                 files.push(match read_bytes(&entry.path()) {

@@ -1,4 +1,16 @@
-import { ProjectValidationError } from "../../packages/core/src/project.ts";
+import { createPromptTemplate, ProjectValidationError } from "../../packages/core/src/project.ts";
+import { createDecisionPromptTemplate } from "../../packages/core/src/decision-template.ts";
+import { isMigrationRecoveryPath, serializeMigrationResolutions } from "../../packages/core/src/migration-journal.ts";
+import type { MigrationResolutionsV1, MigrationSnapshot } from "../../packages/core/src/migration-journal.ts";
+import {
+  assessMigrationRecovery,
+  markMigrationBackupRemoval,
+  migrationReplacedCopyPath,
+  migrationResolutionsPath,
+  removableMigrationOperation,
+  settleMigrationCandidate,
+} from "../../packages/core/src/migration-recovery.ts";
+import type { MigrationCandidateState, MigrationRecoveryOperation } from "../../packages/core/src/migration-recovery.ts";
 import type {
   ProjectConversationItem,
   ProjectConversationRevision,
@@ -6,7 +18,7 @@ import type {
   ProjectFile,
   PromptTemplateRevision,
 } from "../../packages/core/src/project.ts";
-import { isPromptDraft, parseWorkbenchRecord } from "../../packages/core/src/personal-workbench.ts";
+import { isPromptDraft, parseWorkbenchRecord, parseWorkbenchRecordJson, serializeWorkbenchRecord } from "../../packages/core/src/personal-workbench.ts";
 import type {
   LocalChatInput,
   LocalDecisionInput,
@@ -19,7 +31,7 @@ import type {
   WorkbenchScratchV1,
   WorkbenchSelectionsV1,
 } from "../../packages/core/src/personal-workbench.ts";
-import { openWorkbenchStore, workbenchRecordPath } from "../../packages/core/src/workbench-store.ts";
+import { openWorkbenchStore, replacedDraftPath, workbenchRecordPath } from "../../packages/core/src/workbench-store.ts";
 import type { WorkbenchStorage, WorkbenchStoreOutcome } from "../../packages/core/src/workbench-store.ts";
 import {
   clearPublication,
@@ -67,14 +79,92 @@ export type PersonalWorkbenchStatus =
   | { kind: "ready"; saving: boolean }
   | { kind: "blocked"; reason: "foreign-project" | "protection"; message: string };
 
-/** One entry of the D8 Recovery drawer; step 6b renders it. */
+/** What the drawer may offer for an item (V4). */
+export type RecoveryAction = "compare" | "use" | "discard" | "save-as-new" | "keep-as-draft" | "retry";
+
+/** One entry of the D8 Recovery drawer, as the controller holds it. */
 export interface RecoveryItem {
-  kind: "unreadable" | "record-conflict" | "publication-conflict" | "orphaned-draft" | "competing-draft" | "write-failed";
+  kind:
+    | "unreadable"
+    | "record-conflict"
+    | "publication-conflict"
+    | "orphaned-draft"
+    | "competing-draft"
+    | "write-failed"
+    /** A draft "Use this one" replaced outside a migration (W1). */
+    | "replaced-draft"
+    /** A migration candidate nothing has settled (D6, D7). */
+    | "migration-candidate";
   path: string;
   message: string;
   asset?: WorkbenchAssetRef;
-  /** A session copy that met an active record: held only in memory until it is reconciled (V2). */
+  /** The other copy: a session copy, a stored competitor, a replaced draft or a candidate. */
   record?: WorkbenchRecordV1;
+  /** The record exists only in memory (V2): unload warns until it is reconciled. */
+  memory?: boolean;
+  /** A competing draft that is a file at `path`, not loaded as active. */
+  stored?: boolean;
+  /** The save landed but its local children were not updated: Retry settles it. */
+  settle?: "children";
+  operationId?: string;
+  /** The journal's candidate path, as resolutions name it. */
+  candidate?: string;
+  state?: MigrationCandidateState;
+  /** The active record a candidate competes with. */
+  competitor?: string;
+}
+
+/** A recovery item as the drawer reads it: addressed by `id`, with its actions. */
+export interface RecoveryEntry extends RecoveryItem {
+  id: string;
+  actions: RecoveryAction[];
+}
+
+/** One migration operation's backup, for "Remove migration backup" (D7, W3). */
+export interface MigrationBackupSummary {
+  operationId: string;
+  /** Nothing is pending: the backup may be removed. */
+  removable: boolean;
+  /** A removal was interrupted: finish it. */
+  removing: boolean;
+  /** Absent candidates wait for Finish upgrade (6a). */
+  unfinished: boolean;
+  files: string[];
+}
+
+export interface RecoveryComparison {
+  incoming: { label: string; record: unknown };
+  current?: { label: string; record: unknown };
+}
+
+export type ReconcileOutcome =
+  | { kind: "settled" }
+  /** Nothing settled; the item stays. */
+  | { kind: "failed" | "blocked"; message: string };
+
+function recoveryId(item: RecoveryItem): string {
+  return `${item.kind}:${item.path}`;
+}
+
+function recoveryActions(item: RecoveryItem): RecoveryAction[] {
+  switch (item.kind) {
+    case "unreadable": return [];
+    case "write-failed": return ["retry"];
+    case "record-conflict": return item.memory || item.path === SELECTIONS_PATH ? ["compare", "discard"] : ["compare", "use", "discard"];
+    case "publication-conflict": return item.settle === "children" ? ["retry"] : ["compare", "keep-as-draft", "discard"];
+    case "orphaned-draft": return ["compare", "save-as-new", "discard"];
+    case "competing-draft":
+    case "replaced-draft": return ["compare", "use", "discard"];
+    case "migration-candidate":
+      if (item.state === "existing-selections") return ["compare", "discard"];
+      if (item.state === "unavailable") return ["discard"];
+      return ["compare", "use", "discard"];
+  }
+}
+
+const SETTLED: ReconcileOutcome = { kind: "settled" };
+function refused(kind: "failed" | "blocked", message: string): Exclude<ReconcileOutcome, { kind: "settled" }> {
+  return { kind, message };
 }
 
 /**
@@ -104,6 +194,8 @@ export type PublishOutcome =
 export interface PersonalWorkbenchControllerOptions {
   projectId: ProjectId;
   storage: WorkbenchStorage | null;
+  /** The folder's migration inventory as exact bytes, for pending candidates (6b). */
+  migrations?: { read(): Promise<MigrationSnapshot> } | null;
   /** Session-only records to start with: lifted legacy drafts or a carried session. */
   seeds: readonly WorkbenchRecordV1[];
   /** Set when an upgrade just reopened this folder, to settle carried drafts (V2). */
@@ -169,6 +261,10 @@ export class PersonalWorkbenchController {
   private readonly timers = new Map<string, unknown>();
   private readonly publishing = new Set<string>();
   private recoveryItems: RecoveryItem[] = [];
+  /** Migration operations by ID, as assessed at open and settled since. */
+  private readonly migrationOperations = new Map<string, MigrationRecoveryOperation>();
+  /** Recovery files known on disk: `replaced/` and each operation's own files. */
+  private readonly recoveryFiles = new Set<string>();
   private pendingWrites = 0;
   private closed = false;
 
@@ -184,8 +280,18 @@ export class PersonalWorkbenchController {
     return this.statusValue;
   }
 
-  get recovery(): readonly RecoveryItem[] {
-    return this.recoveryItems;
+  get recovery(): readonly RecoveryEntry[] {
+    return this.recoveryItems.map((item) => ({ ...item, id: recoveryId(item), actions: recoveryActions(item) }));
+  }
+
+  get migrationBackups(): MigrationBackupSummary[] {
+    return [...this.migrationOperations.values()].map((operation) => ({
+      operationId: operation.operationId,
+      removable: removableMigrationOperation(operation),
+      removing: operation.removing,
+      unfinished: operation.unfinished,
+      files: [...operation.files],
+    }));
   }
 
   /** Every record held now, for carrying a session forward into a folder. */
@@ -208,7 +314,7 @@ export class PersonalWorkbenchController {
 
   /** Local work a reload would lose: held only in memory, or not yet written. */
   get hasUnpersistedWork(): boolean {
-    if (this.recoveryItems.some((item) => item.record)) return true;
+    if (this.recoveryItems.some((item) => item.memory)) return true;
     for (const [path, record] of this.records) {
       if (record.kind === "selections") continue;
       if (!this.store || this.dirty.has(path)) return true;
@@ -663,11 +769,18 @@ export class PersonalWorkbenchController {
     this.dirty.clear();
     for (const { path, record } of store.records) {
       if (record.kind === "draft" && this.draftFor(record.asset)) {
-        this.recoveryItems.push({ kind: "competing-draft", path, asset: record.asset, message: "Another draft for this prompt is already active." });
+        this.recoveryItems.push({ kind: "competing-draft", path, asset: record.asset, record, stored: true, message: "Another draft for this prompt is already active." });
         continue;
       }
       this.records.set(path, record);
     }
+    for (const { path, record } of store.replaced) {
+      this.recoveryFiles.add(path);
+      this.recoveryItems.push({ kind: "replaced-draft", path, asset: record.asset, record, message: "A draft that \"Use this one\" replaced." });
+    }
+    // Read before carried records are written, so completion's activations are still exact.
+    await this.loadMigrations();
+    if (this.closed) return;
     const upgrade = this.options.upgrade;
     const activated = new Set(upgrade?.activated ?? []);
     for (const record of carried) {
@@ -675,7 +788,7 @@ export class PersonalWorkbenchController {
         const active = this.records.get(SELECTIONS_PATH);
         if (active && !(activated.has(SELECTIONS_PATH) && same(active, upgrade.stagedSelections))) {
           if (!same(active, record)) this.recoveryItems.push({
-            kind: "record-conflict", path: SELECTIONS_PATH, record,
+            kind: "record-conflict", path: SELECTIONS_PATH, record, memory: true,
             message: "Selections from this session were kept in memory because this folder already has personal selections.",
           });
           continue;
@@ -696,7 +809,7 @@ export class PersonalWorkbenchController {
       }
       if (record.kind === "draft" && this.draftFor(record.asset)) {
         this.recoveryItems.push({
-          kind: "competing-draft", path: workbenchRecordPath(record), asset: record.asset, record,
+          kind: "competing-draft", path: workbenchRecordPath(record), asset: record.asset, record, memory: true,
           message: "A draft from this session was kept in memory because this folder already has a draft for the same item.",
         });
         continue;
@@ -822,6 +935,494 @@ export class PersonalWorkbenchController {
     }, shared, writeShared);
   }
 
+  // ---- Recovery (step 6b) -------------------------------------------------
+
+  /**
+   * Reads the migration inventory and records every candidate whose exact
+   * bytes are active as `used`, so a later edit or save of that draft never
+   * brings the candidate back ("Candidates are assessed without the manifest").
+   */
+  private async loadMigrations(): Promise<void> {
+    const reader = this.options.migrations;
+    if (!reader || !this.store) return;
+    let inventory: Awaited<ReturnType<typeof assessMigrationRecovery>>;
+    try {
+      inventory = await assessMigrationRecovery(await reader.read(), this.projectId);
+    } catch (error) {
+      this.recoveryItems.push({ kind: "unreadable", path: "migrations", message: errorMessage(error, "Could not read the migration backups.") });
+      return;
+    }
+    for (const entry of inventory.unreadable) this.recoveryItems.push({ kind: "unreadable", path: entry.path, message: entry.message });
+    for (const operation of inventory.operations) {
+      this.migrationOperations.set(operation.operationId, operation);
+      for (const path of operation.files) if (isMigrationRecoveryPath(path)) this.recoveryFiles.add(path);
+      if (operation.present.length && !operation.removing) await this.recordPresent(operation.operationId);
+    }
+    this.syncMigrationItems();
+  }
+
+  private async recordPresent(operationId: string): Promise<boolean> {
+    const operation = this.migrationOperations.get(operationId);
+    if (!operation) return true;
+    const settledAt = this.options.now?.() ?? new Date().toISOString();
+    const written = await this.writeResolutions(operationId, (current) => operation.present.reduce(
+      (resolutions, candidate) => settleMigrationCandidate(resolutions, { projectId: this.projectId, operationId, candidate, outcome: "used", settledAt }),
+      current,
+    ));
+    if (written !== true) {
+      const path = migrationResolutionsPath(operationId);
+      this.recoveryItems = [
+        ...this.recoveryItems.filter((item) => !(item.kind === "write-failed" && item.path === path)),
+        { kind: "write-failed", path, message: `Could not record the drafts this upgrade restored: ${written.message}` },
+      ];
+      return false;
+    }
+    operation.present = [];
+    return true;
+  }
+
+  /** Writes the operation's next resolutions record and adopts it once confirmed. */
+  private async writeResolutions(
+    operationId: string,
+    next: (current: MigrationResolutionsV1 | undefined) => MigrationResolutionsV1 | undefined,
+  ): Promise<true | Exclude<ReconcileOutcome, { kind: "settled" }>> {
+    const store = this.store;
+    const operation = this.migrationOperations.get(operationId);
+    if (!store || !operation) return refused("blocked", "The personal workbench is not ready.");
+    let record: MigrationResolutionsV1 | undefined;
+    try {
+      record = next(operation.resolutions);
+    } catch (error) {
+      return refused("failed", errorMessage(error, "Could not settle the candidate."));
+    }
+    if (!record) return true;
+    const path = migrationResolutionsPath(operationId);
+    const outcome = await store.writeRecovery(path, serializeMigrationResolutions(record));
+    if (outcome.kind !== "saved") return refused(outcome.kind === "blocked" ? "blocked" : "failed", storeMessage(outcome));
+    operation.resolutions = record;
+    this.recoveryFiles.add(path);
+    if (!operation.files.includes(path)) operation.files = [...operation.files, path].sort();
+    return true;
+  }
+
+  private syncMigrationItems(): void {
+    this.recoveryItems = this.recoveryItems.filter((item) => item.kind !== "migration-candidate");
+    for (const operation of this.migrationOperations.values()) {
+      for (const candidate of operation.pending) {
+        this.recoveryItems.push({
+          kind: "migration-candidate",
+          path: candidate.path,
+          message: candidate.reason,
+          operationId: operation.operationId,
+          candidate: candidate.candidate,
+          state: candidate.state,
+          record: candidate.record,
+          ...(candidate.record.kind === "draft" ? { asset: candidate.record.asset } : {}),
+          ...(candidate.competitor ? { competitor: candidate.competitor } : {}),
+        });
+      }
+    }
+    this.changed();
+  }
+
+  private recoveryItem(id: string): RecoveryItem | undefined {
+    return this.recoveryItems.find((item) => recoveryId(item) === id);
+  }
+
+  private settleItem(item: RecoveryItem): ReconcileOutcome {
+    this.recoveryItems = this.recoveryItems.filter((entry) => entry !== item);
+    this.changed();
+    return SETTLED;
+  }
+
+  private reconcileStore(): Store | ReconcileOutcome {
+    if (this.statusValue.kind !== "ready" || !this.store) return refused("blocked", "The personal workbench is not ready to reconcile.");
+    return this.store;
+  }
+
+  /** Both sides of an item, for Compare. Undefined when it has nothing to compare. */
+  async compareRecovery(id: string, shared: ProjectFile): Promise<RecoveryComparison | undefined> {
+    const item = this.recoveryItem(id);
+    if (!item || !recoveryActions(item).includes("compare")) return undefined;
+    const active = (asset?: WorkbenchAssetRef) => {
+      const record = asset && this.draftFor(asset);
+      return record ? { label: "Active draft", record: structuredClone(record) } : undefined;
+    };
+    switch (item.kind) {
+      case "migration-candidate": {
+        const competitor = item.competitor ? this.records.get(item.competitor) : undefined;
+        return {
+          incoming: { label: "From the migration backup", record: structuredClone(item.record) },
+          ...(competitor ? { current: { label: competitor.kind === "selections" ? "Current selections" : "Active draft", record: structuredClone(competitor) } } : {}),
+        };
+      }
+      case "competing-draft":
+      case "replaced-draft": {
+        const current = active(item.asset);
+        const label = item.kind === "replaced-draft" ? "Replaced draft" : item.stored ? "Other draft" : "From this session";
+        return { incoming: { label, record: structuredClone(item.record) }, ...(current ? { current } : {}) };
+      }
+      case "orphaned-draft": {
+        const record = this.records.get(item.path);
+        if (record?.kind !== "draft") return undefined;
+        return { incoming: { label: "Draft", record: structuredClone(record.edited) }, current: { label: "Base revision", record: structuredClone(record.base.snapshot) } };
+      }
+      case "publication-conflict": {
+        const record = this.records.get(item.path);
+        if (!record || record.kind === "selections" || !record.publishing) return undefined;
+        const saved = savedRevision(shared, record.publishing.revisionId as string);
+        return {
+          incoming: { label: "This draft", record: structuredClone(record.publishing.content) },
+          ...(saved ? { current: { label: "Saved revision", record: structuredClone(saved) } } : {}),
+        };
+      }
+      case "record-conflict": {
+        const mine = item.memory ? item.record : this.records.get(item.path);
+        if (item.memory) {
+          const current = this.records.get(item.path);
+          return { incoming: { label: "From this session", record: structuredClone(mine) }, ...(current ? { current: { label: "In this folder", record: structuredClone(current) } } : {}) };
+        }
+        let onDisk: unknown;
+        try {
+          const file = (await this.storage?.list())?.find((entry) => entry.path === item.path);
+          onDisk = file && "contents" in file ? parseWorkbenchRecordJson(file.contents, this.projectId) : undefined;
+        } catch {
+          onDisk = undefined;
+        }
+        return { incoming: { label: "This window", record: structuredClone(mine) }, ...(onDisk ? { current: { label: "On disk", record: onDisk } } : {}) };
+      }
+      default:
+        return undefined;
+    }
+  }
+
+  /** "Use this one" (D6, W1): the item's copy becomes active; whatever it replaces is kept. */
+  async useRecovery(id: string): Promise<ReconcileOutcome> {
+    const item = this.recoveryItem(id);
+    if (!item || !recoveryActions(item).includes("use")) return refused("failed", "This item cannot be used.");
+    const store = this.reconcileStore();
+    if (!("save" in store)) return store;
+    switch (item.kind) {
+      case "migration-candidate": {
+        const operationId = item.operationId!;
+        if (item.record?.kind === "selections") {
+          await this.flush();
+          if (this.records.has(SELECTIONS_PATH)) return refused("failed", "Personal selections exist now. Compare them, then discard this candidate.");
+          const saved = await store.save(item.record);
+          if (saved.kind !== "saved") return refused("failed", storeMessage(saved));
+          this.records.set(SELECTIONS_PATH, item.record);
+          return this.settleCandidate(item, "used");
+        }
+        const activated = await this.activateReplacing(item.record as WorkbenchDraftV1, (draftId) => migrationReplacedCopyPath(operationId, draftId));
+        if (activated.kind !== "activated") return activated;
+        return this.settleCandidate(item, "used", activated.replacedCopy);
+      }
+      case "competing-draft": {
+        const activated = await this.activateReplacing(item.record as WorkbenchDraftV1, replacedDraftPath, item.stored ? { path: item.path, consume: false } : undefined);
+        return activated.kind === "activated" ? this.settleItem(item) : activated;
+      }
+      case "replaced-draft": {
+        const activated = await this.activateReplacing(item.record as WorkbenchDraftV1, replacedDraftPath, { path: item.path, consume: true });
+        return activated.kind === "activated" ? this.settleItem(item) : activated;
+      }
+      case "record-conflict":
+        return this.keepThisWindowsCopy(item, store);
+      default:
+        return refused("failed", "This item cannot be used.");
+    }
+  }
+
+  async discardRecovery(id: string): Promise<ReconcileOutcome> {
+    const item = this.recoveryItem(id);
+    if (!item || !recoveryActions(item).includes("discard")) return refused("failed", "This item cannot be discarded.");
+    if (item.memory) return this.settleItem(item);
+    switch (item.kind) {
+      case "migration-candidate":
+        return this.settleCandidate(item, "discarded");
+      case "competing-draft":
+      case "replaced-draft": {
+        const store = this.reconcileStore();
+        if (!("save" in store)) return store;
+        const outcome = item.kind === "replaced-draft" ? await store.writeRecovery(item.path, null) : await store.delete(item.path);
+        if (outcome.kind !== "deleted") return refused("failed", storeMessage(outcome));
+        this.recoveryFiles.delete(item.path);
+        return this.settleItem(item);
+      }
+      case "orphaned-draft":
+      case "publication-conflict": {
+        const record = this.records.get(item.path);
+        if (!record || record.kind === "selections") return this.settleItem(item);
+        const outcome = record.kind === "scratch"
+          ? await this.discardScratch(record.scratchId)
+          : record.asset.kind === "chat-request"
+            ? await this.discardChatRequestDraft(record.asset.id)
+            : record.asset.kind === "decision-request"
+              ? await this.discardDecisionRequestDraft(record.asset.id)
+              : await this.discardDraft(record.asset);
+        if (outcome && outcome.kind !== "deleted" && outcome.kind !== "saved") return refused("failed", storeMessage(outcome));
+        return this.settleItem(item);
+      }
+      case "record-conflict":
+        return this.takeTheCopyOnDisk(item);
+      default:
+        return refused("failed", "This item cannot be discarded.");
+    }
+  }
+
+  /** A publication conflict's edits stay as a draft over their original base. */
+  async keepRecoveryAsDraft(id: string): Promise<ReconcileOutcome> {
+    const item = this.recoveryItem(id);
+    if (!item || !recoveryActions(item).includes("keep-as-draft")) return refused("failed", "This item cannot be kept as a draft.");
+    const record = this.records.get(item.path);
+    if (!record || record.kind === "selections") return refused("failed", "The draft is no longer here.");
+    this.cancelTimer(item.path);
+    this.records.set(item.path, clearPublication(record));
+    this.dirty.add(item.path);
+    const outcome = await this.persist(item.path);
+    if (outcome && outcome.kind !== "saved") return refused("failed", storeMessage(outcome));
+    return this.settleItem(item);
+  }
+
+  /** An orphaned draft saved as a new prompt or request named `name`; never rebased (V4). */
+  async saveRecoveryAsNew(id: string, name: string, shared: ProjectFile, writeShared: WriteShared): Promise<ReconcileOutcome> {
+    const item = this.recoveryItem(id);
+    if (!item || !recoveryActions(item).includes("save-as-new")) return refused("failed", "This item cannot be saved as new.");
+    const record = this.records.get(item.path);
+    if (record?.kind !== "draft") return refused("failed", "The draft is no longer here.");
+    const trimmed = name.trim();
+    if (!trimmed) return refused("failed", "Name the new item.");
+    if (isPromptDraft(record)) {
+      const idSuffix = randomUUID();
+      const createdAt = this.options.now?.() ?? new Date().toISOString();
+      const edited = record.edited;
+      const update = (project: ProjectFile) => "messages" in edited
+        ? createPromptTemplate(project, { name: trimmed, messages: edited.messages, variableDefaults: edited.variableDefaults, idSuffix, revisionIdSuffix: idSuffix, createdAt })
+        : createDecisionPromptTemplate(project, { name: trimmed, decision: edited.decision, variableDefaults: edited.variableDefaults, idSuffix, revisionIdSuffix: idSuffix, createdAt });
+      try {
+        update(shared);
+      } catch (error) {
+        return refused("failed", errorMessage(error, "Could not save the draft as a new prompt."));
+      }
+      const outcome = await writeShared(update);
+      if (outcome.kind !== "confirmed") return refused(outcome.kind === "blocked" ? "blocked" : "failed", outcome.message);
+      this.cancelTimer(item.path);
+      this.dropRecord(item.path);
+      await this.persist(item.path);
+      return this.settleItem(item);
+    }
+    // A request draft becomes a parentless local request, then publishes as a new one.
+    const chat = record.asset.kind === "chat-request";
+    const selection = chat ? this.chatSelection : this.decisionSelection;
+    const select = selection?.kind === "draft" && selection.draftId === record.draftId;
+    const scratch = chat
+      ? this.createChatScratch((record as WorkbenchChatRequestDraftV1).edited.items, { select })
+      : this.createDecisionScratch((record as WorkbenchDecisionRequestDraftV1).edited, { select });
+    this.cancelTimer(item.path);
+    this.dropRecord(item.path);
+    this.settleItem(item);
+    const published = await this.publishScratch(scratch.scratchId, shared, writeShared, trimmed);
+    if (published.kind !== "published") return refused("failed", `Kept as a local request: ${published.message}`);
+    return SETTLED;
+  }
+
+  async retryRecovery(id: string, shared: ProjectFile): Promise<ReconcileOutcome> {
+    const item = this.recoveryItem(id);
+    if (!item || !recoveryActions(item).includes("retry")) return refused("failed", "This item cannot be retried.");
+    const store = this.reconcileStore();
+    if (!("save" in store)) return store;
+    if (item.kind === "publication-conflict") {
+      this.recoveryItems = this.recoveryItems.filter((entry) => entry !== item);
+      await this.settlePublications(shared, item.path);
+      await this.flush();
+      this.changed();
+      return this.recoveryItems.some((entry) => entry.path === item.path) ? refused("failed", "The save is still not settled.") : SETTLED;
+    }
+    const operationId = /^migrations\/(migration_[a-f0-9]{64})\/resolutions\.json$/.exec(item.path)?.[1];
+    if (operationId) {
+      if (!await this.recordPresent(operationId)) return refused("failed", "Could not record the restored drafts.");
+      return this.settleItem(item);
+    }
+    // An earlier failure may have changed the file: read it before writing again.
+    const refreshed = await store.refresh(item.path);
+    if (refreshed.kind !== "refreshed") return refused("failed", refreshed.message);
+    const record = this.records.get(item.path);
+    if (!record && refreshed.contents === null) return this.settleItem(item);
+    if (record && refreshed.contents === serializeWorkbenchRecord(record)) {
+      this.dirty.delete(item.path);
+      return this.settleItem(item);
+    }
+    if (record) this.dirty.add(item.path);
+    else this.deletions.add(item.path);
+    this.cancelTimer(item.path);
+    const outcome = await this.persist(item.path);
+    if (outcome && outcome.kind !== "saved" && outcome.kind !== "deleted") return refused("failed", storeMessage(outcome));
+    return this.settleItem(item);
+  }
+
+  /**
+   * W3: records the removal's intent, then the host deletes the operation's
+   * directory with `resolutions.json` last.
+   */
+  async removeMigrationBackup(operationId: string): Promise<ReconcileOutcome> {
+    const store = this.reconcileStore();
+    if (!("save" in store)) return store;
+    const operation = this.migrationOperations.get(operationId);
+    if (!operation) return refused("failed", "There is no such migration backup.");
+    if (!removableMigrationOperation(operation)) return refused("blocked", "Settle every item from this upgrade before removing its backup.");
+    if (!operation.removing) {
+      const at = this.options.now?.() ?? new Date().toISOString();
+      const written = await this.writeResolutions(operationId, (current) => markMigrationBackupRemoval(current, { projectId: this.projectId, operationId, at }));
+      if (written !== true) return written;
+      operation.removing = true;
+    }
+    const removed = await store.removeMigrationOperation(operationId);
+    if (removed.kind !== "removed") return refused(removed.kind === "blocked" ? "blocked" : "failed", removed.message);
+    this.migrationOperations.delete(operationId);
+    for (const path of [...this.recoveryFiles]) if (path.startsWith(`migrations/${operationId}/`)) this.recoveryFiles.delete(path);
+    this.recoveryItems = this.recoveryItems.filter((item) => item.operationId !== operationId && !item.path.startsWith(`migrations/${operationId}/`));
+    this.changed();
+    return SETTLED;
+  }
+
+  private async settleCandidate(item: RecoveryItem, outcome: "used" | "discarded", replacedCopy?: string): Promise<ReconcileOutcome> {
+    const operationId = item.operationId!;
+    const settledAt = this.options.now?.() ?? new Date().toISOString();
+    const written = await this.writeResolutions(operationId, (current) => settleMigrationCandidate(current, {
+      projectId: this.projectId, operationId, candidate: item.candidate!, outcome, settledAt, ...(replacedCopy ? { replacedCopy } : {}),
+    }));
+    if (written !== true) return written;
+    const operation = this.migrationOperations.get(operationId);
+    if (operation) operation.pending = operation.pending.filter(({ candidate }) => candidate !== item.candidate);
+    return this.settleItem(item);
+  }
+
+  /**
+   * Makes `incoming` the asset's one active draft (D6). The draft it replaces
+   * is kept at `target(draftId)`. Writes go in a crash-safe order: the replaced
+   * copy, then the incoming draft, then the old draft's deletion. A swap whose
+   * copy overwrites the incoming record's own file writes the incoming draft
+   * first. An interruption leaves at worst two drafts for one asset.
+   */
+  private async activateReplacing(
+    incoming: WorkbenchDraftV1,
+    target: (draftId: string) => string,
+    source?: { path: string; consume: boolean },
+  ): Promise<{ kind: "activated"; replacedCopy?: string } | Exclude<ReconcileOutcome, { kind: "settled" }>> {
+    const store = this.store;
+    if (!store) return refused("blocked", "The personal workbench is not ready to reconcile.");
+    await this.flush();
+    const active = this.draftFor(incoming.asset);
+    const activePath = active ? workbenchRecordPath(active) : undefined;
+    if (activePath && (active!.publishing || this.publishing.has(activePath))) {
+      return refused("blocked", "The active draft is being saved, or an earlier save needs review first.");
+    }
+    let record = clearPublication(incoming) as WorkbenchDraftV1;
+    if (active && active.draftId === record.draftId) {
+      record = parseWorkbenchRecord({ ...record, draftId: this.options.newDraftId?.() ?? `draft_${randomUUID()}` }, this.projectId) as WorkbenchDraftV1;
+    }
+    const path = workbenchRecordPath(record);
+    const copy = active ? target(active.draftId) : undefined;
+    if (copy && copy !== source?.path && this.recoveryFiles.has(copy)) {
+      return refused("failed", `A replaced copy of the active draft is already kept at ${copy}. Discard it first.`);
+    }
+    const writeIncoming = async () => {
+      if (source?.path === path) return undefined;
+      const outcome = await store.save(record);
+      return outcome.kind === "saved" ? undefined : refused("failed", storeMessage(outcome));
+    };
+    const writeCopy = async () => {
+      if (!copy || !active) return undefined;
+      const outcome = await store.writeRecovery(copy, serializeWorkbenchRecord(active));
+      if (outcome.kind !== "saved") return refused("failed", storeMessage(outcome));
+      this.recoveryFiles.add(copy);
+      return undefined;
+    };
+    const steps = copy && copy === source?.path ? [writeIncoming, writeCopy] : [writeCopy, writeIncoming];
+    for (const step of steps) {
+      const failure = await step();
+      if (failure) return failure;
+    }
+    this.records.set(path, record);
+    this.dirty.delete(path);
+    this.deletions.delete(path);
+    if (activePath && active) {
+      this.records.delete(activePath);
+      const deleted = await store.delete(activePath);
+      if (deleted.kind !== "deleted" && !(deleted.kind === "blocked" && deleted.reason === "not-loaded")) {
+        return refused("failed", `The draft is active, but the one it replaced is still in drafts/: ${storeMessage(deleted)}`);
+      }
+      this.moveDraftSelection(active.draftId, record.draftId);
+    }
+    if (source?.consume && source.path !== copy) {
+      const consumed = await store.writeRecovery(source.path, null);
+      if (consumed.kind === "deleted") this.recoveryFiles.delete(source.path);
+    }
+    if (copy && active && copy.startsWith("replaced/")) {
+      this.recoveryItems = this.recoveryItems.filter((item) => item.path !== copy);
+      this.recoveryItems.push({ kind: "replaced-draft", path: copy, asset: active.asset, record: active, message: "A draft that \"Use this one\" replaced." });
+    }
+    this.changed();
+    return { kind: "activated", ...(copy ? { replacedCopy: copy } : {}) };
+  }
+
+  /** A selection of the replaced request draft follows the draft that replaced it. */
+  private moveDraftSelection(from: string, to: string): void {
+    if (from === to) return;
+    if (same(this.chatSelection, { kind: "draft", draftId: from })) this.selectChat({ kind: "draft", draftId: to as WorkbenchDraftV1["draftId"] });
+    if (same(this.decisionSelection, { kind: "draft", draftId: from })) this.selectDecision({ kind: "draft", draftId: to as WorkbenchDraftV1["draftId"] });
+  }
+
+  /** A store conflict: keep this window's copy; the copy on disk is kept aside first. */
+  private async keepThisWindowsCopy(item: RecoveryItem, store: Store): Promise<ReconcileOutcome> {
+    const record = this.records.get(item.path);
+    if (!record) return refused("failed", "This window no longer holds the record.");
+    const refreshed = await store.refresh(item.path);
+    if (refreshed.kind !== "refreshed") return refused("failed", refreshed.message);
+    if (refreshed.contents !== null) {
+      let onDisk: WorkbenchRecordV1 | undefined;
+      try { onDisk = parseWorkbenchRecordJson(refreshed.contents, this.projectId); } catch { onDisk = undefined; }
+      if (onDisk?.kind === "draft") {
+        const copy = replacedDraftPath(onDisk.draftId);
+        if (this.recoveryFiles.has(copy)) return refused("failed", `A replaced copy is already kept at ${copy}. Discard it first.`);
+        const kept = await store.writeRecovery(copy, refreshed.contents);
+        if (kept.kind !== "saved") return refused("failed", storeMessage(kept));
+        this.recoveryFiles.add(copy);
+        this.recoveryItems.push({ kind: "replaced-draft", path: copy, asset: onDisk.asset, record: onDisk, message: "The copy on disk that this window's draft replaced." });
+      } else if (onDisk?.kind === "scratch") {
+        const aside = parseWorkbenchRecord({ ...onDisk, scratchId: this.options.newScratchId?.() ?? `scratch_${randomUUID()}`, publishing: undefined }, this.projectId);
+        const kept = await store.save(aside);
+        if (kept.kind !== "saved") return refused("failed", storeMessage(kept));
+        this.records.set(workbenchRecordPath(aside), aside);
+      }
+    }
+    this.cancelTimer(item.path);
+    this.dirty.add(item.path);
+    const outcome = await this.persist(item.path);
+    if (outcome && outcome.kind !== "saved") return refused("failed", storeMessage(outcome));
+    return this.settleItem(item);
+  }
+
+  /** A store conflict: this window's copy gives way to the one on disk. */
+  private async takeTheCopyOnDisk(item: RecoveryItem): Promise<ReconcileOutcome> {
+    const store = this.reconcileStore();
+    if (!("save" in store)) return store;
+    const refreshed = await store.refresh(item.path);
+    if (refreshed.kind !== "refreshed") return refused("failed", refreshed.message);
+    this.cancelTimer(item.path);
+    this.dirty.delete(item.path);
+    if (refreshed.contents === null) {
+      this.records.delete(item.path);
+    } else {
+      try {
+        this.records.set(item.path, parseWorkbenchRecordJson(refreshed.contents, this.projectId));
+      } catch (error) {
+        this.records.delete(item.path);
+        this.recoveryItems.push({ kind: "unreadable", path: item.path, message: errorMessage(error, "The copy on disk cannot be read.") });
+      }
+    }
+    return this.settleItem(item);
+  }
+
   /** A Save already running, or an earlier one that needs review. */
   private pendingPublication(record: WorkbenchDraftV1 | WorkbenchScratchV1): PublishOutcome | undefined {
     if (this.publishing.has(workbenchRecordPath(record))) return { kind: "blocked", message: "This draft is already being saved." };
@@ -898,7 +1499,7 @@ export class PersonalWorkbenchController {
       const completion = completePublication(outcome.project, current, this.scratches);
       const cleaned = await this.applyScratchRewrites(completion.scratchRewrites);
       if (!cleaned) {
-        this.recoveryItems.push({ kind: "publication-conflict", path, message: "The request was saved, but a local request that branched from it could not be updated. It is settled the next time the project opens." });
+        this.recoveryItems.push({ kind: "publication-conflict", path, settle: "children", message: "The request was saved, but a local request that branched from it could not be updated. Retry, or it is settled the next time the project opens." });
         return { kind: "published", revisionId, keptEdits: true, project: outcome.project };
       }
       if (!completion.record && !await this.persistPublishedSelection(current, revisionId)) {
@@ -1003,9 +1604,10 @@ export class PersonalWorkbenchController {
     this.scheduleWrite(path);
   }
 
-  private async settlePublications(shared: ProjectFile): Promise<void> {
+  private async settlePublications(shared: ProjectFile, only?: string): Promise<void> {
     for (const [path, record] of [...this.records]) {
       if (record.kind === "selections" || !record.publishing) continue;
+      if (only !== undefined && path !== only) continue;
       const asset = record.kind === "draft" ? { asset: record.asset } : {};
       let state: ReturnType<typeof reconcilePublication>;
       try {
@@ -1025,7 +1627,7 @@ export class PersonalWorkbenchController {
         // Children are reparented and read back before the scratch is cleared.
         const completion = completePublication(shared, record, this.scratches);
         if (!await this.applyScratchRewrites(completion.scratchRewrites)) {
-          this.recoveryItems.push({ kind: "publication-conflict", path, message: "A local request that branched from a saved one could not be updated." });
+          this.recoveryItems.push({ kind: "publication-conflict", path, settle: "children", message: "A local request that branched from a saved one could not be updated." });
           continue;
         }
         if (completion.record) {
@@ -1187,4 +1789,14 @@ function storeMessage(outcome: WorkbenchStoreOutcome): string {
     case "failed":
       return outcome.message;
   }
+}
+
+/** The saved revision with this ID, in any prompt or request. */
+function savedRevision(project: ProjectFile, revisionId: string): unknown {
+  for (const template of project.promptTemplates) {
+    const revision = (template.revisions as Array<{ id: string }>).find(({ id }) => id === revisionId);
+    if (revision) return revision;
+  }
+  return project.conversationRevisions.find(({ id }) => id === revisionId)
+    ?? project.decisionRequestRevisions.find(({ id }) => id === revisionId);
 }

@@ -41,7 +41,7 @@ import {
   projectExportFileName,
 } from "../packages/core/src/project.ts";
 import type { ProjectFile, ProjectGitPolicy } from "../packages/core/src/project.ts";
-import type { WorkbenchFile, WorkbenchMutationResult, WorkbenchStorage } from "../packages/core/src/workbench-store.ts";
+import type { WorkbenchFile, WorkbenchMutationResult, WorkbenchRemovalResult, WorkbenchStorage } from "../packages/core/src/workbench-store.ts";
 import { nativeMigrationCompletionStorage, nativeMigrationStorage } from "./migration-native.client.ts";
 import type { MigrationStorage } from "../packages/core/src/migration-journal.ts";
 import type { MigrationCompletionStorage } from "../packages/core/src/migration-completion.ts";
@@ -792,6 +792,9 @@ function buildNativeWorkspaceHandle(
         list: () => invokeNative<WorkbenchFile[]>("list_workbench_records", { workspaceId: workspace.workspaceId }),
         mutate: (path, expectedContents, contents, projectId) => invokeNative<WorkbenchMutationResult>("mutate_workbench_record", {
           workspaceId: workspace.workspaceId, path, expectedContents, contents, projectId,
+        }),
+        removeMigrationOperation: (operationId, projectId) => invokeNative<WorkbenchRemovalResult>("remove_workbench_migration_operation", {
+          workspaceId: workspace.workspaceId, operationId, projectId,
         }),
       },
       async save(contents: string): Promise<void> {

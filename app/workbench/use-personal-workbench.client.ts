@@ -18,6 +18,7 @@ import type {
   WorkbenchScratchV1,
 } from "../../packages/core/src/personal-workbench.ts";
 import type { ConversationId, DecisionRequestId } from "../../packages/core/src/run-kernel/types.ts";
+import type { MigrationSnapshot } from "../../packages/core/src/migration-journal.ts";
 import type { WorkbenchStorage, WorkbenchStoreOutcome } from "../../packages/core/src/workbench-store.ts";
 import type { ProjectSession, SharedWriteOutcome } from "../use-project-workspace.client.ts";
 import { PersonalWorkbenchController } from "./personal-workbench-controller.ts";
@@ -29,7 +30,12 @@ import type {
   PromptAssetRef,
   PromptDraftBase,
   PromptDraftContent,
+  MigrationBackupSummary,
   PublishOutcome,
+  ReconcileOutcome,
+  RecoveryAction,
+  RecoveryComparison,
+  RecoveryEntry,
   RecoveryItem,
   ScratchBranchPoint,
   UnsavedDraftSummary,
@@ -43,7 +49,12 @@ export type {
   PersonalWorkbenchStatus,
   ScratchBranchPoint,
   PromptAssetRef,
+  MigrationBackupSummary,
   PublishOutcome,
+  ReconcileOutcome,
+  RecoveryAction,
+  RecoveryComparison,
+  RecoveryEntry,
   RecoveryItem,
   UnsavedDraftSummary,
   WorkbenchAssetRef,
@@ -53,8 +64,8 @@ export type {
  * The personal owner (D3): record load and save, recovery status and
  * publication. Step 2 routes prompt drafts, step 3 chat request drafts, chat
  * scratch and the chat selection, step 4 their decision equivalents, and
- * step 5 execution overrides and the launch-default write; reconciliation
- * arrives in step 6
+ * step 5 execution overrides and the launch-default write, and step 6b the
+ * recovery inventory and its reconcile actions
  * (docs/SHARED_ASSETS_LEVEL_TWO_DESIGN.md, "Delivery inside the gate").
  */
 export interface PersonalWorkbenchHandle {
@@ -64,7 +75,19 @@ export interface PersonalWorkbenchHandle {
   /** One active draft per asset (D6). */
   draftFor(asset: WorkbenchAssetRef): WorkbenchDraftV1 | undefined;
   unsavedDrafts: UnsavedDraftSummary[];
-  recovery: readonly RecoveryItem[];
+  /** D8: everything the Recovery drawer lists, each with the actions it offers (V4). */
+  recovery: readonly RecoveryEntry[];
+  /** Migration backups, for "Remove migration backup" (D7, W3). */
+  migrationBackups: MigrationBackupSummary[];
+  reconcile: {
+    compare(id: string): Promise<RecoveryComparison | undefined>;
+    use(id: string): Promise<ReconcileOutcome>;
+    discard(id: string): Promise<ReconcileOutcome>;
+    keepAsDraft(id: string): Promise<ReconcileOutcome>;
+    saveAsNew(id: string, name: string): Promise<ReconcileOutcome>;
+    retry(id: string): Promise<ReconcileOutcome>;
+    removeMigrationBackup(operationId: string): Promise<ReconcileOutcome>;
+  };
   /** Held in memory at once and persisted after a short debounce (D14). */
   updateDraft(asset: PromptAssetRef, base: PromptDraftBase, edited: PromptDraftContent): void;
   discardDraft(asset: WorkbenchAssetRef): Promise<WorkbenchStoreOutcome | undefined>;
@@ -127,11 +150,14 @@ export interface PersonalWorkbenchHandle {
 }
 
 const OFF: PersonalWorkbenchStatus = { kind: "off" };
+const NOT_OPEN: ReconcileOutcome = { kind: "blocked", message: "Open a project first." };
 
 export function usePersonalWorkbench(input: {
   session: ProjectSession | undefined;
   /** Null without a folder, or for a legacy folder (S1): session-only. */
   storage: WorkbenchStorage | null;
+  /** The folder's migration inventory as bytes; null whenever `storage` is. */
+  migrations?: { read(): Promise<MigrationSnapshot> } | null;
   shared: ProjectFile | null;
   writeShared(update: (current: ProjectFile) => ProjectFile): Promise<SharedWriteOutcome>;
 }): PersonalWorkbenchHandle {
@@ -154,6 +180,10 @@ export function usePersonalWorkbench(input: {
   // when the adoption, the project or the storage actually changes.
   const sessionKey = personalSession ? `${personalSession.adoption}:${personalSession.projectId}` : undefined;
   const { storage } = input;
+  const migrationsRef = useRef(input.migrations ?? null);
+  useEffect(() => {
+    migrationsRef.current = input.migrations ?? null;
+  });
   useEffect(() => {
     const personal = sessionRef.current;
     const previous = controllerRef.current;
@@ -171,6 +201,7 @@ export function usePersonalWorkbench(input: {
     const next = new PersonalWorkbenchController({
       projectId: personal.projectId,
       storage,
+      migrations: storage ? migrationsRef.current : null,
       seeds,
       ...(personal.upgrade ? { upgrade: personal.upgrade } : {}),
       onChange: () => setRevision((current) => current + 1),
@@ -217,6 +248,37 @@ export function usePersonalWorkbench(input: {
     draftFor: (asset) => controller?.draftFor(asset),
     unsavedDrafts: controller?.unsavedDrafts ?? [],
     recovery: controller?.recovery ?? [],
+    migrationBackups: controller?.migrationBackups ?? [],
+    reconcile: {
+      async compare(id) {
+        const current = controllerRef.current;
+        const shared = sharedRef.current;
+        return current && shared ? current.compareRecovery(id, shared) : undefined;
+      },
+      async use(id) {
+        return controllerRef.current?.useRecovery(id) ?? NOT_OPEN;
+      },
+      async discard(id) {
+        return controllerRef.current?.discardRecovery(id) ?? NOT_OPEN;
+      },
+      async keepAsDraft(id) {
+        return controllerRef.current?.keepRecoveryAsDraft(id) ?? NOT_OPEN;
+      },
+      async saveAsNew(id, name) {
+        const current = controllerRef.current;
+        const shared = sharedRef.current;
+        if (!current || !shared) return NOT_OPEN;
+        return current.saveRecoveryAsNew(id, name, shared, (update) => writeSharedRef.current(update));
+      },
+      async retry(id) {
+        const current = controllerRef.current;
+        const shared = sharedRef.current;
+        return current && shared ? current.retryRecovery(id, shared) : NOT_OPEN;
+      },
+      async removeMigrationBackup(operationId) {
+        return controllerRef.current?.removeMigrationBackup(operationId) ?? NOT_OPEN;
+      },
+    },
     updateDraft(asset, base, edited) {
       controllerRef.current?.updatePromptDraft(asset, base, edited);
     },

@@ -11,7 +11,7 @@ import type {
   WorkbenchScratchV1,
   WorkbenchSelectionsV1,
 } from "../packages/core/src/personal-workbench.ts";
-import type { WorkbenchStorage, WorkbenchMutationResult } from "../packages/core/src/workbench-store.ts";
+import type { WorkbenchStorage, WorkbenchMutationResult, WorkbenchRemovalResult } from "../packages/core/src/workbench-store.ts";
 import { PersonalWorkbenchController } from "../app/workbench/personal-workbench-controller.ts";
 import type { SharedWriteOutcome } from "../app/use-project-workspace.client.ts";
 import type { ConversationId, DecisionRequestId, DecisionRequestRevisionId } from "../packages/core/src/run-kernel/types.ts";
@@ -34,6 +34,9 @@ class MemoryStorage implements WorkbenchStorage {
   writes: string[] = [];
   async list() {
     return [...this.files].map(([path, contents]) => ({ path, contents }));
+  }
+  async removeMigrationOperation(): Promise<WorkbenchRemovalResult> {
+    return { kind: "blocked", reason: "not-removable", message: "No migration backups here." };
   }
   async mutate(path: string, expected: string | null, contents: string | null): Promise<WorkbenchMutationResult> {
     const actual = this.files.get(path) ?? null;

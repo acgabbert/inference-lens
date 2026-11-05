@@ -779,6 +779,24 @@ fn mutate_workbench_record(
 }
 
 #[tauri::command]
+fn remove_workbench_migration_operation(
+    workspaces: State<'_, ProjectWorkspaces>,
+    workspace_id: String,
+    operation_id: String,
+    project_id: String,
+) -> Result<workbench::Removal, String> {
+    // Held through the intent check and every deletion, like a record mutation.
+    let workspaces = workspaces
+        .0
+        .lock()
+        .map_err(|_| command_error("Project workspace state is unavailable."))?;
+    let workspace = workspaces
+        .get(&workspace_id)
+        .ok_or_else(|| command_error("This project folder is no longer open."))?;
+    workbench::remove_migration_operation(&workspace.directory, &operation_id, &project_id)
+}
+
+#[tauri::command]
 fn read_workbench_migration(
     workspaces: State<'_, ProjectWorkspaces>,
     workspace_id: String,
@@ -1632,6 +1650,7 @@ pub fn run() {
             save_project_workspace,
             list_workbench_records,
             mutate_workbench_record,
+            remove_workbench_migration_operation,
             read_workbench_migration,
             stage_workbench_migration,
             complete_workbench_migration,
