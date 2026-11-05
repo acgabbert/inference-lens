@@ -2129,11 +2129,11 @@ title. The earlier draft case's R4 assertions were removed.
 With the gate on, steps 2–7 have all landed. Per D1 and D2, removing the gate
 is the enabling change. It needs its own approval, which nothing here gives.
 
-### Step 8 decisions (proposed November 5, 2026)
+### Step 8 decisions (approved November 5, 2026)
 
 Step 8 removes the gate (D1, D2): the app writes v19, every session is
-`personal`, and the migration completion guard lifts. This section proposes how.
-Nothing here is approved yet.
+`personal`, and the migration completion guard lifts. The user approved the
+recommended answer to each decision: Z1-A, Z2-A, Z3-A, Z4-A and Z5-A.
 
 #### What the code does at `2ec9222`
 
