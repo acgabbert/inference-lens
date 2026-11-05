@@ -1809,3 +1809,75 @@ Defaults taken with them, reversible and inside the approved contracts:
   request, named by the user, with the draft's content. A publication conflict's
   "Keep as draft" clears the intent and keeps the edits over their original
   base.
+
+### Step 6b-1 delivered (November 5, 2026)
+
+The recovery inventory and every reconcile action, behind the gate and without
+UI. With the gate off nothing calls them.
+
+- **Core.** [migration-recovery.ts](../packages/core/src/migration-recovery.ts)
+  assesses each operation against its preserved source, not the manifest, and
+  holds the resolutions operations: settle a candidate, mark a backup's removal
+  and decide whether a backup is removable. An operation whose manifest is
+  still exactly its output keeps its absent candidates for Finish upgrade (6a),
+  so Recovery cannot discard one that Finish would then activate.
+  [migration-journal.ts](../packages/core/src/migration-journal.ts) exports
+  `isMigrationRecoveryPath`, and inspection leaves those files out.
+  [workbench-store.ts](../packages/core/src/workbench-store.ts) lists
+  `replaced/` drafts apart from active records. It adds `writeRecovery` for the
+  recovery paths only, `refresh` (an explicit re-read that lifts a conflict or
+  failure block) and `removeMigrationOperation`.
+- **Hosts.** Both listings descend an operation's `replaced/` and the top-level
+  `replaced/`. Both mutations accept the recovery paths, with the native host
+  refusing links at every component. The new `removeMigrationOperation` (the
+  native `remove_workbench_migration_operation` command) checks the recorded
+  intent, identity, protection and the operation's fixed layout before
+  deleting anything. It deletes `resolutions.json` last, and any unexpected
+  entry keeps the whole backup.
+- **Controller.** On open, the
+  [personal controller](../app/workbench/personal-workbench-controller.ts)
+  reads the inventory before carried records are written. It records every
+  candidate whose exact bytes are active as `used`. Migrated draft IDs come
+  from the prompt ID alone, so without that record a migrated draft edited or
+  saved after the upgrade would look like a pending candidate. `recovery`
+  lists each item with an `id` and its V4 actions. `compareRecovery`,
+  `useRecovery`, `discardRecovery`, `keepRecoveryAsDraft`, `saveRecoveryAsNew`,
+  `retryRecovery` and `removeMigrationBackup` implement them, and
+  `migrationBackups` summarizes each operation. `usePersonalWorkbench` exposes
+  them as `reconcile` and `migrationBackups`. The page passes the folder's
+  migration reader (one prop).
+
+Implementation choices inside the approved contracts:
+
+- **"Use this one" takes a fresh ID on a clash.** When the incoming draft has
+  the active draft's own ID (migrated IDs are deterministic), the incoming one
+  is activated under a new ID. A swap whose replaced copy would overwrite the
+  incoming record's own file writes the incoming draft first. A selected
+  request draft's selection follows the draft that replaced it. An existing
+  copy at the replaced path is never overwritten: Recovery asks to discard it
+  first.
+- **Record conflicts.** V4 named no actions for them. A store conflict on a
+  draft or scratch offers Compare, "Use this one" (keep this window's copy;
+  the copy on disk goes to `replaced/`, or to a new scratch) and Discard (take
+  the copy on disk). Selections and V2 session copies offer Compare and
+  Discard, as W2 does.
+- **A publication whose children were not updated** offers Retry, which
+  settles that record again, instead of Keep as draft: its save landed.
+- **Save as new** creates a prompt with the draft's content, or turns a request
+  draft into a parentless local request and saves it under the given name. If
+  that save fails, the work stays as the local request.
+
+Not changed in 6b-1: no drawer, chip or pane marks (6b-2), and nothing in the
+app calls `reconcile` yet.
+
+Checks: `tests/migration-recovery.test.ts` (eight cases) and
+`tests/personal-workbench-recovery.test.ts` (ten cases) were written before
+their code. Only the inspection case and the W2 narrowing could fail on an
+assertion; the rest failed because the module or method did not exist yet.
+Inspection with a resolutions record failed as `needs-review`, and the W2
+schema accepted a selections copy. `tests/workbench-store.test.ts` gains four
+cases over the browser host. The inventory case failed first with "Migration
+inventory is unavailable". The Rust tests
+`native_recovery_paths_live_beside_records_and_keep_migration_inventory_readable`
+and the two backup-removal tests failed against a stub. The link-refusal test
+passed against the stub as well, so it was never shown failing.
