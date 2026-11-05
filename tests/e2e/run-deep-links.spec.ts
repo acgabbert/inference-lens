@@ -4,7 +4,7 @@ import type { DecisionRunTrace } from "../../packages/core/src/decision-trace";
 import { systemOneAdapter } from "../../packages/core/src/system-one";
 import { OPENAI_COMPATIBLE_CAPABILITIES } from "../../packages/core/src/types";
 import { DECISIONS_API_PATH, INFERENCE_API_PATH } from "../../packages/contracts/src";
-import { PROJECT_REQUIREMENT_PROFILE_MAP_STORAGE_KEY, serializeFolderProject } from "./support";
+import { PROJECT_REQUIREMENT_PROFILE_MAP_STORAGE_KEY, parseFolderProject, serializeFolderProject } from "./support";
 import { parseSavedRunTraceJson, serializeDecisionRunTrace } from "../../packages/core/src/run-trace";
 import { importProject, openMode } from "./support";
 import { expect, test, type Page } from "./support/test";
@@ -365,19 +365,23 @@ test("unsaved-work cancellation and superseding links cannot later switch projec
   await expect(page.getByLabel("Message 1 content")).toHaveValue("Unsaved draft survives link cancellation");
 });
 
-test("a pending branch blocks replacement but permits inspecting another run in its workspace", async ({ page, context }) => {
+test("a folder's branch stays in its workbench when a link switches projects", async ({ page, context }) => {
   const current = savedProject("branch-home"), target = savedProject("branch-away");
   await stubPersistentProjectDirectories(context, [target.directory, current.directory]);
   await start(page); await openFolder(page, target.project.name); await openFolder(page, current.project.name);
   await navigateLink(page, link(current)); await expect(selected(page)).toContainText("Evidence for branch-home");
   await selected(page).getByRole("button", { name: "Branch from this run" }).click();
-  await expect(page.getByRole("status").filter({ hasText: "Pending branch" })).toBeVisible();
+  // The branch is a local scratch request in the folder's `.workbench/` (R2),
+  // so following a link elsewhere loses nothing and asks nothing.
+  const branch = page.getByRole("status").filter({ hasText: "Local request" });
+  await expect(branch).toContainText("This branch stays on this device until you save it.");
   await navigateLink(page, link(target));
-  await expect(page.getByRole("region", { name: "Saved run link" })).toContainText("pending branch");
-  await expect(page.locator(".brand")).toContainText(current.project.name);
+  await expect(selected(page)).toContainText("Evidence for branch-away");
+  await expect(page.locator(".brand")).toContainText(target.project.name);
+  await expect(page.getByRole("dialog", { name: "Save changes before switching projects?" })).toHaveCount(0);
   await navigateLink(page, link(current)); await expect(selected(page)).toContainText("Evidence for branch-home");
   await openMode(page, "Compose");
-  await expect(page.getByRole("status").filter({ hasText: "Pending branch" })).toBeVisible();
+  await expect(branch).toContainText("This branch stays on this device until you save it.");
 });
 
 test("remembered folder permissions require an explicit Reconnect and can be retried", async ({ page, context }) => {
@@ -587,7 +591,11 @@ test("Save and switch waits for a successful save before resolving the link", as
       return original.call(this, options);
     };
   });
-  await page.getByLabel("Message 1 content").fill("Persist this draft before following the link");
+  // A request edit would be a personal draft in `.workbench/`; a suite is
+  // still written to project.json directly (D15), so this edit is unsaved.
+  await openMode(page, "Evaluations");
+  await page.getByRole("button", { name: "Create evaluation suite" }).click();
+  await expect(page.locator(".brand")).toContainText("Unsaved");
   await navigateLink(page, link(target));
   const dialog = page.getByRole("dialog", { name: "Save changes before switching projects?" });
   await dialog.getByRole("button", { name: "Save and switch", exact: true }).click();
@@ -600,7 +608,7 @@ test("Save and switch waits for a successful save before resolving the link", as
     const folder = await (await navigator.storage.getDirectory()).getDirectoryHandle(name);
     return (await (await folder.getFileHandle("project.json")).getFile()).text();
   }, original.directory.name);
-  expect(contents).toContain("Persist this draft before following the link");
+  expect(parseFolderProject(contents).evaluationSuites).toHaveLength(1);
 });
 
 test("a saved experiment member copies a standalone link without requiring its plan", async ({ page, context }) => {

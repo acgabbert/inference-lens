@@ -264,10 +264,11 @@ export function usePersonalWorkbench(input: {
     return () => window.removeEventListener("beforeunload", warnBeforeUnload);
   }, [unsaved]);
 
-  // Until then, render reads skip the previous session's controller: its
-  // records belong to a document this adoption replaced, unless the session
-  // was saved into a folder and carries them (S2).
-  const live = controller && (controllerKey === sessionKey || personalSession?.carriesSessionWork) ? controller : null;
+  // Until then, render reads skip a previous session that held its records
+  // only in memory: this adoption discards them unless it carries them (S2).
+  // A folder's records are on disk, so the next controller reads the same ones.
+  const stale = controller && controllerKey !== sessionKey && controller.status.kind === "session" && !personalSession?.carriesSessionWork;
+  const live = stale ? null : controller;
 
   return {
     enabled: Boolean(personalSession),

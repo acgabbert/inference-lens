@@ -131,14 +131,15 @@ test("pinned prompts resolve into the request preview, and differing targets are
   const transcript = page.getByLabel("Run transcript");
   await expect(transcript).toContainText("Buffered fixture response: 2 + 2 = 4.");
   await transcript.getByRole("button", { name: "Edit from here" }).first().click();
-  const branch = page.getByRole("status").filter({ hasText: "Pending branch" });
-  await expect(branch).toBeVisible();
+  // A branch in a project session is a local scratch request (R2).
+  const branch = page.getByRole("status").filter({ hasText: "Local request" });
+  await expect(branch).toContainText("This branch stays on this device until you save it.");
   await expect(raw).toContainText('"content": "Triage the rollback."');
   await expect(raw).not.toContainText("Summarize the rollback.");
 
-  // Discarding provenance leaves the truncated draft, but restores the full
-  // pinned revision's resolution. The raw body must use that resolution too.
-  await branch.getByRole("button", { name: "Discard branch" }).click();
+  // Discarding the scratch returns to the saved revision and its full pinned
+  // resolution. The raw body must use that resolution too.
+  await branch.getByRole("button", { name: "Discard", exact: true }).click();
   await expect(branch).toHaveCount(0);
   await expect(raw).toContainText('"content": "Summarize the rollback."');
   await preview.getByRole("tab", { name: "Resolved" }).click();
