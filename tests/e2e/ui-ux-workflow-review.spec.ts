@@ -1,7 +1,8 @@
 import { chatTemplate } from "../project-kind-helpers";
+import { parseSharedProjectJson, sharedProjectAsActive } from "../../packages/core/src/shared-project";
 import { expect, test, type Page } from "./support/test";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { createProjectFile, createPromptTemplate, parseProjectJson, serializeProjectFile } from "../../packages/core/src/project";
+import { createProjectFile, createPromptTemplate, serializeProjectFile } from "../../packages/core/src/project";
 import { BUFFERED_FIXTURE_ENDPOINT, PROJECT_REQUIREMENT_PROFILE_MAP_STORAGE_KEY, closeProjectMenu, importProject, openMode, seedProfile, stubProjectDirectory, waitForHydration } from "./support";
 
 // Review evidence, not desired-behavior regressions: assertions intentionally
@@ -96,7 +97,7 @@ test("review: project Save explains its destination and export preserves a draft
   await page.getByRole("button", { name: "Export JSON copy…", exact: true }).click();
   await (await download).saveAs(`${OUT}/exported-project.json`);
   await expect(page.locator(".brand")).toContainText("Unsaved");
-  const exported = parseProjectJson(await readFile(`${OUT}/exported-project.json`, "utf8"));
+  const exported = sharedProjectAsActive(parseSharedProjectJson(await readFile(`${OUT}/exported-project.json`, "utf8")));
   expect(chatTemplate(exported.promptTemplates[0]).draft!.messages[0]!.content).toBe("PORTABLE DRAFT: keep this text.");
   // Export leaves its menu open. Close it before the shared import driver.
   await page.getByLabel("Project menu").click();
