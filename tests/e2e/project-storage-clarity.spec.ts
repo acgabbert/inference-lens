@@ -8,6 +8,7 @@ import {
   importProject,
   openMode,
   seedProfile,
+  serializeFolderProject,
   stubProjectDirectory,
   waitForHydration,
 } from "./support";
@@ -70,7 +71,7 @@ test("folder-backed edits expose saving and save-failure states", async ({ page 
   await seedProfile(page);
   await stubProjectDirectory(page, {
     name: "storage-clarity.inference-lens",
-    files: { "project.json": JSON.stringify(project()) },
+    files: { "project.json": serializeFolderProject(project()) },
     writeError: "Fixture refused the write.",
   });
   await page.goto("/");

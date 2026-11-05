@@ -50,7 +50,8 @@ test("import asks before replacing unsaved project work", async ({ page }) => {
   await openMode(page, "Prompts");
   const prompt = page.getByLabel("Prompt content", { exact: true });
   await prompt.fill("Unsaved prompt that must survive cancellation");
-  await expect(page.locator(".brand")).toContainText("Unsaved");
+  // The edit is a personal draft held for the session, not an unsaved project.
+  await expect(page.locator(".brand")).toContainText("Session only");
 
   await page.getByLabel("Project menu").click();
   await page.setInputFiles(
@@ -65,6 +66,7 @@ test("import asks before replacing unsaved project work", async ({ page }) => {
   const decision = page.getByRole("dialog", { name: "Save changes before switching projects?" });
   await expect(decision).toContainText("Original project");
   await expect(decision).toContainText("Replacement project");
+  await expect(decision).toContainText("1 unsaved draft is held only in this session");
   await decision.getByRole("button", { name: "Cancel", exact: true }).click();
 
   await expect(page.locator(".brand")).toContainText("Original project");

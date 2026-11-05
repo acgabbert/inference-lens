@@ -10,7 +10,6 @@ import type { DecisionInput } from "../../packages/core/src/decision";
 import {
   createProjectFile,
   createPromptTemplate,
-  serializeProjectFile,
 } from "../../packages/core/src/project";
 import {
   closeProjectMenu,
@@ -20,6 +19,7 @@ import {
   primaryAction,
   seedProfile,
   seedProfiles,
+  serializeFolderProject,
   SYSTEM_ONE_FIXTURE_ORIGIN,
   stubSharedProjectDirectory,
   waitForHydration,
@@ -57,7 +57,7 @@ function project() {
 async function sharedProject(context: BrowserContext, document = project()): Promise<SharedProjectDirectory> {
   return stubSharedProjectDirectory(context, {
     name: FOLDER,
-    files: { "project.json": serializeProjectFile(document) },
+    files: { "project.json": serializeFolderProject(document) },
     directories: ["traces"],
   });
 }
