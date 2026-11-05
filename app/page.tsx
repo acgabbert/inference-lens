@@ -352,8 +352,19 @@ function HomeContent() {
     shared: projectFile,
     writeShared: project.writeShared,
   });
-  // The Recovery chip, drawer and pane marks (D8, 2b step 6b-2).
-  const recovery = useRecovery({ personal: personalWorkbench, project: projectFile, requestConfirmation: setConfirmation });
+  // The Recovery chip, drawer and pane marks (D8, 2b step 6b-2). Both
+  // callbacks run after render, once the prompt library below exists.
+  const recovery = useRecovery({
+    personal: personalWorkbench,
+    project: projectFile,
+    promptName: (id) => projectTemplates.libraryTemplates.find((template) => template.id === id)?.name,
+    // The decision prompt editor remembers in-session edits above its mount;
+    // a copy Recovery replaced must not come back from there.
+    onActiveCopyChanged(key) {
+      if (key.startsWith("prompt:")) projectTemplates.decisionEditorMemory.delete(key.slice("prompt:".length) as PromptTemplateId);
+    },
+    requestConfirmation: setConfirmation,
+  });
   // Which request the composer edits in a personal session (I4).
   const chatRequest = useChatRequestRecord({
     personal: personalWorkbench,

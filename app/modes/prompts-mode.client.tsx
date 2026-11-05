@@ -1,7 +1,5 @@
 "use client";
 
-import type { ReactNode } from "react";
-
 import type { DecisionComposeHandle } from "../decisions/use-decision-compose.client";
 import type { ProjectFile } from "../../packages/core/src/project";
 import type { PromptTemplateId } from "../../packages/core/src/run-kernel";
@@ -15,6 +13,7 @@ import { decisionTemplateEvaluationSuites, previewDecisionTemplateEvaluationReta
 
 import type { PromptModelCatalog } from "../templates/recommended-model-editor.client";
 import { useLinkedPromptSources } from "../templates/use-linked-prompt-sources.client";
+import type { RecoveryHandle } from "../workbench/use-recovery.client";
 
 interface PromptsModeProps {
   modelCatalog?: PromptModelCatalog;
@@ -40,7 +39,7 @@ interface PromptsModeProps {
   onRevisionEvaluationStarted(): void;
   onEvaluationSuiteOpened(): void;
   /** The Recovery marks and notice (2b step 6b-2, X3). */
-  recovery?: { marked: ReadonlySet<string>; notice(key: string | undefined): ReactNode; generation: number };
+  recovery?: Pick<RecoveryHandle, "marked" | "notice" | "generation">;
 }
 
 function compatibleEvaluationSuitesByTemplate(

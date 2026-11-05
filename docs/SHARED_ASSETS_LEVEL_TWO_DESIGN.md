@@ -1928,10 +1928,11 @@ the personal workbench is off, so none of them renders.
   lists each item with its subject, kind, message, path and V4 actions, then
   the migration backups. Compare shows the two sides as a folded line diff;
   long lines wrap, so the drawer content stays its one scroll area. Save as
-  new asks for a name inline. Unreadable items show their path and message
-  only. A backup reads "Remove migration backup…" once removable,
-  "Finish removing backup" after an interrupted removal, and otherwise says
-  what it waits for.
+  new asks for a name inline. A backup reads "Remove migration backup…" once
+  removable, "Finish removing backup" after an interrupted removal, and otherwise says
+  what it waits for. An item with no action says how to clear it: fix or
+  remove the file, then reopen the project. It still counts on the chip (X1).
+  An open comparison reads both sides again whenever the workbench changes.
 - **Marks.** The Templates list row reads "Needs recovery". The request
   switcher's entry, saved or local, reads "· needs recovery", in Chat and
   Decision Compose. The prompt editor and both composers show a "Needs
@@ -1941,18 +1942,26 @@ Implementation choices inside the approved decisions:
 
 - **The prompt editor reloads after a Recovery action.** It holds its own
   copy of the draft, read when it mounts, so "Use this one" left it showing the
-  replaced draft. The owner counts settled actions, and the Templates pane keys
-  the editor on that count. Keying on the draft's ID instead would remount the
-  editor when a first edit creates a draft.
+  replaced draft. The owner counts, per prompt, the settled actions that
+  changed its active copy, and the Templates pane keys the editor on that
+  count. Discarding the other copy, a replaced draft or a migration candidate,
+  and Retry, change no active copy, so they do not remount an open editor.
+  Keying on the draft's ID instead would remount the editor when a first edit
+  creates a draft. The same action also drops the decision prompt editor's
+  in-session memory for that prompt, which would otherwise restore the
+  replaced copy over the remounted one.
+- **The drawer starts over with each personal project**: its open state, its
+  focus and the per-prompt counts reset when the project changes.
 - **A focused drawer lists only that asset's items** and hides the backups.
   "Show all" lifts the focus. When the asset's items are all settled and others
   remain, it says so and offers "Show all".
 - **The chip is a header button** with the advisory tint, before the
   connection menu.
 
-Not changed in 6b-2: nothing outside the gate. The decision prompt editor gets
-the notice and the remount key, but no gated e2e spec covers it. Its editor
-memory store may still restore an older invalid edit after a remount.
+Not changed in 6b-2: nothing outside the gate. The prompt editors still
+reload by remounting rather than following their record, as the decision
+request editor does with `useDecisionRecordSync`. Moving them to a sync is a
+change to the editors' state ownership, left for a later step.
 
 Checks: `tests/recovery-view.test.ts` (five cases) was run against a stub
 first and failed on its assertions; a sixth case for `recoveryMenuKey` was
@@ -1964,3 +1973,10 @@ a selections candidate after an upgrade (Discard without confirmation, then
 "Remove migration backup"). All three failed first because no chip existed.
 With the drawer built, the first failed again with the editor still showing
 the replaced draft, which the remount key fixed.
+
+Review fixes: a fourth gated case covers "Use this one" on a decision prompt
+after an edit in the session. It was written after the fix. With the memory
+reset removed it failed on its assertion: the editor showed the session's edit
+instead of the chosen draft. The two `recovery-view` cases for
+`changesActiveCopy` and `recoveryGuidance` failed on their assertions against
+stubs first.

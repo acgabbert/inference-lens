@@ -707,7 +707,7 @@ export function ChatPromptTemplateEditor({
             {/* One scroll region for the editor and its diff, so an open diff
                 in focus mode scrolls with the content instead of squeezing it. */}
             <div className="template-editor-scroll">
-            {recoveryNotice}
+            {recoveryNotice && <div className="template-notices">{recoveryNotice}</div>}
             {candidateSourceRevisionId && candidateSourceRevisionId !== selected.currentRevisionId && !sessionOwned && <p className="template-draft-source-notice" role="status">
               This draft started from {promptRevisionLabel(selected, candidateSourceRevisionId)}; the current revision is {promptRevisionLabel(selected, selected.currentRevisionId)}.{" "}
               <button className="text-button" type="button" onClick={() => {

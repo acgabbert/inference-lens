@@ -372,7 +372,7 @@ function DecisionTemplateContent(
           Another prompt has this name. IDs keep the two definitions distinct.
         </div>
       )}
-      {props.recoveryNotice}
+      {props.recoveryNotice && <div className="template-notices">{props.recoveryNotice}</div>}
       <div className="template-editor-body">
         <div className="decision-content">
           <PaneTabs

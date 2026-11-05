@@ -184,3 +184,31 @@ export function recoveryMenuKey(record: {
   if (record.revision) return `request:${"conversationId" in record.revision ? record.revision.conversationId : record.revision.decisionRequestId}`;
   return undefined;
 }
+
+/** The actions that settle an item; Compare only reads. */
+export type SettlingAction = Exclude<RecoveryAction, "compare">;
+
+/**
+ * Whether a settled action changed the copy an editor of the asset should
+ * show, so an editor that holds its own copy reloads. Discarding the other
+ * copy, a replaced draft or a migration candidate leaves the active copy as it
+ * was; Retry writes the same content again.
+ */
+export function changesActiveCopy(item: Pick<RecoveryEntry, "kind" | "memory">, action: SettlingAction): boolean {
+  switch (action) {
+    case "use":
+    case "save-as-new":
+    case "keep-as-draft":
+      return true;
+    case "retry":
+      return false;
+    case "discard":
+      return Boolean(item.memory) || !(item.kind === "competing-draft" || item.kind === "replaced-draft" || item.kind === "migration-candidate");
+  }
+}
+
+/** What clears an item the drawer offers no action for, such as a file it cannot read. */
+export function recoveryGuidance(item: Pick<RecoveryEntry, "path" | "actions">): string | undefined {
+  if (item.actions.length > 0) return undefined;
+  return `Nothing here can repair this. Fix or remove .workbench/${item.path} on this device, then reopen the project.`;
+}

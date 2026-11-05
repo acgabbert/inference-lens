@@ -4,6 +4,7 @@
  * mark the affected assets, and every action reaches the folder
  * (docs/SHARED_ASSETS_LEVEL_TWO_DESIGN.md, "Step 6b-2 decisions").
  */
+import { readFileSync } from "node:fs";
 import type { Page } from "./support/test";
 
 import { expect, test } from "./support/test";
@@ -13,6 +14,8 @@ import {
   serializeProjectFile,
 } from "../../packages/core/src/project";
 import type { ProjectFile } from "../../packages/core/src/project";
+import { createDecisionPromptTemplate } from "../../packages/core/src/decision-template";
+import type { DecisionInput } from "../../packages/core/src/decision";
 import { parseWorkbenchRecord, serializeWorkbenchRecord } from "../../packages/core/src/personal-workbench";
 import type { WorkbenchRecordV1 } from "../../packages/core/src/personal-workbench";
 import { planSharedProjectMigration } from "../../packages/core/src/shared-project-migration";
@@ -59,6 +62,33 @@ function promptDraft(project: ProjectFile, draftId: string, content: string): Wo
     asset: { kind: "chat-prompt", id: template.id },
     base: { revisionId: revision.id, snapshot: revision },
     edited: { messages: [{ role: "user", content }], variableDefaults: { incident: "timeout" } },
+  }, project.projectId);
+}
+
+const captured = JSON.parse(
+  readFileSync(new URL("../fixtures/system-one/llamacpp-all-types.json", import.meta.url), "utf8"),
+).request as { questions: DecisionInput["questions"] };
+
+function decisionFixtureProject(): ProjectFile {
+  return createDecisionPromptTemplate(fixtureProject(), {
+    name: "Ticket decision",
+    decision: { state: "{{ticket}}", questions: captured.questions } as DecisionInput,
+    variableDefaults: { ticket: "Default ticket" },
+    idSuffix: "ticket-decision",
+  });
+}
+
+function decisionPromptDraft(project: ProjectFile, draftId: string, state: string): WorkbenchRecordV1 {
+  const template = project.promptTemplates.find(({ kind }) => kind === "decision")!;
+  const revision = template.revisions[0]!;
+  return parseWorkbenchRecord({
+    schemaVersion: 1,
+    kind: "draft",
+    projectId: project.projectId,
+    draftId,
+    asset: { kind: "decision-prompt", id: template.id },
+    base: { revisionId: revision.id, snapshot: revision },
+    edited: { decision: { state, questions: captured.questions }, variableDefaults: { ticket: "Default ticket" } },
   }, project.projectId);
 }
 
@@ -160,6 +190,42 @@ test("a competing prompt draft is marked, compared, used and its replaced copy d
   await expect(page.locator(".template-list-item").filter({ hasText: "Incident triage" })).not.toContainText("Needs recovery");
   const drafts = filesUnder(await folderFiles(page), ".workbench/drafts/");
   expect(drafts.map(([, contents]) => JSON.parse(contents).edited.messages[0].content)).toEqual([competing]);
+});
+
+test("Use this one on a decision prompt shows the chosen draft, not the session's earlier edit", async ({ page }) => {
+  const project = decisionFixtureProject();
+  const first = decisionPromptDraft(project, "draft_first", "{{ticket}} from the first draft");
+  const second = decisionPromptDraft(project, "draft_second", "{{ticket}} from the second draft");
+  await openFolder(page, {
+    "project.json": serializeProjectManifest(project, "personal"),
+    ".workbench/.gitignore": "*\n",
+    ".workbench/drafts/draft_first.json": serializeWorkbenchRecord(first),
+    ".workbench/drafts/draft_second.json": serializeWorkbenchRecord(second),
+  });
+  await expect(chip(page)).toHaveText("Recovery · 1");
+
+  await openMode(page, "Prompts");
+  await page.locator(".template-list").getByRole("button", { name: /Ticket decision/ }).click();
+  const editor = page.locator(".decision-template-editor");
+  const state = editor.getByLabel("State text");
+  const active = await state.inputValue();
+  const competing = [first, second].map((record) => (record as { edited: { decision: { state: string } } }).edited.decision.state)
+    .find((content) => content !== active)!;
+  expect(competing).toBeDefined();
+
+  // An edit in this session: the editor remembers it above its mount.
+  await state.fill("{{ticket}} edited in this session");
+  await expect.poll(async () => Object.values(await folderFiles(page))
+    .some((contents) => contents.includes("edited in this session"))).toBe(true);
+
+  await editor.getByRole("status").filter({ hasText: "Needs recovery" }).getByRole("button", { name: "Open Recovery" }).click();
+  const item = drawer(page).getByRole("article", { name: "Decision prompt “Ticket decision”" });
+  await expect(item).toContainText("Competing draft");
+  await item.getByRole("button", { name: "Use this one" }).click();
+  await expect(drawer(page).getByRole("article", { name: "Decision prompt “Ticket decision”" })).toContainText("Replaced draft");
+
+  // The editor shows the draft Recovery activated, and a later edit builds on it.
+  await expect(state).toHaveValue(competing);
 });
 
 test("an orphaned request draft is marked in the switcher and saved as a new request", async ({ page }) => {

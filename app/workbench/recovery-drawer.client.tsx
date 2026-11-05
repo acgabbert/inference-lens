@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useEffectEvent, useState } from "react";
 import type { ConfirmationDialogRequest } from "../confirmation-dialog.client";
 import { FoldedDiffCode } from "../templates/diff-code.client";
 import { SideDrawer } from "../workbench-shell.client";
@@ -16,11 +16,12 @@ import {
   discardConfirmation,
   RECOVERY_ACTION_LABEL,
   recoveryComparisonDiff,
+  recoveryGuidance,
   recoveryKindLabel,
   recoverySubject,
   recoveryTargetKey,
 } from "./recovery-view";
-import type { RecoveryDiff } from "./recovery-view";
+import type { RecoveryDiff, SettlingAction } from "./recovery-view";
 import styles from "./recovery-drawer.module.css";
 
 interface RecoveryDrawerProps {
@@ -28,14 +29,36 @@ interface RecoveryDrawerProps {
   onClose(): void;
   recovery: readonly RecoveryEntry[];
   backups: readonly MigrationBackupSummary[];
+  /** The personal workbench's change count: an open comparison reads again on it. */
+  revision: number;
   reconcile: PersonalWorkbenchHandle["reconcile"];
   nameOf(asset: WorkbenchAssetRef): string | undefined;
   /** X3: only this prompt's or request's items, until "Show all". */
   focus?: string;
   onShowAll(): void;
-  /** An action settled: owners whose editors hold their own copy reload it. */
-  onSettled(): void;
+  /** An item's action settled: owners whose editors hold their own copy may reload it. */
+  onSettled(item: RecoveryEntry, action: SettlingAction): void;
   requestConfirmation(request: ConfirmationDialogRequest): void;
+}
+
+/** One action at a time, with its refusal or failure shown beside it. */
+function useSettling() {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string>();
+  async function run(action: () => Promise<ReconcileOutcome>, onSettled?: () => void): Promise<void> {
+    setBusy(true);
+    setError(undefined);
+    try {
+      const outcome = await action();
+      if (outcome.kind === "settled") onSettled?.();
+      else setError(outcome.message);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "The action failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+  return { busy, error, setError, run };
 }
 
 /**
@@ -73,8 +96,9 @@ export function RecoveryDrawer(props: RecoveryDrawerProps) {
             key={item.id}
             item={item}
             subject={recoverySubject(item, props.nameOf)}
+            revision={props.revision}
             reconcile={props.reconcile}
-            onSettled={props.onSettled}
+            onSettled={(action) => props.onSettled(item, action)}
             requestConfirmation={props.requestConfirmation}
           />
         ))}
@@ -86,7 +110,6 @@ export function RecoveryDrawer(props: RecoveryDrawerProps) {
                 key={backup.operationId}
                 backup={backup}
                 reconcile={props.reconcile}
-                onSettled={props.onSettled}
                 requestConfirmation={props.requestConfirmation}
               />
             ))}
@@ -100,52 +123,58 @@ export function RecoveryDrawer(props: RecoveryDrawerProps) {
 function RecoveryItemCard({
   item,
   subject,
+  revision,
   reconcile,
   onSettled,
   requestConfirmation,
 }: {
   item: RecoveryEntry;
   subject: string;
+  revision: number;
   reconcile: PersonalWorkbenchHandle["reconcile"];
-  onSettled(): void;
+  onSettled(action: SettlingAction): void;
   requestConfirmation(request: ConfirmationDialogRequest): void;
 }) {
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string>();
+  const { busy, error, setError, run } = useSettling();
+  const [comparing, setComparing] = useState(false);
   const [comparison, setComparison] = useState<RecoveryDiff | "none">();
   const [naming, setNaming] = useState(false);
   const [name, setName] = useState("");
+  const guidance = recoveryGuidance(item);
 
-  async function run(action: () => Promise<ReconcileOutcome>): Promise<void> {
-    setBusy(true);
-    setError(undefined);
-    try {
-      const outcome = await action();
-      if (outcome.kind === "settled") onSettled();
-      else setError(outcome.message);
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "The action failed.");
-    } finally {
-      setBusy(false);
-    }
+  // An open comparison reads both sides again whenever the workbench changes,
+  // so it never shows a copy that edits or another action have replaced.
+  const readComparison = useEffectEvent(() => reconcile.compare(item.id));
+  useEffect(() => {
+    if (!comparing) return;
+    let current = true;
+    readComparison().then(
+      (result) => { if (current) setComparison(result ? recoveryComparisonDiff(result) : "none"); },
+      (caught: unknown) => {
+        if (!current) return;
+        setComparing(false);
+        setError(caught instanceof Error ? caught.message : "Could not compare.");
+      },
+    );
+    return () => { current = false; };
+  }, [comparing, revision, setError]);
+
+  function toggleComparison(): void {
+    if (comparing) setComparison(undefined);
+    setComparing(!comparing);
   }
 
-  async function compare(): Promise<void> {
-    if (comparison) {
-      setComparison(undefined);
-      return;
-    }
-    const result = await reconcile.compare(item.id);
-    setComparison(result ? recoveryComparisonDiff(result) : "none");
+  function settle(action: SettlingAction, operation: () => Promise<ReconcileOutcome>): void {
+    void run(operation, () => onSettled(action));
   }
 
   function discard(): void {
     const confirmation = discardConfirmation(item, subject);
     if (!confirmation) {
-      void run(() => reconcile.discard(item.id));
+      settle("discard", () => reconcile.discard(item.id));
       return;
     }
-    requestConfirmation({ ...confirmation, destructive: true, onConfirm: () => void run(() => reconcile.discard(item.id)) });
+    requestConfirmation({ ...confirmation, destructive: true, onConfirm: () => settle("discard", () => reconcile.discard(item.id)) });
   }
 
   return (
@@ -156,6 +185,7 @@ function RecoveryItemCard({
       </header>
       {item.message && <p>{item.message}</p>}
       <p className={styles.path}><code>{item.path}</code></p>
+      {guidance && <p>{guidance}</p>}
       {item.actions.length > 0 && (
         <div className={styles.actions}>
           {item.actions.map((action) => (
@@ -166,16 +196,16 @@ function RecoveryItemCard({
               type="button"
               onClick={() => {
                 switch (action) {
-                  case "compare": void compare(); return;
-                  case "use": void run(() => reconcile.use(item.id)); return;
+                  case "compare": toggleComparison(); return;
+                  case "use": settle("use", () => reconcile.use(item.id)); return;
                   case "discard": discard(); return;
-                  case "keep-as-draft": void run(() => reconcile.keepAsDraft(item.id)); return;
-                  case "retry": void run(() => reconcile.retry(item.id)); return;
+                  case "keep-as-draft": settle("keep-as-draft", () => reconcile.keepAsDraft(item.id)); return;
+                  case "retry": settle("retry", () => reconcile.retry(item.id)); return;
                   case "save-as-new": setNaming(true); return;
                 }
               }}
             >
-              {action === "compare" && comparison ? "Hide comparison" : RECOVERY_ACTION_LABEL[action]}
+              {action === "compare" && comparing ? "Hide comparison" : RECOVERY_ACTION_LABEL[action]}
             </button>
           ))}
         </div>
@@ -187,7 +217,7 @@ function RecoveryItemCard({
             event.preventDefault();
             const trimmed = name.trim();
             if (!trimmed) return;
-            void run(() => reconcile.saveAsNew(item.id, trimmed));
+            settle("save-as-new", () => reconcile.saveAsNew(item.id, trimmed));
           }}
         >
           <label>
@@ -198,7 +228,7 @@ function RecoveryItemCard({
           <button className="button secondary" disabled={busy} type="button" onClick={() => setNaming(false)}>Cancel</button>
         </form>
       )}
-      {comparison && (
+      {comparing && comparison && (
         <section aria-label="Comparison" className={styles.comparison}>
           {comparison === "none" ? (
             <p>There is nothing to compare this with now.</p>
@@ -221,23 +251,16 @@ function RecoveryItemCard({
 function BackupRow({
   backup,
   reconcile,
-  onSettled,
   requestConfirmation,
 }: {
   backup: MigrationBackupSummary;
   reconcile: PersonalWorkbenchHandle["reconcile"];
-  onSettled(): void;
   requestConfirmation(request: ConfirmationDialogRequest): void;
 }) {
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string>();
-  async function remove(): Promise<void> {
-    setBusy(true);
-    setError(undefined);
-    const outcome = await reconcile.removeMigrationBackup(backup.operationId);
-    setBusy(false);
-    if (outcome.kind === "settled") onSettled();
-    else setError(outcome.message);
+  // Removing a backup changes no active copy, so no editor reloads.
+  const { busy, error, run } = useSettling();
+  function remove(): Promise<void> {
+    return run(() => reconcile.removeMigrationBackup(backup.operationId));
   }
   return (
     <div className={styles.backup}>

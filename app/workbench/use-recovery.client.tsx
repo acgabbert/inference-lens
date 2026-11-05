@@ -6,7 +6,7 @@ import type { ProjectFile } from "../../packages/core/src/project";
 import type { ConfirmationDialogRequest } from "../confirmation-dialog.client";
 import { StatusChip } from "../notifications/status-chip.client";
 import { RecoveryDrawer } from "./recovery-drawer.client";
-import { recoveryChip, recoveryTargetKey, recoveryTargets } from "./recovery-view";
+import { changesActiveCopy, recoveryChip, recoveryTargetKey, recoveryTargets } from "./recovery-view";
 import type { PersonalWorkbenchHandle, WorkbenchAssetRef } from "./use-personal-workbench.client";
 
 /** The topbar's Recovery chip (X1). */
@@ -28,45 +28,61 @@ export interface RecoveryHandle {
   /** X3: the notice for a pane editing this key, or nothing. */
   notice(key: string | undefined): ReactNode;
   /**
-   * Counts settled actions. An editor that holds its own copy of a record,
-   * such as the prompt editor, keys on it to reload what Recovery activated.
+   * Counts the settled actions that changed this key's active copy. An editor
+   * that holds its own copy of a record, such as the prompt editor, keys on it
+   * to reload what Recovery activated.
    */
-  generation: number;
+  generation(key: string): number;
   drawer: ReactNode;
 }
 
+/** What a pane that marks and notices Recovery items reads. */
+export type RecoveryMarks = Pick<RecoveryHandle, "marked" | "notice">;
+
 const NONE: ReadonlySet<string> = new Set();
+const NO_GENERATIONS: ReadonlyMap<string, number> = new Map();
 
 export function useRecovery(input: {
-  personal: Pick<PersonalWorkbenchHandle, "enabled" | "recovery" | "migrationBackups" | "reconcile">;
+  personal: Pick<PersonalWorkbenchHandle, "enabled" | "revision" | "recovery" | "migrationBackups" | "reconcile">;
   project: ProjectFile | null | undefined;
+  /** A prompt's name outside the shared project, such as a session prompt. */
+  promptName?(id: string): string | undefined;
+  /** A settled action changed this key's active copy; owners drop what they remembered of the old one. */
+  onActiveCopyChanged?(key: string): void;
   requestConfirmation(request: ConfirmationDialogRequest): void;
 }): RecoveryHandle {
   const { personal, project } = input;
   const [drawer, setDrawer] = useState<{ focus?: string }>();
-  const [generation, setGeneration] = useState(0);
+  const [generations, setGenerations] = useState(NO_GENERATIONS);
+  // The drawer and its counts belong to one personal project: start over when it changes.
+  const scope = personal.enabled ? project?.projectId ?? "" : undefined;
+  const [shownScope, setShownScope] = useState(scope);
+  if (shownScope !== scope) {
+    setShownScope(scope);
+    setDrawer(undefined);
+    setGenerations(NO_GENERATIONS);
+  }
   const recovery = personal.enabled ? personal.recovery : [];
   const backups = personal.enabled ? personal.migrationBackups : [];
   const chip = recoveryChip(recovery, backups);
   const marked = recovery.length > 0 ? recoveryTargets(recovery) : NONE;
 
   function nameOf(asset: WorkbenchAssetRef): string | undefined {
-    if (!project) return undefined;
     switch (asset.kind) {
       case "chat-prompt":
       case "decision-prompt":
-        return project.promptTemplates.find(({ id }) => id === asset.id)?.name;
+        return project?.promptTemplates.find(({ id }) => id === asset.id)?.name ?? input.promptName?.(asset.id);
       case "chat-request":
-        return project.conversations.find(({ id }) => id === asset.id)?.name;
+        return project?.conversations.find(({ id }) => id === asset.id)?.name;
       case "decision-request":
-        return project.decisionRequests.find(({ id }) => id === asset.id)?.name;
+        return project?.decisionRequests.find(({ id }) => id === asset.id)?.name;
     }
   }
 
   return {
     chip: chip ? { label: chip.label, onOpen: () => setDrawer({}) } : undefined,
     marked,
-    generation,
+    generation: (key) => generations.get(key) ?? 0,
     notice(key) {
       if (!key || !marked.has(key)) return null;
       const count = recovery.filter((item) => recoveryTargetKey(item) === key).length;
@@ -85,11 +101,17 @@ export function useRecovery(input: {
         onClose={() => setDrawer(undefined)}
         recovery={recovery}
         backups={backups}
+        revision={personal.revision}
         reconcile={personal.reconcile}
         nameOf={nameOf}
         {...(drawer?.focus ? { focus: drawer.focus } : {})}
         onShowAll={() => setDrawer({})}
-        onSettled={() => setGeneration((current) => current + 1)}
+        onSettled={(item, action) => {
+          const key = recoveryTargetKey(item);
+          if (!key || !changesActiveCopy(item, action)) return;
+          input.onActiveCopyChanged?.(key);
+          setGenerations((current) => new Map(current).set(key, (current.get(key) ?? 0) + 1));
+        }}
         requestConfirmation={input.requestConfirmation}
       />
     ) : null,

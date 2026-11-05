@@ -1,7 +1,6 @@
 "use client";
 
 import { useRef } from "react";
-import type { ReactNode } from "react";
 
 import { usePromptModelWarnings } from "../templates/use-prompt-model-warnings.client";
 import { sameProviderTarget } from "../../packages/core/src/provider-protocols";
@@ -33,6 +32,7 @@ import type { TraceOrigin } from "../run/use-run-session.client";
 import { DECISION_READINESS_SUMMARY_ID, DecisionComposer } from "./decision-composer.client";
 import { RequestSwitcher } from "../workbench/request-switcher.client";
 import { recoveryMenuKey } from "../workbench/recovery-view";
+import type { RecoveryMarks } from "../workbench/use-recovery.client";
 import type { RequestMenuTarget } from "../workbench/request-menu.ts";
 import type { DecisionDraftProblem } from "./decision-draft";
 import { DecisionInspect } from "./decision-inspect.client";
@@ -83,7 +83,7 @@ export interface UseDecisionComposeOptions {
    * The Recovery marks and notice (2b step 6b-2, X3), composed by the route.
    * `notice` takes the edited request's switcher key.
    */
-  recovery?: { marked: ReadonlySet<string>; notice(key: string | undefined): ReactNode };
+  recovery?: RecoveryMarks;
   onCapture?(content: { decision: DecisionInput; values: Record<string, string> }): void;
   /** `requestRevisionId` is absent for a local request that has no saved revision. */
   onEditSource?(requestRevisionId: DecisionRequestRevisionId | undefined, templateId: PromptTemplateId, templateRevisionId: PromptTemplateRevisionId): void;

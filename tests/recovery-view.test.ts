@@ -2,9 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { MigrationBackupSummary, RecoveryEntry } from "../app/workbench/personal-workbench-controller.ts";
 import {
+  changesActiveCopy,
   discardConfirmation,
   recoveryChip,
   recoveryComparisonDiff,
+  recoveryGuidance,
   recoveryMenuKey,
   recoverySubject,
   recoveryTargetKey,
@@ -106,4 +108,25 @@ test("X3: a composer's selected request names the same key its marks use", () =>
   assert.equal(recoveryMenuKey({ kind: "scratch", scratch: { scratchId: "scratch_one" } }), "scratch:scratch_one");
   assert.equal(recoveryMenuKey({ kind: "none" }), undefined);
   assert.equal(recoveryMenuKey(undefined), undefined);
+});
+
+test("a settled action reloads an editor only when it changed the asset's active copy", () => {
+  for (const action of ["use", "save-as-new", "keep-as-draft"] as const) {
+    assert.equal(changesActiveCopy(entry({ kind: "competing-draft", path: "drafts/a.json" }), action), true, action);
+  }
+  assert.equal(changesActiveCopy(entry({ kind: "write-failed", path: "drafts/a.json" }), "retry"), false);
+  // Discarding the other copy leaves the active one as it was.
+  assert.equal(changesActiveCopy(entry({ kind: "competing-draft", path: "drafts/a.json", stored: true }), "discard"), false);
+  assert.equal(changesActiveCopy(entry({ kind: "replaced-draft", path: "replaced/b.json" }), "discard"), false);
+  assert.equal(changesActiveCopy(entry({ kind: "migration-candidate", path: "migrations/m/drafts/c.json" }), "discard"), false);
+  // Discarding this session's copy, the draft itself or this window's copy changes what an editor should show.
+  assert.equal(changesActiveCopy(entry({ kind: "competing-draft", path: "drafts/a.json", memory: true }), "discard"), true);
+  assert.equal(changesActiveCopy(entry({ kind: "orphaned-draft", path: "drafts/d.json" }), "discard"), true);
+  assert.equal(changesActiveCopy(entry({ kind: "publication-conflict", path: "drafts/e.json" }), "discard"), true);
+  assert.equal(changesActiveCopy(entry({ kind: "record-conflict", path: "drafts/f.json" }), "discard"), true);
+});
+
+test("an item with no action says how to clear it", () => {
+  assert.match(recoveryGuidance(entry({ kind: "unreadable", path: "drafts/broken.json" }))!, /\.workbench\/drafts\/broken\.json/);
+  assert.equal(recoveryGuidance(entry({ kind: "competing-draft", path: "drafts/a.json", actions: ["compare", "use", "discard"] })), undefined);
 });
