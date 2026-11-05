@@ -1,6 +1,7 @@
 import { z } from "zod";
 import {
   parseProjectFile,
+  PROJECT_SCHEMA_VERSION,
   ProjectValidationError,
   sensitiveFieldPaths,
   serializeProjectFile,
@@ -8,6 +9,7 @@ import {
 import type {
   ChatPromptTemplate,
   DecisionPromptTemplate,
+  ProjectFile,
   ProjectFileV18,
 } from "./project.ts";
 
@@ -86,4 +88,24 @@ export function serializeSharedProjectFile(project: SharedProjectFileV19): strin
   const ordered = JSON.parse(serializeProjectFile({ ...validated, schemaVersion: 18 }));
   ordered.schemaVersion = SHARED_PROJECT_SCHEMA_VERSION;
   return `${JSON.stringify(ordered, null, 2)}\n`;
+}
+
+/**
+ * A v19 document as the active in-memory `ProjectFile` (I1). The content is
+ * unchanged: only the version label moves, and v19 carries no template draft.
+ * The app's manifest boundary and the CLI, which reads and never writes, share
+ * it.
+ */
+export function sharedProjectAsActive(shared: SharedProjectFileV19): ProjectFile {
+  return { ...shared, schemaVersion: PROJECT_SCHEMA_VERSION } as unknown as ProjectFile;
+}
+
+/** The `schemaVersion` a document declares, before any codec reads it. */
+export function declaredProjectSchemaVersion(text: string): unknown {
+  try {
+    const value: unknown = JSON.parse(text);
+    return value !== null && typeof value === "object" && "schemaVersion" in value ? value.schemaVersion : undefined;
+  } catch {
+    return undefined;
+  }
 }
