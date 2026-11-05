@@ -2616,3 +2616,17 @@ rest. No desktop change.
 Decided during implementation: the legacy writers live with the migration
 test helpers, not under `tests/e2e/support`. The message wording is as above.
 `applyFilePromptUpdate` takes the personal uses as an option.
+
+Checks: lint, typecheck, `test:core` (1963), and the render and interaction
+tests (226). The e2e specs ran in Chromium light, on the pinned build.
+
+- The planned set, `personal-workbench-*`, `project-replacement-guard`,
+  `project-tab-coordination`, `file-prompt-*` and `linked-prompt-sources`:
+  68 passed.
+- The other 34 specs that seed folders with `serializeProjectFile` or read
+  an export: 175 passed and 1 failed.
+- The failure, `run-deep-links.spec.ts` "a folder's branch stays in its
+  workbench when a link switches projects", fails at the same line on the
+  parent commit: 3 times in 6 there, 2 in 6 here. It predates this slice.
+
+Not run: the dark project, the rest of the suite, and the desktop host.
