@@ -29,8 +29,9 @@ export function recoveryChip(
   return undefined;
 }
 
-/** `prompt:<templateId>`, or the request switcher's `request:<id>` key. */
+/** `prompt:<templateId>`, `suite:<suiteId>`, or the request switcher's `request:<id>` key. */
 export function assetTargetKey(asset: WorkbenchAssetRef): string {
+  if (asset.kind === "suite") return `suite:${asset.id}`;
   return asset.kind === "chat-prompt" || asset.kind === "decision-prompt" ? `prompt:${asset.id}` : `request:${asset.id}`;
 }
 
@@ -57,6 +58,7 @@ const ASSET_NOUN: Record<WorkbenchAssetRef["kind"], string> = {
   "decision-prompt": "Decision prompt",
   "chat-request": "Request",
   "decision-request": "Decision request",
+  suite: "Evaluation suite",
 };
 
 /** What an item is about, for its heading and its confirmations. */

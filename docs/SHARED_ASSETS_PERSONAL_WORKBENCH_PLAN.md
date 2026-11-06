@@ -1419,8 +1419,10 @@ and diff check, not a browser run.
 ## Remaining decisions for the design review
 
 Level 1's presets and Level 2's choices recorded above are resolved, and 2b is
-delivered, and so is the in-memory v19 label. The next review covers trimmed
-slice 2c; 2d, 2e and import staging are parked. Level 3 delivery scope is
+delivered, and so is the in-memory v19 label. Trimmed slice 2c's
+[decisions](SHARED_ASSETS_LEVEL_TWO_DESIGN.md#slice-2c-decisions-approved-november-5-2026)
+were approved November 5, and 2c-1 (suites) was delivered the same day; 2c-2 (tools and mocks)
+is next. 2d, 2e and import staging are parked. Level 3 delivery scope is
 approved in the Level 3 section; detailed format and persistence contracts remain open.
 
 1. Approve the field-by-field classification and migration examples for prompts,

@@ -14,7 +14,9 @@ import type {
   WorkbenchDraftV1,
   WorkbenchPromptDraftV1,
   WorkbenchScratchV1,
+  WorkbenchSuiteDraftV1,
 } from "./personal-workbench.ts";
+import type { EvaluationSuite } from "./evaluation-suites.ts";
 import { randomUUID } from "./random-id.ts";
 import { createEntityId } from "./run-kernel/types.ts";
 import { stableJsonValue } from "./stable-json.ts";
@@ -159,6 +161,57 @@ export function publishDecisionRequestDraft(
   };
 }
 
+export type SuiteDraftPublication =
+  | { kind: "publish"; project: ProjectFile; intent: NonNullable<WorkbenchSuiteDraftV1["publishing"]> }
+  /** The saved suite already holds the draft's content: no shared write. */
+  | { kind: "unchanged" }
+  /** The saved suite is no longer the draft's base (C4): overwrite with `rebaseSuiteDraft`, or discard. */
+  | { kind: "stale"; current: EvaluationSuite };
+
+/**
+ * Slice 2c (C4). A suite has no revisions, so a save replaces it in place,
+ * and only over the suite the draft started from. `asNew` is Save as new for a
+ * suite that was deleted: it restores the suite under its own IDs, which
+ * nothing else can hold, with the name given.
+ */
+export function publishSuiteDraft(
+  project: ProjectFile,
+  record: WorkbenchSuiteDraftV1,
+  { asNew }: { asNew?: { name: string } } = {},
+): SuiteDraftPublication {
+  checkPublishable(project, record);
+  const current = project.evaluationSuites.find(({ id }) => id === record.asset.id);
+  if (asNew) {
+    if (current) refuse(["asset", "id"], "The draft's suite still exists. Save the draft instead.");
+    const name = asNew.name.trim();
+    if (!name) refuse(["edited", "name"], "Name the suite.");
+    const content = { ...structuredClone(record.edited), name } as EvaluationSuite;
+    return {
+      kind: "publish",
+      project: parseProjectFile({ ...project, evaluationSuites: [...project.evaluationSuites, content] }),
+      intent: { content },
+    };
+  }
+  if (!current) refuse(["asset", "id"], "The draft's suite no longer exists. Compare it and save it as a new suite instead.");
+  if (same(current, record.edited)) return { kind: "unchanged" };
+  if (!same(current, record.base.snapshot)) return { kind: "stale", current: structuredClone(current) };
+  const content = structuredClone(record.edited);
+  return {
+    kind: "publish",
+    project: parseProjectFile({
+      ...project,
+      evaluationSuites: project.evaluationSuites.map(suite => suite.id === content.id ? content : suite),
+    }),
+    intent: { content },
+  };
+}
+
+/** "Overwrite with mine" (C4): the draft keeps its edits over the suite saved now. */
+export function rebaseSuiteDraft(record: WorkbenchSuiteDraftV1, current: EvaluationSuite): WorkbenchSuiteDraftV1 {
+  if (record.publishing) refuse(["publishing"], "Settle the pending publication before rebasing.");
+  return parseWorkbenchRecord({ ...record, base: { snapshot: structuredClone(current) } }, record.projectId) as WorkbenchSuiteDraftV1;
+}
+
 type ScratchParent = NonNullable<WorkbenchScratchV1["request"]["parent"]>;
 
 /**
@@ -253,7 +306,8 @@ export function publishScratch(
 type PublishedRevision =
   | { kind: "template"; revision: PromptTemplateRevision }
   | { kind: "conversation"; revision: ProjectConversationRevision }
-  | { kind: "decision"; revision: ProjectDecisionRequestRevision };
+  | { kind: "decision"; revision: ProjectDecisionRequestRevision }
+  | { kind: "suite"; suite: EvaluationSuite };
 
 function locate(project: ProjectFile, record: PublishableRecord): { state: PublicationState; published?: PublishedRevision } {
   checkProject(project, record);
@@ -266,7 +320,7 @@ function locate(project: ProjectFile, record: PublishableRecord): { state: Publi
     const scratchIntent = intent as NonNullable<WorkbenchScratchV1["publishing"]>;
     const parentMatches = (parentRevisionId?: string) => parentRevisionId === scratchIntent.parentRevisionId;
     if ("conversationId" in scratchIntent) {
-      const revision = project.conversationRevisions.find(({ id }) => id === intent.revisionId);
+      const revision = project.conversationRevisions.find(({ id }) => id === scratchIntent.revisionId);
       if (!revision) return { state: "not-published" };
       return settle(revision.conversationId === scratchIntent.conversationId && parentMatches(revision.parentRevisionId)
         && same(revision.items, (scratchIntent.content as { items: unknown }).items), { kind: "conversation", revision });
@@ -278,6 +332,16 @@ function locate(project: ProjectFile, record: PublishableRecord): { state: Publi
   }
 
   const draft = record as WorkbenchDraftV1;
+  if (draft.asset.kind === "suite") {
+    // A replacement has no new ID to look for. The suite holding the frozen
+    // content is published; one still at the base (or gone) never took the
+    // write; anything else is someone else's edit.
+    const suiteDraft = draft as WorkbenchSuiteDraftV1;
+    const suite = project.evaluationSuites.find(({ id }) => id === suiteDraft.asset.id);
+    if (suite && same(suite, suiteDraft.publishing!.content)) return { state: "published", published: { kind: "suite", suite } };
+    if (!suite || same(suite, suiteDraft.base.snapshot)) return { state: "not-published" };
+    return { state: "conflict" };
+  }
   const draftIntent = intent as { revisionId: string; parentRevisionId: string; content: unknown };
   switch (draft.asset.kind) {
     case "chat-prompt":
@@ -345,11 +409,12 @@ export function completePublication<R extends PublishableRecord>(
   const intent = record.publishing!;
   const next = clearPublication(record) as PublishableRecord;
   if (next.kind === "scratch") {
+    const { revisionId } = intent as NonNullable<WorkbenchScratchV1["publishing"]>;
     const { request } = next;
     const current = request.kind === "chat" ? { items: request.items } : request.content;
     const parent = request.kind === "chat"
-      ? { kind: "saved-conversation-revision", revisionId: intent.revisionId }
-      : { kind: "saved-decision-request-revision", revisionId: intent.revisionId };
+      ? { kind: "saved-conversation-revision", revisionId }
+      : { kind: "saved-decision-request-revision", revisionId };
     const scratchRewrites = scratches.flatMap(child => {
       if (child.projectId !== project.projectId || child.request.parent?.kind !== "scratch"
         || child.request.parent.scratchId !== next.scratchId) return [];
@@ -367,9 +432,11 @@ export function completePublication<R extends PublishableRecord>(
       scratchRewrites,
     };
   }
+  const base = published.kind === "suite"
+    ? { snapshot: structuredClone(published.suite) }
+    : { revisionId: (intent as { revisionId: string }).revisionId, snapshot: structuredClone(published.revision) };
   return {
-    record: same(next.edited, intent.content) ? undefined
-      : parseWorkbenchRecord({ ...next, base: { revisionId: intent.revisionId, snapshot: structuredClone(published.revision) } }) as R,
+    record: same(next.edited, intent.content) ? undefined : parseWorkbenchRecord({ ...next, base }) as R,
     scratchRewrites: [],
   };
 }

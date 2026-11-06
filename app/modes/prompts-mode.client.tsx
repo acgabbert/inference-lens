@@ -26,7 +26,7 @@ interface PromptsModeProps {
   navigation: PromptNavigation;
   evaluations: Pick<
     EvaluationSuiteAuthoringHandle,
-    "evaluatePromptRevision" | "selectSuite" | "savedPromptError" | "dismissPromptError"
+    "evaluatePromptRevision" | "selectSuite" | "savedPromptError" | "dismissPromptError" | "project"
   >;
   n8nImportDisabledReason?: string;
   focusRequested: boolean;
@@ -151,10 +151,12 @@ export function PromptsMode({
           templates.insertProjectTemplate(...args);
           onInserted();
         }}
-        compatibleEvaluationSuitesByTemplate={compatibleEvaluationSuitesByTemplate(project)}
+        // Suites as the user sees them, with their drafts (2c-1).
+        compatibleEvaluationSuitesByTemplate={compatibleEvaluationSuitesByTemplate(evaluations.project ?? project)}
         onPreviewDecisionEvaluation={(templateId, templateRevisionId, suiteId) => {
-          if (!project) throw new Error("Open a project before evaluating a saved revision.");
-          return previewDecisionTemplateEvaluationRetarget(project, { templateId, templateRevisionId, suiteId });
+          const suites = evaluations.project ?? project;
+          if (!suites) throw new Error("Open a project before evaluating a saved revision.");
+          return previewDecisionTemplateEvaluationRetarget(suites, { templateId, templateRevisionId, suiteId });
         }}
         onEvaluateRevision={(templateId, revisionId, suiteId) => {
           if (!evaluations.evaluatePromptRevision(templateId, revisionId, suiteId)) return false;

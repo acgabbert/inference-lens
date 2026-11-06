@@ -27,6 +27,7 @@ import {
   SYSTEM_ONE_FIXTURE_ORIGIN,
   openMode,
   primaryAction,
+  saveSuite,
   seedProfiles,
   stubProjectDirectory,
   waitForHydration,
@@ -387,5 +388,6 @@ test("clearing a decision case value leaves it unfilled and blocks the run inste
   await editor.getByLabel("Billing ticket").fill("");
   await expect(page.locator("#evaluation-preflight-summary")).not.toHaveText("Ready to run");
   await expect(page.getByRole("region", { name: "Evaluation preflight" })).toContainText('Case "Billing" has no value for input "ticket".');
+  await saveSuite(page);
   await expect.poll(async () => (await savedProject(page)).evaluationSuites[0]?.cases[0]?.values).toEqual({});
 });

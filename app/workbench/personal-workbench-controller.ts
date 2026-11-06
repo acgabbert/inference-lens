@@ -18,7 +18,7 @@ import type {
   ProjectFile,
   PromptTemplateRevision,
 } from "../../packages/core/src/project.ts";
-import { isPromptDraft, parseWorkbenchRecord, parseWorkbenchRecordJson, serializeWorkbenchRecord } from "../../packages/core/src/personal-workbench.ts";
+import { isPromptDraft, isSuiteDraft, parseWorkbenchRecord, parseWorkbenchRecordJson, serializeWorkbenchRecord } from "../../packages/core/src/personal-workbench.ts";
 import type {
   LocalChatInput,
   LocalDecisionInput,
@@ -30,7 +30,9 @@ import type {
   WorkbenchRecordV1,
   WorkbenchScratchV1,
   WorkbenchSelectionsV1,
+  WorkbenchSuiteDraftV1,
 } from "../../packages/core/src/personal-workbench.ts";
+import type { EvaluationSuite } from "../../packages/core/src/evaluation-suites.ts";
 import { openWorkbenchStore, replacedDraftPath, workbenchRecordPath } from "../../packages/core/src/workbench-store.ts";
 import type { WorkbenchStorage, WorkbenchStoreOutcome } from "../../packages/core/src/workbench-store.ts";
 import {
@@ -40,12 +42,14 @@ import {
   publishDecisionRequestDraft,
   publishPromptDraft,
   publishScratch,
+  publishSuiteDraft,
+  rebaseSuiteDraft,
   reconcilePublication,
 } from "../../packages/core/src/workbench-publication.ts";
 import { randomUUID } from "../../packages/core/src/random-id.ts";
 import { stableJsonValue } from "../../packages/core/src/stable-json.ts";
 import { createEntityId } from "../../packages/core/src/run-kernel/types.ts";
-import type { ConversationId, DecisionRequestId, ProjectId } from "../../packages/core/src/run-kernel/types.ts";
+import type { ConversationId, DecisionRequestId, EvaluationSuiteId, ProjectId } from "../../packages/core/src/run-kernel/types.ts";
 import type { SharedWriteOutcome } from "../use-project-workspace.client.ts";
 
 /**
@@ -187,8 +191,10 @@ export interface UnsavedDraftSummary {
 }
 
 export type PublishOutcome =
-  /** `project` is the shared document as confirmed. */
+  /** `project` is the shared document as confirmed. `revisionId` is a suite's ID for a suite. */
   | { kind: "published"; revisionId: string; keptEdits: boolean; project: ProjectFile }
+  /** A suite changed since its draft started (C4): save again with `overwrite`, or discard. */
+  | { kind: "stale"; message: string }
   /** The draft is kept in every case below. */
   | { kind: "conflict" | "failed" | "blocked"; message: string };
 
@@ -950,6 +956,84 @@ export class PersonalWorkbenchController {
     }, shared, writeShared);
   }
 
+  // ---- Suites (slice 2c) --------------------------------------------------
+
+  /**
+   * Records the suite's one draft (C1). Its base is fixed when the draft
+   * starts, so a later save can tell whether the shared suite moved (C4).
+   * A draft edited back to its base is dropped.
+   */
+  updateSuiteDraft(base: EvaluationSuite, edited: EvaluationSuite): void {
+    const asset = { kind: "suite" as const, id: base.id };
+    const existing = this.draftFor(asset) as WorkbenchSuiteDraftV1 | undefined;
+    const path = existing ? workbenchRecordPath(existing) : undefined;
+    const inFlight = path !== undefined && this.publishing.has(path);
+    const start = existing?.base.snapshot ?? base;
+    if (!inFlight && same(start, edited)) {
+      if (existing) this.dropRecord(path!);
+      return;
+    }
+    const record = parseWorkbenchRecord({
+      schemaVersion: 1,
+      kind: "draft",
+      projectId: this.projectId,
+      draftId: existing?.draftId ?? this.options.newDraftId?.() ?? `draft_${randomUUID()}`,
+      asset,
+      base: { snapshot: start },
+      edited,
+      ...(existing?.publishing ? { publishing: existing.publishing } : {}),
+    }, this.projectId);
+    const recordPath = workbenchRecordPath(record);
+    this.records.set(recordPath, record);
+    this.deletions.delete(recordPath);
+    this.schedule(recordPath);
+  }
+
+  /**
+   * Replaces the shared suite with its draft, only over the suite the draft
+   * started from (C4). A suite changed since is `stale` until the user
+   * chooses `overwrite`, which keeps the draft's edits over the suite saved now.
+   */
+  async publishSuiteDraft(
+    suiteId: EvaluationSuiteId,
+    shared: ProjectFile,
+    writeShared: WriteShared,
+    { overwrite = false }: { overwrite?: boolean } = {},
+  ): Promise<PublishOutcome> {
+    const blocked = this.publicationBlocked();
+    if (blocked) return blocked;
+    let record = this.draftFor({ kind: "suite", id: suiteId }) as WorkbenchSuiteDraftV1 | undefined;
+    if (!record) return { kind: "failed", message: "There is no draft to save." };
+    const pending = this.pendingPublication(record);
+    if (pending) return pending;
+    const path = workbenchRecordPath(record);
+    let planned: ReturnType<typeof publishSuiteDraft>;
+    try {
+      planned = publishSuiteDraft(shared, record);
+      if (planned.kind === "stale") {
+        if (!overwrite) return { kind: "stale", message: "Someone changed this suite since you started editing it." };
+        record = rebaseSuiteDraft(record, planned.current);
+        this.records.set(path, record);
+        this.schedule(path);
+        planned = publishSuiteDraft(shared, record);
+      }
+    } catch (error) {
+      return { kind: "failed", message: errorMessage(error, "Could not save the suite.") };
+    }
+    if (planned.kind === "unchanged") {
+      this.dropRecord(path);
+      await this.persist(path);
+      return { kind: "published", revisionId: suiteId, keptEdits: false, project: shared };
+    }
+    const planFrom = record;
+    return this.publishRecord(path, (project) => {
+      const replanned = publishSuiteDraft(project, planFrom);
+      if (replanned.kind === "stale") throw new ProjectValidationError([{ code: "custom", path: [], message: "Someone changed this suite while it was saving." }]);
+      if (replanned.kind !== "publish") throw new ProjectValidationError([{ code: "custom", path: [], message: "The draft no longer differs from the saved suite." }]);
+      return replanned;
+    }, shared, writeShared);
+  }
+
   // ---- Recovery (step 6b) -------------------------------------------------
 
   /**
@@ -1105,15 +1189,19 @@ export class PersonalWorkbenchController {
       case "orphaned-draft": {
         const record = this.records.get(item.path);
         if (record?.kind !== "draft") return undefined;
-        return { incoming: { label: "Draft", record: structuredClone(record.edited) }, current: { label: "Base revision", record: structuredClone(record.base.snapshot) } };
+        const base = isSuiteDraft(record) ? "Suite when the draft started" : "Base revision";
+        return { incoming: { label: "Draft", record: structuredClone(record.edited) }, current: { label: base, record: structuredClone(record.base.snapshot) } };
       }
       case "publication-conflict": {
         const record = this.records.get(item.path);
         if (!record || record.kind === "selections" || !record.publishing) return undefined;
-        const saved = savedRevision(shared, record.publishing.revisionId as string);
+        const suite = isSuiteDraft(record);
+        const saved = suite
+          ? shared.evaluationSuites.find(({ id }) => id === record.asset.id)
+          : savedRevision(shared, (record.publishing as { revisionId: string }).revisionId);
         return {
           incoming: { label: "This draft", record: structuredClone(record.publishing.content) },
-          ...(saved ? { current: { label: "Saved revision", record: structuredClone(saved) } } : {}),
+          ...(saved ? { current: { label: suite ? "Saved suite" : "Saved revision", record: structuredClone(saved) } } : {}),
         };
       }
       case "record-conflict": {
@@ -1233,6 +1321,20 @@ export class PersonalWorkbenchController {
     if (record?.kind !== "draft") return refused("failed", "The draft is no longer here.");
     const trimmed = name.trim();
     if (!trimmed) return refused("failed", "Name the new item.");
+    if (isSuiteDraft(record)) {
+      // The deleted suite comes back under its own IDs, with the name given,
+      // through the usual protocol so an interrupted save is settled on open.
+      const named = parseWorkbenchRecord({ ...record, edited: { ...record.edited, name: trimmed } }, this.projectId) as WorkbenchSuiteDraftV1;
+      this.records.set(item.path, named);
+      this.dirty.add(item.path);
+      const outcome = await this.publishRecord(item.path, (project) => {
+        const planned = publishSuiteDraft(project, named, { asNew: { name: trimmed } });
+        if (planned.kind !== "publish") throw new ProjectValidationError([{ code: "custom", path: [], message: "The suite could not be restored." }]);
+        return planned;
+      }, shared, writeShared);
+      if (outcome.kind !== "published") return refused(outcome.kind === "blocked" ? "blocked" : "failed", outcome.message);
+      return this.settleItem(item);
+    }
     if (isPromptDraft(record)) {
       const idSuffix = randomUUID();
       const createdAt = this.options.now?.() ?? new Date().toISOString();
@@ -1534,7 +1636,8 @@ export class PersonalWorkbenchController {
       } catch (error) {
         return { kind: "failed", message: errorMessage(error, "Could not save.") };
       }
-      const revisionId = (planned.intent as { revisionId: string }).revisionId;
+      // A suite keeps its ID: there is no new revision to name.
+      const revisionId = (planned.intent as { revisionId?: string }).revisionId ?? (existing.kind === "draft" ? existing.asset.id : "");
       // Step 1: the intent, written and read back before the shared write.
       const latest = this.records.get(path) ?? existing;
       const withIntent = parseWorkbenchRecord({ ...latest, publishing: planned.intent }, this.projectId) as WorkbenchDraftV1 | WorkbenchScratchV1;
@@ -1705,7 +1808,7 @@ export class PersonalWorkbenchController {
         if (next) {
           this.records.set(path, next);
         } else {
-          if (!await this.persistPublishedSelection(record, record.publishing.revisionId as string)) continue;
+          if (!isSuiteDraft(record) && !await this.persistPublishedSelection(record, (record.publishing as { revisionId: string }).revisionId)) continue;
           this.records.delete(path);
           this.deletions.add(path);
           continue;
@@ -1730,6 +1833,12 @@ export class PersonalWorkbenchController {
         const base = shared.decisionRequestRevisions.find(({ id }) => id === request.base.revisionId);
         if (!base || base.decisionRequestId !== request.asset.id) {
           this.recoveryItems.push({ kind: "orphaned-draft", path, asset: record.asset, message: "This decision request draft's base revision no longer exists." });
+        }
+        continue;
+      }
+      if (isSuiteDraft(record)) {
+        if (!shared.evaluationSuites.some(({ id }) => id === record.asset.id)) {
+          this.recoveryItems.push({ kind: "orphaned-draft", path, asset: record.asset, message: "This draft's suite no longer exists." });
         }
         continue;
       }

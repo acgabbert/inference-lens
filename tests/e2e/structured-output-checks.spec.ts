@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "./support/test";
 import { createProjectFile } from "../../packages/core/src/project";
 import { addEvaluationCase, addEvaluationCheck, createEvaluationSuite } from "../../packages/core/src/evaluation-suite-authoring";
-import { expandedPreflight, importProject, openMode, seedProfile, waitForHydration } from "./support";
+import { expandedPreflight, importProject, openMode, saveSuite, seedProfile, waitForHydration } from "./support";
 
 async function exportedProject(page: Page) {
   await page.getByLabel("Project menu").click();
@@ -58,6 +58,8 @@ test("schema drafts generate, validate, cancel, and survive export and reopen", 
   await draft.fill("false");
   await card.getByRole("button", { name: "Cancel draft" }).click();
   await expect(draft).toHaveValue(JSON.stringify(generated, null, 2));
+  // The check is in the suite's draft; an export carries the saved suite (2c-1).
+  await saveSuite(page);
   const exported = await exportedProject(page);
   const saved = exported.evaluationSuites[0].cases[0].checks[0];
   expect(saved.schema).toEqual(generated);

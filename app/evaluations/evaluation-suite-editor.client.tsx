@@ -28,6 +28,8 @@ import {
   type EvaluationSuiteHistoryHandle,
 } from "./evaluation-suite-history.client";
 import { BlockerChip } from "../blocker-chip.client";
+import { SuiteDraftNotice } from "./suite-draft-notice.client";
+import type { SuiteDraftState } from "./use-suite-drafts.client";
 import styles from "./evaluation-surface.module.css";
 
 /**
@@ -422,8 +424,11 @@ export function EvaluationSuiteEditor({
   caseSource,
   onOpenSourceTrace,
   decisionSettings,
+  draft,
 }: {
   authoring: EvaluationSuiteAuthoringHandle;
+  /** The selected suite's unsaved changes, if any (slice 2c-1). */
+  draft?: SuiteDraftState;
   execution?: EvaluationSuiteExecutionActions;
   /** The selected decision suite's setup owner; absent for a chat suite. */
   decisionSettings?: DecisionSuiteSettingsHandle;
@@ -516,6 +521,7 @@ export function EvaluationSuiteEditor({
               <span className={styles.identitySpacer} />
               <button className="remove-button" type="button" onClick={authoring.deleteSuite}>Delete suite</button>
             </div>
+            {draft && <SuiteDraftNotice state={draft} />}
             {authoring.error?.target.kind === "suite-name" && <p className="evaluation-field-error evaluation-suite-name-error" role="alert">{authoring.error.message}</p>}
             {authoring.error?.target.kind === "editor" && <div className="template-diagnostic" role="alert">{authoring.error.message}</div>}
             {authoring.savedPromptError && !authoring.savedPromptPickerOpen && <p className="evaluation-field-error" role="alert">{authoring.savedPromptError}</p>}
